@@ -1,0 +1,173 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function ownsProfile(elderlyId) {
+      return signedIn() && request.auth.uid == elderlyId;
+    }
+
+    function linkExists(elderlyId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/elderlyProfiles/$(elderlyId)/caregiverLinks/$(request.auth.uid));
+    }
+
+    function activeLink(elderlyId) {
+      return linkExists(elderlyId)
+        && get(/databases/$(database)/documents/elderlyProfiles/$(elderlyId)/caregiverLinks/$(request.auth.uid)).data.status == 'active';
+    }
+
+    function canReadProfile(elderlyId) {
+      return activeLink(elderlyId)
+        && get(/databases/$(database)/documents/elderlyProfiles/$(elderlyId)/caregiverLinks/$(request.auth.uid)).data.scopes.profileRead == true;
+    }
+
+    function canReadMedications(elderlyId) {
+      return activeLink(elderlyId)
+        && get(/databases/$(database)/documents/elderlyProfiles/$(elderlyId)/caregiverLinks/$(request.auth.uid)).data.scopes.medicationsRead == true;
+    }
+
+    function canManageMedications(elderlyId) {
+      return activeLink(elderlyId)
+        && get(/databases/$(database)/documents/elderlyProfiles/$(elderlyId)/caregiverLinks/$(request.auth.uid)).data.scopes.medicationsWrite == true;
+    }
+
+    function canReadSchedules(elderlyId) {
+      return activeLink(elderlyId)
+        && get(/databases/$(database)/documents/elderlyProfiles/$(elderlyId)/caregiverLinks/$(request.auth.uid)).data.scopes.schedulesRead == true;
+    }
+
+    function canManageSchedules(elderlyId) {
+      return activeLink(elderlyId)
+        && get(/databases/$(database)/documents/elderlyProfiles/$(elderlyId)/caregiverLinks/$(request.auth.uid)).data.scopes.schedulesWrite == true;
+    }
+
+    function canReadDoseHistory(elderlyId) {
+      return activeLink(elderlyId)
+        && get(/databases/$(database)/documents/elderlyProfiles/$(elderlyId)/caregiverLinks/$(request.auth.uid)).data.scopes.doseHistoryRead == true;
+    }
+
+    function canReadOcr(elderlyId) {
+      return activeLink(elderlyId)
+        && get(/databases/$(database)/documents/elderlyProfiles/$(elderlyId)/caregiverLinks/$(request.auth.uid)).data.scopes.ocrRead == true;
+    }
+
+    function belongsToProfile(elderlyId) {
+      return request.resource.data.elderlyId == elderlyId;
+    }
+
+    function preservesRecordIdentity() {
+      return request.resource.data.elderlyId == resource.data.elderlyId
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.createdAt == resource.data.createdAt;
+    }
+
+    function isValidDoseResponse() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'respondedAt', 'respondedBy', 'responseSource', 'updatedAt'
+        ])
+        && request.resource.data.respondedBy == request.auth.uid
+        && request.resource.data.status in ['reportedTaken', 'reportedSkipped', 'snoozed'];
+    }
+
+    match /users/{uid} {
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.uid == request.auth.uid;
+      allow read, delete: if signedIn() && request.auth.uid == uid;
+      allow update: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.primaryRole == resource.data.primaryRole
+        && request.resource.data.roles == resource.data.roles;
+
+      match /devices/{deviceId} {
+        allow read, create, update, delete: if signedIn() && request.auth.uid == uid;
+      }
+
+      match /notifications/{notificationId} {
+        allow read: if signedIn() && request.auth.uid == uid;
+        allow write: if false;
+      }
+
+      match /elderlyIndex/{elderlyId} {
+        allow read: if signedIn() && request.auth.uid == uid;
+        allow write: if false;
+      }
+    }
+
+    match /caregiverProfiles/{caregiverId} {
+      allow create, read, update, delete: if signedIn() && request.auth.uid == caregiverId;
+    }
+
+    match /caregiverInvites/{inviteId} {
+      allow read, write: if false;
+    }
+
+    match /elderlyProfiles/{elderlyId} {
+      allow create: if ownsProfile(elderlyId)
+        && request.resource.data.ownerUid == request.auth.uid;
+      allow read: if ownsProfile(elderlyId) || canReadProfile(elderlyId);
+      allow update: if ownsProfile(elderlyId)
+        && request.resource.data.ownerUid == resource.data.ownerUid;
+      allow delete: if false;
+
+      match /caregiverLinks/{caregiverId} {
+        allow read: if ownsProfile(elderlyId)
+          || (signedIn() && request.auth.uid == caregiverId);
+        allow write: if false;
+      }
+
+      match /prescriptions/{prescriptionId} {
+        allow read: if ownsProfile(elderlyId);
+        allow create: if ownsProfile(elderlyId)
+          && belongsToProfile(elderlyId)
+          && request.resource.data.createdBy == request.auth.uid;
+        allow update: if ownsProfile(elderlyId) && preservesRecordIdentity();
+        allow delete: if false;
+      }
+
+      match /medications/{medicationId} {
+        allow read: if ownsProfile(elderlyId) || canReadMedications(elderlyId);
+        allow create: if (ownsProfile(elderlyId) || canManageMedications(elderlyId))
+          && belongsToProfile(elderlyId)
+          && request.resource.data.createdBy == request.auth.uid;
+        allow update: if (ownsProfile(elderlyId) || canManageMedications(elderlyId))
+          && preservesRecordIdentity();
+        allow delete: if false;
+      }
+
+      match /medicationSchedules/{scheduleId} {
+        allow read: if ownsProfile(elderlyId) || canReadSchedules(elderlyId);
+        allow create: if (ownsProfile(elderlyId) || canManageSchedules(elderlyId))
+          && belongsToProfile(elderlyId)
+          && request.resource.data.createdBy == request.auth.uid;
+        allow update: if (ownsProfile(elderlyId) || canManageSchedules(elderlyId))
+          && preservesRecordIdentity();
+        allow delete: if false;
+      }
+
+      match /doseEvents/{doseEventId} {
+        allow read: if ownsProfile(elderlyId) || canReadDoseHistory(elderlyId);
+        allow update: if ownsProfile(elderlyId) && isValidDoseResponse();
+        allow create, delete: if false;
+      }
+
+      match /ocrResults/{ocrResultId} {
+        allow read: if ownsProfile(elderlyId) || canReadOcr(elderlyId);
+        allow create: if ownsProfile(elderlyId)
+          && belongsToProfile(elderlyId)
+          && request.resource.data.createdBy == request.auth.uid;
+        allow update: if ownsProfile(elderlyId) && preservesRecordIdentity();
+        allow delete: if false;
+      }
+
+      match /auditLogs/{auditLogId} {
+        allow read: if ownsProfile(elderlyId);
+        allow write: if false;
+      }
+    }
+  }
+}

@@ -1,0 +1,43 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function ownsProfile(elderlyId) {
+      return signedIn() && request.auth.uid == elderlyId;
+    }
+
+    function caregiverCanReadMedication(elderlyId) {
+      return signedIn()
+        && firestore.exists(/databases/(default)/documents/elderlyProfiles/$(elderlyId)/caregiverLinks/$(request.auth.uid))
+        && firestore.get(/databases/(default)/documents/elderlyProfiles/$(elderlyId)/caregiverLinks/$(request.auth.uid)).data.status == 'active'
+        && firestore.get(/databases/(default)/documents/elderlyProfiles/$(elderlyId)/caregiverLinks/$(request.auth.uid)).data.scopes.medicationsRead == true;
+    }
+
+    function validImageUpload() {
+      return request.resource != null
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    match /medications/{elderlyId}/{allPaths=**} {
+      allow read: if ownsProfile(elderlyId) || caregiverCanReadMedication(elderlyId);
+      allow create, update: if ownsProfile(elderlyId) && validImageUpload();
+      allow delete: if ownsProfile(elderlyId);
+    }
+
+    match /prescriptions/{elderlyId}/{allPaths=**} {
+      allow read: if ownsProfile(elderlyId);
+      allow create, update: if ownsProfile(elderlyId) && validImageUpload();
+      allow delete: if ownsProfile(elderlyId);
+    }
+
+    match /ocr/{elderlyId}/{allPaths=**} {
+      allow read: if ownsProfile(elderlyId);
+      allow create, update: if ownsProfile(elderlyId) && validImageUpload();
+      allow delete: if ownsProfile(elderlyId);
+    }
+  }
+}

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medicare_ai/app/app.dart';
+import 'package:medicare_ai/app/firebase_initialization_failure_app.dart';
 import 'package:medicare_ai/features/medication/data/repositories/mock_medication_repository.dart';
 import 'package:medicare_ai/features/medication/domain/entities/medication.dart';
 import 'package:medicare_ai/features/dose_event/domain/entities/dose_event.dart';
@@ -38,6 +39,17 @@ void main() {
     expect(find.text('Chọn vai trò'), findsOneWidget);
     expect(find.text('Người cao tuổi'), findsOneWidget);
     expect(find.text('Người chăm sóc'), findsOneWidget);
+  });
+
+  testWidgets('shows a clear Firebase initialization failure state', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      FirebaseInitializationFailureApp(error: StateError('test')),
+    );
+
+    expect(find.text('Không thể khởi tạo Firebase'), findsOneWidget);
+    expect(find.textContaining('Kiểm tra kết nối mạng'), findsOneWidget);
   });
 
   test('dose response is recorded against the deterministic demo event', () {

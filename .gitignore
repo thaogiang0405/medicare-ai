@@ -56,8 +56,6 @@ app.*.map.json
 .env
 .env.*
 !.env.example
-**/google-services.json
-**/GoogleService-Info.plist
 **/key.properties
 *.jks
 *.keystore
@@ -68,9 +66,9 @@ app.*.map.json
 service-account*.json
 firebase-adminsdk*.json
 
-# Firebase client configuration is generated locally after flutterfire configure.
-# Review it explicitly before removing this ignore rule for a shared setup.
-/lib/firebase_options.dart
+# Firebase client configuration such as android/app/google-services.json and
+# lib/firebase_options.dart is intentionally versioned. It contains public
+# client identifiers, not a service-account credential or private key.
 
 # Local Firebase and editor state
 /.firebase/

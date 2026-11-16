@@ -4,7 +4,7 @@
 
 > MediCare AI hỗ trợ ghi nhận thông tin, không thay thế bác sĩ. Ứng dụng không tư vấn liều, không tự suy luận dữ liệu thiếu từ đơn thuốc, và trạng thái “Đã uống” chỉ là tự báo cáo.
 
-## Trạng thái hiện tại — Phase 1: Foundation
+## Trạng thái hiện tại — Phase 2.1: Firebase Setup
 
 Đã có nền Flutter Android, kiến trúc feature-first, điều hướng GoRouter, state Riverpod, theme tiếng Việt dễ tiếp cận và luồng dữ liệu giả lập có thể thao tác:
 
@@ -16,8 +16,10 @@
 - Luồng kiểm tra đơn thuốc có bước xác nhận bắt buộc trước khi tạo thuốc giả lập.
 - Các màn hình nền tảng cho lịch sử, liên kết gia đình, theo dõi, hồ sơ và cài đặt.
 - Thiết kế Firestore, Security Rules, Storage Rules và indexes ở mức sẵn sàng tích hợp Firebase.
+- Firebase Android đã được liên kết chính thức với project `medicare-ai-cf804` thông qua FlutterFire CLI.
+- `firebase_core`, `firebase_auth` và `cloud_firestore` đã được cài đặt; ứng dụng chỉ khởi tạo Firebase, chưa dùng chúng để xác thực hoặc đọc/ghi dữ liệu.
 
-Firebase Authentication, Firestore, camera/ML Kit OCR, local notification, TTS và FCM **chưa được kết nối** vì chưa có cấu hình Firebase của dự án. Không có dữ liệu y tế thật hoặc khóa bí mật trong repository.
+Firebase Authentication, Firestore CRUD, camera/ML Kit OCR, local notification, TTS và FCM **chưa được triển khai**. Không có dữ liệu y tế thật, service account hoặc khóa bí mật phía server trong repository.
 
 ## Chạy dự án
 
@@ -63,20 +65,56 @@ Mỗi feature sẽ phát triển theo hướng `data → domain → presentation
 - [Mô hình Firestore và đồng bộ](docs/firestore-data-model.md)
 - [Hướng dẫn an toàn Firebase Rules](docs/firebase-security.md)
 - [Phạm vi Phase 1](docs/phase-1-foundation.md)
+- [Firebase Setup — Phase 2.1](docs/firebase-setup.md)
 
-## Chuẩn bị Firebase cho Phase 2+
+## Firebase Setup — Phase 2.1
 
-1. Tạo Firebase project riêng cho môi trường development; không tái sử dụng dữ liệu bệnh nhân thật.
-2. Chạy `flutterfire configure` để sinh `lib/firebase_options.dart`. File này không được viết tay và không chứa secret phía server.
-3. Cài và cấu hình Firebase Auth, Cloud Firestore, Storage, FCM và App Check.
-4. Triển khai rules/indexes sau khi review theo nghiệp vụ thực tế:
+Firebase Project hiện dùng: `medicare-ai-cf804`.
 
-   ```powershell
-   firebase deploy --only firestore:rules,firestore:indexes,storage
-   ```
+Android package: `com.medicareai.medicare_ai`.
 
-5. Kiểm thử rules bằng Firebase Emulator trước khi mở dữ liệu thật.
-6. Chỉ thêm ML Kit, local notifications, TTS và quyền Android khi từng tính năng tương ứng được triển khai và kiểm thử trên thiết bị.
+Firebase initialization chưa được xác minh bằng lần chạy thực tế trên Android device hoặc emulator. Hiện tại chỉ đã kiểm tra dependency resolution, static analysis và widget test; cần chạy `flutter run` trên Android trước khi coi native integration đã được kiểm chứng trên thiết bị.
+
+FlutterFire đã tạo và cập nhật các file client configuration sau:
+
+- `lib/firebase_options.dart`
+- `android/app/google-services.json`
+- Android Google Services Gradle plugin và metadata `flutter` trong `firebase.json`
+
+Ba package nền tảng hiện có:
+
+- `firebase_core`
+- `firebase_auth`
+- `cloud_firestore`
+
+Thành viên mới chỉ cần chạy:
+
+```powershell
+flutter pub get
+flutter analyze
+flutter test
+flutter run
+```
+
+Không tự viết `firebase_options.dart`. Khi cần thêm platform Firebase mới, chạy lại:
+
+```powershell
+flutterfire configure --project=medicare-ai-cf804 --platforms=android --android-package-name=com.medicareai.medicare_ai
+```
+
+`firebase_options.dart` và `google-services.json` là client configuration được version-control để nhóm dùng cùng Android app. Không commit `.env`, service account JSON, private key, keystore hoặc `key.properties`.
+
+### Emulator cho giai đoạn kiểm thử
+
+Khi bắt đầu kiểm thử Auth/Firestore, cài Firebase Emulator Suite và thêm emulator configuration có chủ đích. Chưa chạy hoặc deploy gì ở Phase 2.1.
+
+```powershell
+# Chỉ chạy khi nhóm đã thống nhất thay đổi firebase.json.
+firebase init emulators
+firebase emulators:start --only auth,firestore
+```
+
+Xem [hướng dẫn Firebase Setup chi tiết](docs/firebase-setup.md) trước khi thêm service hoặc deploy Security Rules.
 
 ## Milestone đề xuất
 

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "354989416256",
+    "project_id": "medicare-ai-cf804",
+    "storage_bucket": "medicare-ai-cf804.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:354989416256:android:37d5c3468947b13902e4a5",
+        "android_client_info": {
+          "package_name": "com.medicareai.medicare_ai"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA9X41KBoKWsvHNbjGB4Qi1nYxNBpSBh5A"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

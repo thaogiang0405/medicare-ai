@@ -1,0 +1,52 @@
+# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+
+# dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Metro
+.metro-health-check*
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# Local editor/agent integrations
+.claude/
+.vscode/
+
+# macOS
+.DS_Store
+*.pem
+
+# Local environment configuration. Keep only a deliberately non-sensitive
+# .env.example template under version control.
+.env
+.env.*
+!.env.example
+
+# Firebase CLI diagnostics are local-only. Firebase client configuration is
+# intentionally not present until a Web App is officially selected.
+firebase-debug.log
+
+# typescript
+*.tsbuildinfo
+
+# generated native folders
+/ios
+/android

@@ -1,4 +1,4 @@
-# MediCare AI — Expo Migration 1
+# MediCare AI — Expo Migration 1 + Firebase JS foundation
 
 Đây là ứng dụng React Native + Expo mới của MediCare AI. Ứng dụng Flutter
 nguyên bản vẫn được giữ nguyên ở thư mục gốc của repository; toàn bộ mã Expo
@@ -7,7 +7,7 @@ chỉ nằm trong `expo-app/` để đội ngũ có thể đối chiếu và chu
 > MediCare AI hỗ trợ ghi nhận thông tin và không thay thế bác sĩ. Trạng thái
 > “Đã uống” là tự báo cáo của người dùng, không phải xác nhận y tế.
 
-## Phạm vi Migration 1
+## Phạm vi hiện tại
 
 - Expo SDK 58, React Native và TypeScript ở chế độ `strict`.
 - Expo Router cho điều hướng theo tệp.
@@ -16,10 +16,13 @@ chỉ nằm trong `expo-app/` để đội ngũ có thể đối chiếu và chu
   chạm tối thiểu 56 px và nhãn trợ năng rõ ràng.
 - Luồng giao diện mock: Splash, Onboarding, Đăng nhập, Đăng ký, chọn vai trò,
   trang chủ Người cao tuổi và dashboard Người chăm sóc.
-- Repository mock cho auth, thuốc và lịch dùng thuốc. Không có dữ liệu sức
-  khỏe thật, không có xác thực thật và không lưu dữ liệu lâu dài.
+- Firebase JavaScript SDK modular được khởi tạo từ Firebase Web App chính thức
+  của `medicare-ai-cf804`; Auth và Firestore chưa được gọi.
+- Repository mock cho auth, thuốc và lịch dùng thuốc vẫn là data source duy
+  nhất. Không có dữ liệu sức khỏe thật, không có xác thực thật và không lưu dữ
+  liệu lâu dài.
 
-Không triển khai trong Migration 1: Firebase Authentication, Firestore CRUD,
+Không triển khai trong Migration 2.1: Firebase Authentication, Firestore CRUD,
 OCR, TTS/STT nâng cao, thông báo đẩy, đồng bộ gia đình hoặc deploy Firebase
 Rules.
 
@@ -32,7 +35,7 @@ expo-app/
     components/            # Design system và UI dùng lại
     constants/             # Theme, token trợ năng
     features/              # Domain/data boundaries theo feature
-    services/              # Chỉ service contracts trong Migration 1
+    services/firebase/     # Firebase Core initializer và future boundaries
     store/                 # Zustand in-memory stores
     types/                 # Kiểu dùng chung
     utils/                 # Tiện ích thuần
@@ -73,17 +76,29 @@ Tunnel cần Internet và có thể chậm hơn LAN. Việc mở QR code thành 
 iPhone là bước kiểm thử thiết bị thực; tài liệu này không khẳng định iOS đã
 được xác minh trước khi bước đó diễn ra.
 
-## Firebase
+## Firebase JavaScript SDK — Migration 2.1
 
-Firebase Project dùng chung là `medicare-ai-cf804`, nhưng ứng dụng Expo **chưa
-khởi tạo Firebase**. Firebase JavaScript SDK cần cấu hình chính thức của một
-Firebase Web App thuộc project đó. Không sao chép `firebase_options.dart` của
-Flutter sang TypeScript và không tự tạo cấu hình giả.
+Firebase Web App chính thức của project `medicare-ai-cf804` được đọc từ
+`expo-app/.env`, không từ cấu hình Android Flutter. Copy `.env.example` thành
+`.env` rồi điền config do Firebase Console hoặc Firebase CLI cung cấp:
 
-Trước khi tích hợp Firebase trong Migration 2, chủ project cần đăng ký/chọn
-Firebase Web App chính thức rồi cung cấp cấu hình client phù hợp. Firebase
-client configuration không phải server secret, nhưng các file service account,
-private key, token, mật khẩu và `.env` nhạy cảm tuyệt đối không được commit.
+```powershell
+Copy-Item .env.example .env
+```
+
+`EXPO_PUBLIC_FIREBASE_API_KEY`, `AUTH_DOMAIN`, `PROJECT_ID`,
+`STORAGE_BUCKET`, `MESSAGING_SENDER_ID` và `APP_ID` là bắt buộc;
+`MEASUREMENT_ID` là tùy chọn vì Analytics chưa nằm trong phạm vi. Expo nhúng
+mọi biến `EXPO_PUBLIC_*` vào ứng dụng, vì vậy chúng không thể chứa secret.
+Không commit service account, private key, token, mật khẩu hoặc `.env` cục bộ.
+
+Ứng dụng khởi tạo Firebase Core trước route đầu tiên. Nếu thiếu config, một màn
+hình lỗi phát triển sẽ hiển thị thay vì âm thầm chuyển sang project hay mock
+Firebase khác. Các mock repository vẫn là nguồn dữ liệu duy nhất; chưa import
+`firebase/auth` hay `firebase/firestore` trong luồng ứng dụng.
+
+Xem [hướng dẫn Firebase JS SDK](../docs/firebase-js-sdk-integration.md) để lấy
+cấu hình trên máy thành viên khác và kiểm thử bằng Expo Go.
 
 Expo Go dùng native container riêng. Trước EAS/development build, nhóm cần
 quyết định Android/iOS identifiers và Firebase client apps của Expo một cách có

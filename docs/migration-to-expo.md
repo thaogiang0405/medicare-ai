@@ -26,7 +26,7 @@ giới module để thay backend mock bằng Firebase sau này.
 | Điều hướng | Expo Router |
 | State UI/domain | Zustand, chỉ trong bộ nhớ |
 | Data layer | Repository pattern, mock implementation |
-| Firebase | Chưa khởi tạo; chờ Web App configuration chính thức |
+| Firebase | Migration 2.1 khởi tạo Firebase JS Core từ Web App chính thức; Auth/Firestore vẫn mock-only |
 
 Mọi màn hình dùng tiếng Việt, font lớn, tương phản rõ và mục tiêu thao tác tối
 thiểu 56 px. Trạng thái sức khỏe luôn có nhãn văn bản; ví dụ “Chưa phản hồi”
@@ -61,7 +61,7 @@ expo-app/
       prescriptions/
       family/
     services/
-      firebase/            # Contract/docs, chưa có client initializer
+      firebase/            # Core initializer và future Auth/Firestore boundaries
     store/                 # Zustand in-memory
     types/
     utils/
@@ -78,8 +78,9 @@ Flutter hiện có không áp dụng trực tiếp cho Firebase JavaScript SDK:
 
 - Không chuyển `lib/firebase_options.dart` thành TypeScript.
 - Không tạo Firebase Project mới và không tự đăng ký Firebase Web App.
-- Khi chủ project đã chọn/đăng ký Web App trong Firebase Console, dùng chính
-  cấu hình client do Console/CLI cung cấp rồi mới khởi tạo SDK JavaScript.
+- Web App `MediCare AI Expo` đã được chọn trong Firebase Console. Firebase JS
+  Core đọc đúng cấu hình client do Console/CLI cung cấp từ `.env` cục bộ; không
+  có fallback project hoặc config giả.
 - Không deploy Firestore/Storage Rules trong Migration 1.
 - Không dùng Firebase Admin SDK trong ứng dụng Expo.
 
@@ -147,3 +148,20 @@ Migration 1 được checkpoint cục bộ tại `e3e592e` trước khi nâng SD
 custom navigator, Router state persistence hay Firebase initializer cần migrate;
 `src/app/` tiếp tục là route root. Không tự chạy `npm audit fix --force` vì các
 đề xuất sửa của npm có thể yêu cầu thay đổi phiên bản xung đột với SDK đã ghim.
+
+## Migration 2.1 — Firebase JavaScript SDK foundation
+
+Firebase Web App `MediCare AI Expo` của project `medicare-ai-cf804` được xác
+minh qua Firebase CLI. Expo đọc config bằng các biến `EXPO_PUBLIC_FIREBASE_*`
+từ `expo-app/.env` bị Git ignore; `.env.example` chỉ mô tả biến cần điền. Core
+initializer dùng Firebase modular `getApps()` / `getApp()` / `initializeApp()`
+để chịu được Fast Refresh. `FirebaseInitializationGate` dừng luồng UI và hiển
+thị lỗi phát triển nếu config không hợp lệ, thay vì âm thầm chạy một project hay
+config khác.
+
+Auth và Firestore chỉ có composition boundary cho Migration 2.2. Không có
+`firebase/auth`, `firebase/firestore`, repository Firebase, persistence, CRUD,
+Rules deployment, Admin SDK hay dữ liệu y tế thật trong scope này. Mọi màn hình
+tiếp tục dùng mock repositories. Xem
+[`firebase-js-sdk-integration.md`](firebase-js-sdk-integration.md) để cấu hình
+máy mới, giới hạn bảo mật và quy trình kiểm thử.

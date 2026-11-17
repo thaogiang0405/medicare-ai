@@ -1,7 +1,7 @@
-import type { AppUser, UserRole } from '@/types/domain';
+import type { AppUser } from '@/types/domain';
 
 export interface SignInInput {
-  identifier: string;
+  email: string;
   password: string;
 }
 
@@ -11,9 +11,17 @@ export interface RegisterInput {
   password: string;
 }
 
+export type AuthStateObserver = (user: AppUser | null) => void;
+export type AuthStateErrorObserver = (error: Error) => void;
+export type AuthStateUnsubscribe = () => void;
+
 export interface AuthRepository {
   signIn(input: SignInInput): Promise<AppUser>;
   register(input: RegisterInput): Promise<AppUser>;
-  continueAs(role: UserRole): Promise<AppUser>;
   signOut(): Promise<void>;
+  observeAuthState(
+    onChange: AuthStateObserver,
+    onError?: AuthStateErrorObserver,
+  ): AuthStateUnsubscribe;
+  sendPasswordReset(email: string): Promise<void>;
 }

@@ -1,14 +1,13 @@
 import { MockAuthRepository } from './mock-auth-repository';
 
 describe('MockAuthRepository', () => {
-  it('returns the caregiver demo identity when that role is selected', async () => {
+  it('does not manufacture a role when signing in', async () => {
     const repository = new MockAuthRepository();
 
-    const user = await repository.continueAs('caregiver');
+    const user = await repository.signIn({ email: 'demo@example.com', password: 'not-used' });
 
     expect(user).toMatchObject({
-      displayName: 'Anh Nam',
-      role: 'caregiver',
+      role: null,
       isAuthenticated: true,
     });
   });

@@ -4,7 +4,6 @@ import { router } from 'expo-router';
 
 import {
   AppHeader,
-  DemoModeBanner,
   PrimaryButton,
   Screen,
   SecondaryButton,
@@ -13,23 +12,66 @@ import {
 import { medicareColors, medicareSpacing, medicareTypography } from '@/constants/medicare-theme';
 import { useSessionStore } from '@/store';
 
+function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
 export default function LoginScreen() {
   const signIn = useSessionStore((state) => state.signIn);
-  const isLoading = useSessionStore((state) => state.isLoading);
-  const [identifier, setIdentifier] = useState('demo@medicare.ai');
-  const [password, setPassword] = useState('123456');
-  const [errorMessage, setErrorMessage] = useState<string | undefined>();
+  const sendPasswordReset = useSessionStore((state) => state.sendPasswordReset);
+  const operationStatus = useSessionStore((state) => state.operationStatus);
+  const sessionErrorMessage = useSessionStore((state) => state.errorMessage);
+  const clearError = useSessionStore((state) => state.clearError);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [formErrorMessage, setFormErrorMessage] = useState<string | undefined>();
+  const [resetNotice, setResetNotice] = useState<string | undefined>();
+  const isLoading = operationStatus === 'loading';
+
+  const resetFeedback = () => {
+    setFormErrorMessage(undefined);
+    setResetNotice(undefined);
+    clearError();
+  };
 
   const continueToRoleSelection = async () => {
-    setErrorMessage(undefined);
+    resetFeedback();
+
+    if (!isValidEmail(email.trim())) {
+      setFormErrorMessage('Hãy nhập địa chỉ email hợp lệ.');
+      return;
+    }
+
+    if (!password) {
+      setFormErrorMessage('Hãy nhập mật khẩu.');
+      return;
+    }
 
     try {
-      await signIn({ identifier, password });
+      await signIn({ email: email.trim(), password });
       router.replace('/role-selection');
     } catch {
-      setErrorMessage('Không thể tiếp tục ở chế độ trình diễn. Vui lòng thử lại.');
+      // The repository has already mapped the error to safe Vietnamese feedback.
     }
   };
+
+  const requestPasswordReset = async () => {
+    resetFeedback();
+
+    if (!isValidEmail(email.trim())) {
+      setFormErrorMessage('Nhập email hợp lệ trước khi yêu cầu đặt lại mật khẩu.');
+      return;
+    }
+
+    try {
+      await sendPasswordReset(email.trim());
+      setResetNotice('Nếu email phù hợp, hướng dẫn đặt lại mật khẩu sẽ được gửi đến hộp thư của bạn.');
+    } catch {
+      // Keep reset feedback neutral so it never confirms whether an account exists.
+    }
+  };
+
+  const errorMessage = formErrorMessage ?? sessionErrorMessage ?? undefined;
 
   return (
     <Screen contentStyle={styles.content}>
@@ -38,39 +80,63 @@ export default function LoginScreen() {
         <Text accessibilityRole="header" style={styles.title}>
           Chào mừng trở lại
         </Text>
-        <Text style={styles.description}>Bạn có thể tiếp tục bằng dữ liệu demo trong Migration 1.</Text>
+        <Text style={styles.description}>Đăng nhập bằng email đã đăng ký với MediCare AI.</Text>
       </View>
-      <DemoModeBanner
-        description="Thông tin nhập ở đây không được gửi lên Firebase và sẽ không được lưu lại."
-        title="Chế độ trình diễn"
-      />
       <View style={styles.form}>
         <TextField
           autoCapitalize="none"
           autoComplete="email"
+          editable={!isLoading}
           keyboardType="email-address"
-          label="Email hoặc số điện thoại"
-          onChangeText={setIdentifier}
-          placeholder="Nhập email hoặc số điện thoại"
-          value={identifier}
+          label="Email"
+          onChangeText={(value) => {
+            setEmail(value);
+            resetFeedback();
+          }}
+          placeholder="vidu@email.com"
+          textContentType="emailAddress"
+          value={email}
         />
         <TextField
+          autoComplete="current-password"
+          editable={!isLoading}
           errorMessage={errorMessage}
           label="Mật khẩu"
-          onChangeText={setPassword}
+          onChangeText={(value) => {
+            setPassword(value);
+            resetFeedback();
+          }}
           placeholder="Nhập mật khẩu"
           secureTextEntry
+          showPasswordToggle
+          textContentType="password"
           value={password}
         />
       </View>
+      {resetNotice ? (
+        <Text accessibilityLiveRegion="polite" style={styles.notice}>
+          {resetNotice}
+        </Text>
+      ) : null}
       <View style={styles.actions}>
         <PrimaryButton
-          accessibilityHint="Tiếp tục đến bước chọn vai trò bằng dữ liệu demo"
-          label="Tiếp tục"
+          accessibilityHint="Đăng nhập bằng email và mật khẩu đã nhập"
+          label="Đăng nhập"
           loading={isLoading}
           onPress={() => void continueToRoleSelection()}
         />
-        <SecondaryButton label="Tạo tài khoản trình diễn" onPress={() => router.push('/register')} />
+        <SecondaryButton
+          accessibilityHint="Gửi hướng dẫn đặt lại mật khẩu nếu email phù hợp"
+          disabled={isLoading}
+          label="Quên mật khẩu?"
+          onPress={() => void requestPasswordReset()}
+        />
+        <SecondaryButton
+          accessibilityHint="Mở màn hình tạo tài khoản mới"
+          disabled={isLoading}
+          label="Tạo tài khoản"
+          onPress={() => router.push('/register')}
+        />
       </View>
     </Screen>
   );
@@ -99,5 +165,11 @@ const styles = StyleSheet.create({
   },
   actions: {
     gap: medicareSpacing.sm,
+  },
+  notice: {
+    color: medicareColors.success,
+    fontSize: medicareTypography.bodySmall,
+    fontWeight: '600',
+    lineHeight: 22,
   },
 });

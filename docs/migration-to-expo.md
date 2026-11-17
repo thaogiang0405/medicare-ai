@@ -26,7 +26,7 @@ giới module để thay backend mock bằng Firebase sau này.
 | Điều hướng | Expo Router |
 | State UI/domain | Zustand, chỉ trong bộ nhớ |
 | Data layer | Repository pattern, mock implementation |
-| Firebase | Migration 2.1 khởi tạo Firebase JS Core từ Web App chính thức; Auth/Firestore vẫn mock-only |
+| Firebase | Migration 2.2 dùng Firebase Auth Email/Password với AsyncStorage persistence; Firestore vẫn chưa dùng |
 
 Mọi màn hình dùng tiếng Việt, font lớn, tương phản rõ và mục tiêu thao tác tối
 thiểu 56 px. Trạng thái sức khỏe luôn có nhãn văn bản; ví dụ “Chưa phản hồi”
@@ -40,9 +40,10 @@ Splash → Onboarding → Đăng nhập / Đăng ký → Chọn vai trò
                                                    └─ Người chăm sóc → Dashboard
 ```
 
-Các luồng trên là trình diễn bằng mock data. Đăng nhập/đăng ký không gọi
-Firebase, không lưu thông tin đăng nhập và không xác minh danh tính. Dữ liệu
-demo được tạo lại khi mở lại phiên ứng dụng.
+Đăng nhập/đăng ký hiện đi qua `FirebaseAuthRepository`; UI không gọi Firebase
+SDK trực tiếp. Phiên được khôi phục bằng `onAuthStateChanged` và persistence
+React Native do Firebase quản lý. Vai trò, thuốc, lịch và hồ sơ trên dashboard
+vẫn là dữ liệu trình diễn; không có phân quyền backend hoặc dữ liệu y tế thật.
 
 ## Cấu trúc dự kiến
 
@@ -159,9 +160,43 @@ initializer dùng Firebase modular `getApps()` / `getApp()` / `initializeApp()`
 thị lỗi phát triển nếu config không hợp lệ, thay vì âm thầm chạy một project hay
 config khác.
 
-Auth và Firestore chỉ có composition boundary cho Migration 2.2. Không có
-`firebase/auth`, `firebase/firestore`, repository Firebase, persistence, CRUD,
-Rules deployment, Admin SDK hay dữ liệu y tế thật trong scope này. Mọi màn hình
-tiếp tục dùng mock repositories. Xem
+Khi Migration 2.1 kết thúc, Auth và Firestore chỉ có composition boundary cho
+Migration 2.2. Chưa có `firebase/auth`, `firebase/firestore`, repository
+Firebase, persistence, CRUD, Rules deployment, Admin SDK hay dữ liệu y tế thật
+trong scope M2.1. Xem
 [`firebase-js-sdk-integration.md`](firebase-js-sdk-integration.md) để cấu hình
 máy mới, giới hạn bảo mật và quy trình kiểm thử.
+
+## Migration 2.2 — Firebase Authentication
+
+Migration 2.2 thay mock authentication trong ứng dụng Expo bằng Firebase
+Authentication Email/Password qua Firebase JavaScript SDK modular. Gói
+`@react-native-async-storage/async-storage` được dùng với
+`initializeAuth()` và `getReactNativePersistence()` trước bất kỳ fallback
+`getAuth()` nào; Firebase quản lý credential persistence, còn Zustand chỉ giữ
+trạng thái UI an toàn của phiên.
+
+Luồng này đã được người kiểm thử xác nhận chạy thành công trên iPhone thật qua
+Expo Go SDK 58. Kết quả chỉ xác minh Firebase Auth và navigation; Firestore,
+phân quyền backend và dữ liệu sức khỏe vẫn chưa được triển khai.
+
+`FirebaseAuthRepository` triển khai đăng ký, đăng nhập, đăng xuất, reset
+password, cập nhật display name và `onAuthStateChanged`. Lỗi đăng nhập/reset
+trả về thông báo trung tính để tránh tiết lộ email đã tồn tại hay chưa. Mật khẩu,
+ID token và refresh token không được lưu trong source hoặc Zustand.
+
+Root layout thêm auth initialization gate trước `Stack.Protected`. Người chưa
+đăng nhập không vào được route dashboard; người đã đăng nhập không quay lại
+route login/register qua navigation stack. Đây là chặn điều hướng phía client,
+không thay thế Security Rules hay phân quyền server.
+
+Trước kiểm thử người dùng thật, bật **Email/Password** trong Firebase Console →
+Authentication → Sign-in method, đặt password policy phù hợp và xác nhận email
+enumeration protection. Xem
+[`firebase-authentication.md`](firebase-authentication.md) để biết quy trình
+Expo Go, Console verification và giới hạn Migration 2.2.
+
+Vẫn chưa có Firestore CRUD, profile document/role persistence, authorization,
+Security Rules deployment, Admin SDK, Cloud Functions, FCM hoặc dữ liệu sức
+khỏe thật. Đây là đầu vào có chủ đích cho Migration 2.3 sau khi thiết kế schema,
+Rules và emulator test được phê duyệt.

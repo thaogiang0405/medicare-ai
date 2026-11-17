@@ -3,14 +3,14 @@
 ## Phạm vi
 
 Migration 2.1 kết nối Firebase JavaScript SDK modular với Firebase Web App
-**MediCare AI Expo** trong project `medicare-ai-cf804`. Chỉ Firebase Core được
-khởi tạo; Firebase Authentication, Firestore CRUD, Security Rules deployment,
-Admin SDK, Cloud Functions, FCM và dữ liệu sức khỏe thật đều chưa được triển
-khai.
+**MediCare AI Expo** trong project `medicare-ai-cf804`. Migration 2.2 bổ sung
+Firebase Authentication Email/Password và React Native persistence. Firestore
+CRUD, Security Rules deployment, Admin SDK, Cloud Functions, FCM và dữ liệu sức
+khỏe thật vẫn chưa được triển khai.
 
 Các màn hình Splash, Onboarding, Đăng nhập, Đăng ký, chọn vai trò, Elderly Home
-và Caregiver Dashboard tiếp tục dùng mock repositories qua Zustand. UI không
-import Firebase SDK trực tiếp.
+và Caregiver Dashboard tiếp tục dùng mock repositories cho dữ liệu thuốc/lịch.
+UI không import Firebase SDK trực tiếp.
 
 ## Cấu hình máy phát triển
 
@@ -59,9 +59,16 @@ Refresh đánh giá lại module. `FirebaseInitializationGate` chạy tại root
 trước mọi route; lỗi cấu hình hiển thị rõ ràng trên thiết bị thay vì âm thầm
 chuyển sang mock Firebase hoặc Firebase Project khác.
 
-`firebase-auth-boundary.ts` và `firestore-boundary.ts` là điểm gắn adapter cho
-Migration 2.2. Chúng không import Firebase Auth/Firestore, không cấu hình
-persistence và không có read/write operation.
+`firebase-auth-boundary.ts` khởi tạo Auth bằng `initializeAuth()` với React
+Native AsyncStorage persistence trước khi bất kỳ `getAuth()` fallback nào được
+dùng. `FirebaseAuthRepository` là adapter duy nhất cho Auth; nó dùng
+`onAuthStateChanged` để khôi phục session, map `Firebase.User` sang `AppUser`
+và không lưu password/token trong Zustand. `firestore-boundary.ts` vẫn không
+import Firestore hay có read/write operation.
+
+Xem [Firebase Authentication — Migration 2.2](firebase-authentication.md) để
+bật Email/Password provider, password policy, email enumeration protection và
+kiểm thử Expo Go trên iPhone.
 
 ## Bảo mật
 
@@ -89,25 +96,24 @@ npx expo start --clear
 Để kiểm thử thực tế trên iPhone, mở Expo Go SDK 58, bảo đảm iPhone và Windows
 cùng Wi-Fi, quét QR từ `npx expo start --clear`, và thực hiện full reload. Nếu
 Firebase config không hợp lệ, màn hình lỗi phát triển phải hiện ra. Nếu màn
-hình Splash rồi luồng mock xuất hiện bình thường, Firebase Core đã khởi tạo
-trong runtime Expo Go; điều đó không xác minh Authentication hoặc Firestore.
-Nếu LAN bị chặn, dùng `npx expo start --tunnel`.
+hình Splash rồi luồng login/đăng ký xuất hiện bình thường, Firebase Core đã
+khởi tạo trong runtime Expo Go. Để xác minh Auth thật, làm theo quy trình trong
+[`firebase-authentication.md`](firebase-authentication.md); Firestore vẫn chưa
+được xác minh hay sử dụng. Nếu LAN bị chặn, dùng `npx expo start --tunnel`.
 
 ## Advisory hiện có
 
 `npm audit --omit=dev` hiện ghi nhận 7 advisory production: 4 high, 3 moderate,
 0 critical. Chuỗi Firebase → Firestore → `@grpc/grpc-js` có advisory high về
 xử lý certificate trong cấu hình server cụ thể; Expo → `@expo/fingerprint` →
-`minimatch` có advisory moderate về glob-amplification DoS. Firebase Auth và
-Firestore chưa được import trong application flow, nhưng đây vẫn là rủi ro
-supply-chain cần đánh giá lại trước Migration 2.2.
+`minimatch` có advisory moderate về glob-amplification DoS. Firebase Auth đã
+được import, nhưng Firestore vẫn chưa được import trong application flow; các
+advisory này vẫn cần đánh giá lại trước khi bật Firestore.
 
 Không dùng `npm audit fix --force`: npm đề xuất hạ Expo xuống SDK 52 và Firebase
 xuống 9.14, không tương thích với Expo SDK 58 hiện tại.
 
-## Đầu vào cho Migration 2.2
+## Đầu vào cho Migration 2.3
 
-Trước Authentication thật, quyết định persistence React Native (AsyncStorage),
-luồng sign-in/register/sign-out, mapping `AppUser`, xử lý lỗi và kiểm thử Firebase
-Emulator. Trước Firestore CRUD, thiết kế repository, deploy Rules có kiểm soát,
-App Check/Rules strategy, schema profile và emulator tests phải được phê duyệt.
+Trước Firestore CRUD, thiết kế repository, deploy Rules có kiểm soát, App
+Check/Rules strategy, schema profile/role và emulator tests phải được phê duyệt.

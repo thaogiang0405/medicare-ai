@@ -14,22 +14,38 @@ import { medicareColors, medicareRadius, medicareSpacing, medicareTypography } f
 import { useSessionStore } from '@/store';
 
 function showDeferredFeature(feature: string) {
-  Alert.alert('Chưa có trong Migration 1', `${feature} sẽ được xây dựng ở milestone phù hợp.`);
+  Alert.alert('Chưa có trong lộ trình hiện tại', `${feature} sẽ được xây dựng ở milestone phù hợp.`);
 }
 
 export default function CaregiverDashboardScreen() {
   const user = useSessionStore((state) => state.user);
+  const signOut = useSessionStore((state) => state.signOut);
+  const operationStatus = useSessionStore((state) => state.operationStatus);
+  const authErrorMessage = useSessionStore((state) => state.errorMessage);
+  const isSigningOut = operationStatus === 'loading';
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      router.replace('/login');
+    } catch {
+      // The session store exposes a safe localized error below.
+    }
+  };
 
   return (
     <Screen contentStyle={styles.content}>
       <AppHeader
         right={<Text style={styles.roleLabel}>Người chăm sóc</Text>}
-        title={`Chào ${user?.displayName ?? 'Anh Nam'}`}
+        title={`Chào ${user?.displayName ?? 'bạn'}`}
       />
       <DemoModeBanner
         description="Hồ sơ và trạng thái dưới đây là dữ liệu giả lập; chưa có đồng bộ hoặc phân quyền Firebase."
         title="Chế độ trình diễn"
       />
+      {authErrorMessage ? (
+        <SafetyNotice message={authErrorMessage} title="Không thể hoàn tất phiên đăng nhập" tone="error" />
+      ) : null}
       <SafetyNotice
         message="“Chưa phản hồi” không đồng nghĩa người dùng chưa uống thuốc. Hãy liên hệ nhẹ nhàng khi cần."
         title="Hiểu đúng trạng thái"
@@ -41,11 +57,11 @@ export default function CaregiverDashboardScreen() {
         </Text>
         <View accessibilityRole="summary" style={styles.profileCard}>
           <View style={styles.avatar}>
-            <Text accessibilityElementsHidden style={styles.avatarText}>CM</Text>
+            <Text accessibilityElementsHidden style={styles.avatarText}>MH</Text>
           </View>
           <View style={styles.profileCopy}>
-            <Text style={styles.profileName}>Cô Minh</Text>
-            <Text style={styles.profileDescription}>Dữ liệu trình diễn · Quyền chia sẻ mô phỏng</Text>
+            <Text style={styles.profileName}>Hồ sơ minh họa</Text>
+            <Text style={styles.profileDescription}>Dữ liệu trình diễn · Không phải hồ sơ người dùng khác</Text>
           </View>
           <StatusBadge label="Chưa phản hồi" status="unanswered" />
         </View>
@@ -73,7 +89,13 @@ export default function CaregiverDashboardScreen() {
           title="Liên kết hồ sơ"
         />
       </View>
-      <SecondaryButton label="Đổi vai trò (demo)" onPress={() => router.replace('/role-selection')} />
+      <SecondaryButton label="Đổi giao diện xem thử" onPress={() => router.replace('/role-selection')} />
+      <SecondaryButton
+        accessibilityHint="Đăng xuất và xóa trạng thái phiên trong bộ nhớ"
+        disabled={isSigningOut}
+        label={isSigningOut ? 'Đang đăng xuất…' : 'Đăng xuất'}
+        onPress={() => void handleSignOut()}
+      />
     </Screen>
   );
 }

@@ -1,20 +1,19 @@
-import type { AppUser, UserRole } from '@/types/domain';
+import type { AppUser } from '@/types/domain';
 
-import type { AuthRepository, RegisterInput, SignInInput } from '../domain/auth-repository';
+import type {
+  AuthRepository,
+  AuthStateErrorObserver,
+  AuthStateObserver,
+  AuthStateUnsubscribe,
+  RegisterInput,
+  SignInInput,
+} from '../domain/auth-repository';
 
-const demoUsers: Record<UserRole, AppUser> = {
-  elderly: {
-    id: 'demo-elderly-minh',
-    displayName: 'Cô Minh',
-    role: 'elderly',
-    isAuthenticated: true,
-  },
-  caregiver: {
-    id: 'demo-caregiver-nam',
-    displayName: 'Anh Nam',
-    role: 'caregiver',
-    isAuthenticated: true,
-  },
+const demoUser: AppUser = {
+  id: 'demo-auth-user',
+  displayName: 'Người dùng demo',
+  role: null,
+  isAuthenticated: true,
 };
 
 function waitForDemoResponse(): Promise<void> {
@@ -28,13 +27,12 @@ function cloneUser(user: AppUser): AppUser {
 }
 
 /**
- * Temporary repository for Migration 1.
- * No password, token, or health data is persisted by this implementation.
+ * Test-only replacement. The production session store never imports it.
  */
 export class MockAuthRepository implements AuthRepository {
   async signIn(_input: SignInInput): Promise<AppUser> {
     await waitForDemoResponse();
-    return cloneUser(demoUsers.elderly);
+    return cloneUser(demoUser);
   }
 
   async register(input: RegisterInput): Promise<AppUser> {
@@ -42,18 +40,24 @@ export class MockAuthRepository implements AuthRepository {
     const displayName = input.displayName.trim() || 'Người dùng demo';
 
     return {
-      ...cloneUser(demoUsers.elderly),
+      ...cloneUser(demoUser),
       displayName,
-      role: null,
     };
   }
 
-  async continueAs(role: UserRole): Promise<AppUser> {
+  async signOut(): Promise<void> {
     await waitForDemoResponse();
-    return cloneUser(demoUsers[role]);
   }
 
-  async signOut(): Promise<void> {
+  observeAuthState(
+    onChange: AuthStateObserver,
+    _onError?: AuthStateErrorObserver,
+  ): AuthStateUnsubscribe {
+    onChange(null);
+    return () => undefined;
+  }
+
+  async sendPasswordReset(_email: string): Promise<void> {
     await waitForDemoResponse();
   }
 }

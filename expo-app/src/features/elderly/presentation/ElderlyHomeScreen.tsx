@@ -11,22 +11,36 @@ import {
   SecondaryButton,
 } from '@/components/medicare';
 import { medicareColors, medicareSpacing, medicareTypography } from '@/constants/medicare-theme';
+import { useSessionStore } from '@/store';
 import { formatVietnameseTime } from '@/utils/formatters';
 
 import { useElderlyDashboard } from './useElderlyDashboard';
 
 function showDeferredFeature(feature: string) {
-  Alert.alert('Chưa có trong Migration 1', `${feature} sẽ được xây dựng ở milestone phù hợp.`);
+  Alert.alert('Chưa có trong lộ trình hiện tại', `${feature} sẽ được xây dựng ở milestone phù hợp.`);
 }
 
 export default function ElderlyHomeScreen() {
   const { user, doses, isLoading, errorMessage, recordResponse } = useElderlyDashboard();
+  const signOut = useSessionStore((state) => state.signOut);
+  const operationStatus = useSessionStore((state) => state.operationStatus);
+  const authErrorMessage = useSessionStore((state) => state.errorMessage);
+  const isSigningOut = operationStatus === 'loading';
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      router.replace('/login');
+    } catch {
+      // The session store exposes a safe localized error below.
+    }
+  };
 
   return (
     <Screen contentStyle={styles.content}>
       <AppHeader
         right={<Text style={styles.roleLabel}>Người cao tuổi</Text>}
-        title={`Chào ${user?.displayName ?? 'Cô Minh'}`}
+        title={`Chào ${user?.displayName ?? 'bạn'}`}
       />
       <DemoModeBanner
         description="Lịch, thuốc và phản hồi dưới đây chỉ dùng để thử giao diện; không phải hồ sơ y tế."
@@ -34,6 +48,9 @@ export default function ElderlyHomeScreen() {
       />
       {errorMessage ? (
         <SafetyNotice message={errorMessage} title="Không thể tải dữ liệu demo" tone="error" />
+      ) : null}
+      {authErrorMessage ? (
+        <SafetyNotice message={authErrorMessage} title="Không thể hoàn tất phiên đăng nhập" tone="error" />
       ) : null}
       <View style={styles.section}>
         <Text accessibilityRole="header" style={styles.sectionTitle}>
@@ -79,7 +96,7 @@ export default function ElderlyHomeScreen() {
           Thao tác nhanh
         </Text>
         <ActionCard
-          description="Tính năng OCR chưa được tích hợp trong Migration 1."
+          description="Tính năng OCR chưa được tích hợp trong lộ trình hiện tại."
           icon={<Text style={styles.icon}>⌁</Text>}
           onPress={() => showDeferredFeature('Quét đơn thuốc')}
           title="Quét đơn thuốc"
@@ -97,7 +114,13 @@ export default function ElderlyHomeScreen() {
           title="Liên hệ người thân"
         />
       </View>
-      <SecondaryButton label="Đổi vai trò (demo)" onPress={() => router.replace('/role-selection')} />
+      <SecondaryButton label="Đổi giao diện xem thử" onPress={() => router.replace('/role-selection')} />
+      <SecondaryButton
+        accessibilityHint="Đăng xuất và xóa trạng thái phiên trong bộ nhớ"
+        disabled={isSigningOut}
+        label={isSigningOut ? 'Đang đăng xuất…' : 'Đăng xuất'}
+        onPress={() => void handleSignOut()}
+      />
     </Screen>
   );
 }

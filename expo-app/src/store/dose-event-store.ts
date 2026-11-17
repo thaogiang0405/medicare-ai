@@ -10,6 +10,7 @@ interface DoseEventState {
   loadToday(userId: string): Promise<void>;
   recordResponse(eventId: string, status: DoseResponseStatus): Promise<void>;
   clearError(): void;
+  reset(): void;
 }
 
 /** Temporary state for demo dose confirmations only; it resets with the app. */
@@ -42,4 +43,5 @@ export const useDoseEventStore = create<DoseEventState>((set) => ({
     }
   },
   clearError: () => set({ errorMessage: null }),
+  reset: () => set({ events: [], isLoading: false, errorMessage: null }),
 }));

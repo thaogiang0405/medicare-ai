@@ -1,63 +1,46 @@
-import { useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 
 import { ActionCard, AppHeader, DemoModeBanner, Screen } from '@/components/medicare';
 import { medicareColors, medicareSpacing, medicareTypography } from '@/constants/medicare-theme';
-import { useSessionStore } from '@/store';
 import type { UserRole } from '@/types/domain';
 
 export default function RoleSelectionScreen() {
-  const continueAs = useSessionStore((state) => state.continueAs);
-  const isLoading = useSessionStore((state) => state.isLoading);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  const selectRole = async (role: UserRole) => {
-    if (isLoading) {
-      return;
-    }
-
-    setErrorMessage(null);
-
-    try {
-      await continueAs(role);
-      router.replace(role === 'elderly' ? '/elderly' : '/caregiver');
-    } catch {
-      setErrorMessage('Không thể chọn vai trò demo. Vui lòng thử lại.');
-    }
+  const selectPreview = (role: UserRole) => {
+    router.replace(role === 'elderly' ? '/elderly' : '/caregiver');
   };
 
   return (
     <Screen contentStyle={styles.content}>
-      <AppHeader onBack={() => router.back()} title="Chọn vai trò" />
+      <AppHeader title="Chọn giao diện xem thử" />
       <View style={styles.heading}>
         <Text accessibilityRole="header" style={styles.title}>
           Bạn sẽ dùng MediCare AI như thế nào?
         </Text>
-        <Text style={styles.description}>Bạn có thể quay lại và thử vai trò khác bất cứ lúc nào.</Text>
+        <Text style={styles.description}>
+          Chọn một giao diện để xem thử. Lựa chọn này không được lưu và không tạo quyền truy cập dữ liệu.
+        </Text>
       </View>
       <DemoModeBanner
-        description="Vai trò chỉ điều hướng giao diện demo; chưa có phân quyền hay dữ liệu Firebase."
-        title="Dữ liệu mô phỏng"
+        description="Bạn đã đăng nhập bằng Firebase. Vai trò chỉ điều hướng giao diện mô phỏng; phân quyền sẽ được triển khai sau khi có hồ sơ người dùng an toàn."
+        title="Giao diện xem thử"
       />
       <View style={styles.cards}>
         <ActionCard
-          accessibilityHint="Mở trang chủ demo của người cao tuổi"
-          description="Xem lịch thuốc, nhận nhắc và tự xác nhận phản hồi."
+          accessibilityHint="Mở giao diện xem thử của người cao tuổi"
+          description="Xem lịch thuốc và các phản hồi minh họa, không phải hồ sơ y tế thật."
           icon={<Text style={styles.icon}>♥</Text>}
-          onPress={() => void selectRole('elderly')}
-          title="Tôi là người cao tuổi"
+          onPress={() => selectPreview('elderly')}
+          title="Xem giao diện người cao tuổi"
         />
         <ActionCard
-          accessibilityHint="Mở bảng theo dõi demo của người chăm sóc"
-          description="Theo dõi các hồ sơ đã được cấp quyền chia sẻ."
+          accessibilityHint="Mở giao diện xem thử của người chăm sóc"
+          description="Xem dashboard minh họa, không có quyền truy cập hồ sơ của người khác."
           icon={<Text style={styles.icon}>⌂</Text>}
-          onPress={() => void selectRole('caregiver')}
-          title="Tôi là người chăm sóc"
+          onPress={() => selectPreview('caregiver')}
+          title="Xem giao diện người chăm sóc"
         />
       </View>
-      {isLoading ? <ActivityIndicator color={medicareColors.primary} size="large" /> : null}
-      {errorMessage ? <Text accessibilityLiveRegion="assertive" style={styles.error}>{errorMessage}</Text> : null}
     </Screen>
   );
 }
@@ -86,10 +69,5 @@ const styles = StyleSheet.create({
   icon: {
     color: medicareColors.primary,
     fontSize: 28,
-  },
-  error: {
-    color: medicareColors.error,
-    fontSize: medicareTypography.bodySmall,
-    fontWeight: '600',
   },
 });

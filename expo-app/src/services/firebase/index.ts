@@ -1,4 +1,7 @@
-export { getFirebaseAppForAuthentication } from './firebase-auth-boundary';
+export {
+  FirebaseAuthInitializationError,
+  getFirebaseAuth,
+} from './firebase-auth-boundary';
 export { getFirebaseApp } from './firebase-app';
 export { getFirebaseAppForFirestore } from './firestore-boundary';
 export {

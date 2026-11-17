@@ -1,4 +1,4 @@
-# MediCare AI — Expo Migration 1 + Firebase JS foundation
+# MediCare AI — Expo Migration + Firebase Authentication foundation
 
 Đây là ứng dụng React Native + Expo mới của MediCare AI. Ứng dụng Flutter
 nguyên bản vẫn được giữ nguyên ở thư mục gốc của repository; toàn bộ mã Expo
@@ -17,12 +17,14 @@ chỉ nằm trong `expo-app/` để đội ngũ có thể đối chiếu và chu
 - Luồng giao diện mock: Splash, Onboarding, Đăng nhập, Đăng ký, chọn vai trò,
   trang chủ Người cao tuổi và dashboard Người chăm sóc.
 - Firebase JavaScript SDK modular được khởi tạo từ Firebase Web App chính thức
-  của `medicare-ai-cf804`; Auth và Firestore chưa được gọi.
-- Repository mock cho auth, thuốc và lịch dùng thuốc vẫn là data source duy
-  nhất. Không có dữ liệu sức khỏe thật, không có xác thực thật và không lưu dữ
-  liệu lâu dài.
+  của `medicare-ai-cf804`; Firebase Authentication Email/Password dùng
+  persistence React Native chính thức với AsyncStorage.
+- `FirebaseAuthRepository` là ranh giới duy nhất giữa UI và Firebase Auth.
+  Mock repository chỉ còn dùng cho dữ liệu thuốc/lịch và trong test.
+- Không có Firestore CRUD, dữ liệu sức khỏe thật, phân quyền backend hay đồng
+  bộ gia đình.
 
-Không triển khai trong Migration 2.1: Firebase Authentication, Firestore CRUD,
+Không triển khai trong Migration 2.2: Firestore CRUD, hồ sơ/phân quyền backend,
 OCR, TTS/STT nâng cao, thông báo đẩy, đồng bộ gia đình hoặc deploy Firebase
 Rules.
 
@@ -72,11 +74,11 @@ Nếu LAN bị tường lửa hoặc router chặn kết nối, chạy:
 npx expo start --tunnel
 ```
 
-Tunnel cần Internet và có thể chậm hơn LAN. Việc mở QR code thành công trên
-iPhone là bước kiểm thử thiết bị thực; tài liệu này không khẳng định iOS đã
-được xác minh trước khi bước đó diễn ra.
+Tunnel cần Internet và có thể chậm hơn LAN. Migration 2.2 đã được người kiểm
+thử xác nhận chạy thành công trên iPhone thật bằng Expo Go SDK 58; các thay đổi
+Firebase Authentication vẫn không bao gồm Firestore hay dữ liệu sức khỏe thật.
 
-## Firebase JavaScript SDK — Migration 2.1
+## Firebase JavaScript SDK — Migration 2.2
 
 Firebase Web App chính thức của project `medicare-ai-cf804` được đọc từ
 `expo-app/.env`, không từ cấu hình Android Flutter. Copy `.env.example` thành
@@ -93,12 +95,21 @@ mọi biến `EXPO_PUBLIC_*` vào ứng dụng, vì vậy chúng không thể ch
 Không commit service account, private key, token, mật khẩu hoặc `.env` cục bộ.
 
 Ứng dụng khởi tạo Firebase Core trước route đầu tiên. Nếu thiếu config, một màn
-hình lỗi phát triển sẽ hiển thị thay vì âm thầm chuyển sang project hay mock
-Firebase khác. Các mock repository vẫn là nguồn dữ liệu duy nhất; chưa import
-`firebase/auth` hay `firebase/firestore` trong luồng ứng dụng.
+hình lỗi rõ ràng sẽ hiển thị thay vì âm thầm chuyển sang project hay mock
+Firebase khác. Sau đó, Firebase Auth được khởi tạo bằng `initializeAuth()` và
+`getReactNativePersistence(AsyncStorage)` trước khi khôi phục phiên qua
+`onAuthStateChanged`. Zustand chỉ giữ trạng thái UI; không lưu password, ID
+token hoặc refresh token.
 
-Xem [hướng dẫn Firebase JS SDK](../docs/firebase-js-sdk-integration.md) để lấy
-cấu hình trên máy thành viên khác và kiểm thử bằng Expo Go.
+Trong Firebase Console, bật **Authentication → Sign-in method → Email/Password**
+trước khi thử đăng ký/đăng nhập. Đặt password policy và xác nhận email
+enumeration protection theo hướng dẫn trong tài liệu bên dưới. Expo Router chặn
+route riêng tư ở phía client, nhưng đây không thay thế Firebase Security Rules
+hoặc phân quyền backend.
+
+Xem [hướng dẫn Firebase JS SDK](../docs/firebase-js-sdk-integration.md) và
+[Firebase Authentication — Migration 2.2](../docs/firebase-authentication.md)
+để lấy cấu hình trên máy thành viên khác, bật provider và kiểm thử bằng Expo Go.
 
 Expo Go dùng native container riêng. Trước EAS/development build, nhóm cần
 quyết định Android/iOS identifiers và Firebase client apps của Expo một cách có

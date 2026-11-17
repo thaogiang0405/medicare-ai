@@ -9,6 +9,13 @@ export type ElderlyDashboardDose = {
   medication: Medication | null;
 };
 
+type MedicationLoadState = {
+  errorMessage: string | null;
+  isLoading: boolean;
+  medications: Medication[];
+  userId: string | null;
+};
+
 /**
  * Presentation adapter for the elderly home. The route never reaches into a
  * repository directly, so Firebase can later replace these mock boundaries.
@@ -20,31 +27,45 @@ export function useElderlyDashboard() {
   const doseErrorMessage = useDoseEventStore((state) => state.errorMessage);
   const loadToday = useDoseEventStore((state) => state.loadToday);
   const recordResponse = useDoseEventStore((state) => state.recordResponse);
-  const [medications, setMedications] = useState<Medication[]>([]);
-  const [medicationLoading, setMedicationLoading] = useState(true);
-  const [medicationErrorMessage, setMedicationErrorMessage] = useState<string | null>(null);
+  const [medicationState, setMedicationState] = useState<MedicationLoadState>({
+    errorMessage: null,
+    isLoading: false,
+    medications: [],
+    userId: null,
+  });
 
-  const userId = user?.id ?? 'demo-elderly-minh';
+  const userId = user?.id;
 
   useEffect(() => {
     let isActive = true;
+
+    if (!userId) {
+      return () => {
+        isActive = false;
+      };
+    }
 
     void loadToday(userId);
     void mockMedicationRepository
       .getActiveMedications(userId)
       .then((result) => {
         if (isActive) {
-          setMedications(result);
+          setMedicationState({
+            errorMessage: null,
+            isLoading: false,
+            medications: result,
+            userId,
+          });
         }
       })
       .catch(() => {
         if (isActive) {
-          setMedicationErrorMessage('Không thể tải danh sách thuốc demo.');
-        }
-      })
-      .finally(() => {
-        if (isActive) {
-          setMedicationLoading(false);
+          setMedicationState({
+            errorMessage: 'Không thể tải danh sách thuốc demo.',
+            isLoading: false,
+            medications: [],
+            userId,
+          });
         }
       });
 
@@ -53,13 +74,20 @@ export function useElderlyDashboard() {
     };
   }, [loadToday, userId]);
 
+  const hasCurrentMedicationState = medicationState.userId === userId;
+  const medicationLoading = Boolean(userId) && (!hasCurrentMedicationState || medicationState.isLoading);
+  const medicationErrorMessage = hasCurrentMedicationState ? medicationState.errorMessage : null;
+
   const doses = useMemo<ElderlyDashboardDose[]>(
-    () =>
-      events.map((event) => ({
+    () => {
+      const medications = hasCurrentMedicationState ? medicationState.medications : [];
+
+      return events.map((event) => ({
         event,
         medication: medications.find((medication) => medication.id === event.medicationId) ?? null,
-      })),
-    [events, medications],
+      }));
+    },
+    [events, hasCurrentMedicationState, medicationState.medications],
   );
 
   return {

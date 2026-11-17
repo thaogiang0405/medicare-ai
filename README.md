@@ -6,7 +6,7 @@
 
 ## Migration sang React Native + Expo
 
-Nền Flutter ở thư mục gốc được giữ nguyên làm baseline Phase 2.1. Migration 1 tạo một ứng dụng React Native + Expo SDK 57 độc lập trong [`expo-app/`](expo-app/), dùng TypeScript strict, Expo Router, Zustand và mock repository in-memory. Không có thay đổi Firebase Authentication hoặc Firestore CRUD trong phần migration này.
+Nền Flutter ở thư mục gốc được giữ nguyên làm baseline Phase 2.1. Migration 1 tạo một ứng dụng React Native + Expo SDK 58 độc lập trong [`expo-app/`](expo-app/), dùng TypeScript strict, Expo Router, Zustand và mock repository in-memory. Không có thay đổi Firebase Authentication hoặc Firestore CRUD trong phần migration này.
 
 Firebase JavaScript SDK đã được thêm làm dependency để chuẩn bị kiến trúc, nhưng **chưa được khởi tạo**: Firebase Project `medicare-ai-cf804` hiện chưa có Firebase Web App chính thức để cấp client configuration cho Expo. Không dùng lại `firebase_options.dart` của Flutter cho TypeScript và không có service account hay secret trong Expo app.
 

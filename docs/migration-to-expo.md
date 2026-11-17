@@ -21,7 +21,7 @@ giới module để thay backend mock bằng Firebase sau này.
 
 | Thành phần | Lựa chọn |
 | --- | --- |
-| Runtime | React Native + Expo SDK 57 |
+| Runtime | React Native + Expo SDK 58 |
 | Ngôn ngữ | TypeScript `strict` |
 | Điều hướng | Expo Router |
 | State UI/domain | Zustand, chỉ trong bộ nhớ |
@@ -48,7 +48,7 @@ demo được tạo lại khi mở lại phiên ứng dụng.
 
 ```text
 expo-app/
-  src/app/                 # Route root Expo Router của template SDK 57
+  src/app/                 # Route root Expo Router của template SDK 58
   src/
     components/            # Screen, button, card, form và accessibility UI
     constants/             # Color, spacing, typography, touch target
@@ -101,24 +101,26 @@ Từ root repository:
 ```powershell
 cd expo-app
 npm install
-npx expo-doctor
+npx expo-doctor@latest
+npx expo lint
 npx tsc --noEmit
 npm test
-npx expo start
+npx expo export --platform ios
+npx expo start --clear
 ```
 
-`npm test` chỉ áp dụng khi test runner đã được cấu hình. `npx expo start` chỉ
+`npm test` chỉ áp dụng khi test runner đã được cấu hình. `npx expo start --clear` chỉ
 xác minh rằng Metro có thể khởi động; nó không thay cho kiểm thử trên iPhone
 hoặc Android.
 
-Nếu Node.js hiện tại gây lỗi cho Expo SDK 57, ưu tiên thử Node.js 20 hoặc 22
-LTS trước khi thay đổi dependency Expo.
+Nếu Node.js hiện tại gây lỗi cho Expo SDK 58, ưu tiên Node.js 22.13+ LTS trước
+khi thay đổi dependency Expo.
 
 ## Kiểm thử Expo Go trên iPhone
 
 1. Cài Expo Go từ App Store.
 2. Kết nối iPhone và máy phát triển vào cùng Wi-Fi.
-3. Chạy `npx expo start` trong `expo-app/` và quét QR code bằng Expo Go.
+3. Chạy `npx expo start --clear` trong `expo-app/` và quét QR code bằng Expo Go SDK 58.
 4. Cho phép quyền local network nếu iOS hỏi.
 5. Nếu QR LAN không kết nối, dùng `npx expo start --tunnel`; tunnel cần Internet
    và có độ trễ cao hơn.
@@ -136,3 +138,12 @@ thật. Migration 1 không tự tuyên bố có xác minh thiết bị đó.
 
 Các mục này là đầu vào cho Migration 2 hoặc milestone sau, sau khi Firebase Web
 App configuration chính thức và chiến lược kiểm thử thiết bị đã được xác nhận.
+
+## Cập nhật SDK 58
+
+Migration 1 được checkpoint cục bộ tại `e3e592e` trước khi nâng SDK. Nhánh
+`migration/expo-sdk58` nâng Expo lên SDK 58, React Native `0.88.1`, React
+`19.3.0` và Expo Router `~58.0.31` bằng Expo CLI. Không có native directory,
+custom navigator, Router state persistence hay Firebase initializer cần migrate;
+`src/app/` tiếp tục là route root. Không tự chạy `npm audit fix --force` vì các
+đề xuất sửa của npm có thể yêu cầu thay đổi phiên bản xung đột với SDK đã ghim.

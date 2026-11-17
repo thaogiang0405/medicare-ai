@@ -9,7 +9,7 @@ chỉ nằm trong `expo-app/` để đội ngũ có thể đối chiếu và chu
 
 ## Phạm vi Migration 1
 
-- Expo SDK 57, React Native và TypeScript ở chế độ `strict`.
+- Expo SDK 58, React Native và TypeScript ở chế độ `strict`.
 - Expo Router cho điều hướng theo tệp.
 - Zustand cho state trong bộ nhớ của phiên chạy.
 - Thiết kế tiếng Việt ưu tiên người cao tuổi: chữ lớn, tương phản cao, vùng
@@ -27,7 +27,7 @@ Rules.
 
 ```text
 expo-app/
-  src/app/                 # Expo Router routes (route root của template SDK 57)
+  src/app/                 # Expo Router routes (route root của template SDK 58)
   src/
     components/            # Design system và UI dùng lại
     constants/             # Theme, token trợ năng
@@ -43,22 +43,24 @@ Chi tiết quyết định kiến trúc và kế hoạch chuyển đổi ở
 
 ## Cài đặt và chạy
 
-Yêu cầu Node.js 20+ và npm. Expo SDK 57 được ghim trong `package.json`; không
-nâng SDK chỉ để dùng Expo Go mới hơn nếu chưa xác minh tương thích.
+Yêu cầu Node.js 22.13+ và npm. Expo SDK 58 được ghim trong `package.json` để
+tương thích Expo Go SDK 58 trên iPhone.
 
 ```powershell
 cd expo-app
 npm install
-npx expo-doctor
+npx expo-doctor@latest
+npx expo lint
 npx tsc --noEmit
-npx expo start
+npm test
+npx expo start --clear
 ```
 
 ### Thử trên iPhone với Expo Go
 
 1. Cài **Expo Go** từ App Store trên iPhone.
 2. Đặt iPhone và máy phát triển vào cùng mạng Wi-Fi.
-3. Tại `expo-app/`, chạy `npx expo start`.
+3. Tại `expo-app/`, chạy `npx expo start --clear`.
 4. Mở Expo Go và quét QR code Expo CLI hiển thị.
 
 Nếu LAN bị tường lửa hoặc router chặn kết nối, chạy:
@@ -93,9 +95,11 @@ Các lệnh kiểm tra có chủ đích:
 
 ```powershell
 npm install
-npx expo-doctor
+npx expo-doctor@latest
+npx expo lint
 npx tsc --noEmit
 npm test
+npx expo export --platform ios
 ```
 
 Chỉ chạy `npm test` sau khi test runner đã được cấu hình. Xem kết quả thực tế

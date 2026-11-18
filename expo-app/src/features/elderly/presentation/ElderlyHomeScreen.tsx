@@ -43,7 +43,7 @@ export default function ElderlyHomeScreen() {
         title={`Chào ${user?.displayName ?? 'bạn'}`}
       />
       <DemoModeBanner
-        description="Lịch, thuốc và phản hồi dưới đây chỉ dùng để thử giao diện; không phải hồ sơ y tế."
+        description="Vai trò đã được kiểm tra từ hồ sơ của chính bạn. Lịch, thuốc và phản hồi dưới đây vẫn chỉ dùng để thử giao diện; không phải hồ sơ y tế."
         title="Chế độ trình diễn"
       />
       {errorMessage ? (
@@ -114,7 +114,6 @@ export default function ElderlyHomeScreen() {
           title="Liên hệ người thân"
         />
       </View>
-      <SecondaryButton label="Đổi giao diện xem thử" onPress={() => router.replace('/role-selection')} />
       <SecondaryButton
         accessibilityHint="Đăng xuất và xóa trạng thái phiên trong bộ nhớ"
         disabled={isSigningOut}

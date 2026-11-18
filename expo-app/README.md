@@ -1,4 +1,4 @@
-# MediCare AI — Expo Migration + Firebase Authentication foundation
+# MediCare AI — Expo Migration + Firebase foundation
 
 Đây là ứng dụng React Native + Expo mới của MediCare AI. Ứng dụng Flutter
 nguyên bản vẫn được giữ nguyên ở thư mục gốc của repository; toàn bộ mã Expo
@@ -14,19 +14,25 @@ chỉ nằm trong `expo-app/` để đội ngũ có thể đối chiếu và chu
 - Zustand cho state trong bộ nhớ của phiên chạy.
 - Thiết kế tiếng Việt ưu tiên người cao tuổi: chữ lớn, tương phản cao, vùng
   chạm tối thiểu 56 px và nhãn trợ năng rõ ràng.
-- Luồng giao diện mock: Splash, Onboarding, Đăng nhập, Đăng ký, chọn vai trò,
-  trang chủ Người cao tuổi và dashboard Người chăm sóc.
+- Splash, Onboarding, Đăng nhập, Đăng ký, chọn vai trò, trang chủ Người cao
+  tuổi và dashboard Người chăm sóc.
 - Firebase JavaScript SDK modular được khởi tạo từ Firebase Web App chính thức
   của `medicare-ai-cf804`; Firebase Authentication Email/Password dùng
   persistence React Native chính thức với AsyncStorage.
 - `FirebaseAuthRepository` là ranh giới duy nhất giữa UI và Firebase Auth.
   Mock repository chỉ còn dùng cho dữ liệu thuốc/lịch và trong test.
-- Không có Firestore CRUD, dữ liệu sức khỏe thật, phân quyền backend hay đồng
-  bộ gia đình.
+- User Profile giới hạn chỉ có thể đọc/tạo/cập nhật tại `/users/{auth.uid}` qua
+  repository; UID luôn lấy từ Firebase Auth. Role đã lưu chỉ điều hướng UI.
+- Firestore database `(default)` tại `asia-east1` dùng Rules M2.3 đã deploy.
+  User Profile vẫn bị feature-gate mặc định ở template; chủ project chỉ bật cờ
+  trong `.env` local khi kiểm thử có chủ đích và không có fallback role mock.
+- Không có Firestore CRUD cho thuốc/lịch, dữ liệu sức khỏe thật, liên kết người
+  chăm sóc, phân quyền backend hay đồng bộ gia đình.
 
-Không triển khai trong Migration 2.2: Firestore CRUD, hồ sơ/phân quyền backend,
-OCR, TTS/STT nâng cao, thông báo đẩy, đồng bộ gia đình hoặc deploy Firebase
-Rules.
+Không triển khai trong Migration 2.3: thuốc/lịch Firestore, dữ liệu sức khỏe
+thật, quyền người chăm sóc với dữ liệu sức khỏe, OCR, TTS/STT nâng cao, thông
+báo đẩy, đồng bộ gia đình, Cloud Functions hoặc deploy lại Firebase Rules,
+Storage Rules hay indexes.
 
 ## Cấu trúc
 
@@ -75,10 +81,11 @@ npx expo start --tunnel
 ```
 
 Tunnel cần Internet và có thể chậm hơn LAN. Migration 2.2 đã được người kiểm
-thử xác nhận chạy thành công trên iPhone thật bằng Expo Go SDK 58; các thay đổi
-Firebase Authentication vẫn không bao gồm Firestore hay dữ liệu sức khỏe thật.
+thử xác nhận chạy thành công trên iPhone thật bằng Expo Go SDK 58. Chủ project
+cũng cho biết đã kiểm thử User Profile trên iPhone, nhưng repository chưa có
+kết quả theo từng trường hợp; checklist bên dưới không tự đánh dấu là đã pass.
 
-## Firebase JavaScript SDK — Migration 2.2
+## Firebase JavaScript SDK — Migration 2.2 và 2.3
 
 Firebase Web App chính thức của project `medicare-ai-cf804` được đọc từ
 `expo-app/.env`, không từ cấu hình Android Flutter. Copy `.env.example` thành
@@ -111,6 +118,29 @@ Xem [hướng dẫn Firebase JS SDK](../docs/firebase-js-sdk-integration.md) và
 [Firebase Authentication — Migration 2.2](../docs/firebase-authentication.md)
 để lấy cấu hình trên máy thành viên khác, bật provider và kiểm thử bằng Expo Go.
 
+### Firestore User Profile & Role Security — Migration 2.3
+
+Cloud Firestore `(default)` tại `asia-east1` đang dùng Rules M2.3 đã deploy cho
+project `medicare-ai-cf804`. Rules chỉ cấp owner `get/create/update` đúng
+`/users/{auth.uid}`; list, delete, subcollection và mọi surface
+medication/prescription/OCR/caregiver/devices/health data chưa định nghĩa vẫn
+default-deny. Bản deny-all trước deploy cùng checksum và quy trình rollback được
+lưu tại [Firestore production deny-all baseline](../docs/firestore-production-deny-all-baseline.md).
+
+`EXPO_PUBLIC_FIRESTORE_USER_PROFILES_ENABLED` là cờ public Expo nhúng vào bundle,
+**không phải** lớp phân quyền và không được chứa secret. `.env.example` để
+`false`; khi tắt, tài khoản đã đăng nhập thấy thông báo rõ ràng thay vì có role
+demo hoặc dashboard. Chỉ chủ project được đặt giá trị `true` trong `.env` cục bộ
+đã ignore sau khi chạy `npm run test:rules`, rồi khởi động lại Expo bằng
+`npx expo start --clear`. Không commit `.env`.
+
+Checklist iPhone dùng tài khoản test không chứa dữ liệu sức khỏe thật: kiểm tra
+màn chọn role chỉ xuất hiện khi `/users/{auth.uid}` chưa có document, tạo role
+một lần, kiểm tra route đúng, khởi động lại ứng dụng và đổi tài khoản. Các mục
+này là checklist/evidence requirement, không phải kết quả pass được suy ra từ
+tài liệu. Xem schema, giới hạn quyền và trạng thái deploy tại
+[Firestore User Profiles — Migration 2.3](../docs/firestore-user-profiles.md).
+
 Expo Go dùng native container riêng. Trước EAS/development build, nhóm cần
 quyết định Android/iOS identifiers và Firebase client apps của Expo một cách có
 chủ đích; Migration 1 không tự tái sử dụng hay thay đổi applicationId Flutter.
@@ -125,6 +155,7 @@ npx expo-doctor@latest
 npx expo lint
 npx tsc --noEmit
 npm test
+npm run test:rules
 npx expo export --platform ios
 ```
 

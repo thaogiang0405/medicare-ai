@@ -26,7 +26,7 @@ giới module để thay backend mock bằng Firebase sau này.
 | Điều hướng | Expo Router |
 | State UI/domain | Zustand, chỉ trong bộ nhớ |
 | Data layer | Repository pattern, mock implementation |
-| Firebase | Migration 2.2 dùng Firebase Auth Email/Password với AsyncStorage persistence; Firestore vẫn chưa dùng |
+| Firebase | Migration 2.2 dùng Firebase Auth Email/Password với AsyncStorage persistence; M2.3 có User Profile owner-only đã deploy trên Firestore `(default)` (`asia-east1`), còn template feature flag mặc định tắt và chỉ opt-in qua `.env` local |
 
 Mọi màn hình dùng tiếng Việt, font lớn, tương phản rõ và mục tiêu thao tác tối
 thiểu 56 px. Trạng thái sức khỏe luôn có nhãn văn bản; ví dụ “Chưa phản hồi”
@@ -42,8 +42,10 @@ Splash → Onboarding → Đăng nhập / Đăng ký → Chọn vai trò
 
 Đăng nhập/đăng ký hiện đi qua `FirebaseAuthRepository`; UI không gọi Firebase
 SDK trực tiếp. Phiên được khôi phục bằng `onAuthStateChanged` và persistence
-React Native do Firebase quản lý. Vai trò, thuốc, lịch và hồ sơ trên dashboard
-vẫn là dữ liệu trình diễn; không có phân quyền backend hoặc dữ liệu y tế thật.
+React Native do Firebase quản lý. Sau M2.3, role của profile `/users/{auth.uid}`
+quyết định route UI khi feature được phê duyệt; thuốc, lịch và hồ sơ chia sẻ trên
+dashboard vẫn là dữ liệu trình diễn. Không có phân quyền backend cho dữ liệu sức
+khỏe hoặc dữ liệu y tế thật.
 
 ## Cấu trúc dự kiến
 
@@ -196,7 +198,40 @@ enumeration protection. Xem
 [`firebase-authentication.md`](firebase-authentication.md) để biết quy trình
 Expo Go, Console verification và giới hạn Migration 2.2.
 
-Vẫn chưa có Firestore CRUD, profile document/role persistence, authorization,
-Security Rules deployment, Admin SDK, Cloud Functions, FCM hoặc dữ liệu sức
-khỏe thật. Đây là đầu vào có chủ đích cho Migration 2.3 sau khi thiết kế schema,
-Rules và emulator test được phê duyệt.
+Tại thời điểm kết thúc Migration 2.2, chưa có Firestore CRUD, profile
+document/role persistence, authorization, Security Rules deployment, Admin SDK,
+Cloud Functions, FCM hoặc dữ liệu sức khỏe thật. Đây là đầu vào có chủ đích cho
+Migration 2.3 sau khi thiết kế schema, Rules và emulator test được phê duyệt.
+
+## Migration 2.3 — Firestore User Profiles & Role Security
+
+Migration 2.3 giữ nguyên Flutter ở root và không thay thế dữ liệu thuốc/lịch
+mock. Nó thêm ranh giới repository Firestore chỉ cho `/users/{auth.uid}`:
+
+- UID được lấy từ Firebase Auth, không từ UI; profile khởi tạo dùng transaction
+  để không ghi đè role nếu hai thao tác cùng lúc.
+- Schema chỉ có identity/display name, một `primaryRole`, roles map nhất quán,
+  locale/timezone, onboarding flag và timestamps. Client không có API đổi UID,
+  role, roles hay timestamp tạo.
+- `Stack.Protected` chỉ mở role-selection cho profile thiếu, và chỉ mở dashboard
+  đúng với persisted role. Đây là UX client-side; role không cấp quyền đọc dữ
+  liệu sức khỏe.
+- Rules M2.3 đã deploy chỉ cho owner `get/create/update` profile của chính mình; chặn
+  list, delete, truy cập chéo và mọi surface thuốc/caregiver/family chưa có
+  schema/workflow được duyệt.
+
+Firestore `(default)` tại `asia-east1` đang dùng Rules M2.3 đã deploy bằng
+lệnh có `--project medicare-ai-cf804`. Baseline deny-all trước deploy, checksum
+và quy trình rollback được lưu tại
+[`firestore-production-deny-all-baseline.md`](firestore-production-deny-all-baseline.md).
+`EXPO_PUBLIC_FIRESTORE_USER_PROFILES_ENABLED` vẫn mặc định `false` trong
+template. Cờ này không phải lớp bảo mật: nó chỉ cho phép chủ project opt-in
+gọi profile Firestore trong `.env` cục bộ đã ignore sau kiểm thử có chủ đích.
+Rules Emulator chạy bằng `npm run test:rules` với UID tổng hợp và không chạm
+production.
+
+Khi kiểm thử iPhone bằng tài khoản test, đặt cờ local thành `true`, restart
+Expo và thu thập bằng chứng riêng cho role onboarding, persistence và đổi tài
+khoản. Chủ project đã cho biết đã thực hiện kiểm thử User Profile trên iPhone,
+nhưng kết quả từng trường hợp chưa được ghi nhận ở đây. Tài liệu chi tiết là
+[`firestore-user-profiles.md`](firestore-user-profiles.md).

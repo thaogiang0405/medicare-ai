@@ -12,7 +12,9 @@ import { useSessionStore } from '@/store';
  */
 export default function RootLayout() {
   const authStatus = useSessionStore((state) => state.authStatus);
-  const routeAccess = getAuthRouteAccess(authStatus);
+  const profileStatus = useSessionStore((state) => state.profileStatus);
+  const user = useSessionStore((state) => state.user);
+  const routeAccess = getAuthRouteAccess(authStatus, profileStatus, user?.role ?? null);
 
   return (
     <>
@@ -25,15 +27,19 @@ export default function RootLayout() {
               animation: 'fade',
               contentStyle: { backgroundColor: '#FAFDFC' },
             }}>
-            <Stack.Protected guard={routeAccess.allowUnauthenticatedRoutes} redirectTo="/role-selection">
+            <Stack.Protected guard={routeAccess.allowUnauthenticatedRoutes} redirectTo={routeAccess.redirectTo}>
               <Stack.Screen name="index" />
               <Stack.Screen name="onboarding" />
               <Stack.Screen name="login" />
               <Stack.Screen name="register" />
             </Stack.Protected>
-            <Stack.Protected guard={routeAccess.allowAuthenticatedRoutes} redirectTo="/login">
+            <Stack.Protected guard={routeAccess.allowRoleSelection} redirectTo={routeAccess.redirectTo}>
               <Stack.Screen name="role-selection" />
+            </Stack.Protected>
+            <Stack.Protected guard={routeAccess.allowElderlyDashboard} redirectTo={routeAccess.redirectTo}>
               <Stack.Screen name="elderly" />
+            </Stack.Protected>
+            <Stack.Protected guard={routeAccess.allowCaregiverDashboard} redirectTo={routeAccess.redirectTo}>
               <Stack.Screen name="caregiver" />
             </Stack.Protected>
           </Stack>

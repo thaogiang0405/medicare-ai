@@ -6,6 +6,31 @@
  */
 export type UserRole = 'elderly' | 'caregiver';
 
+export const userProfileLocale = 'vi' as const;
+export const userProfileTimeZone = 'Asia/Ho_Chi_Minh' as const;
+
+export type UserProfileRoles = Readonly<{
+  elderly: boolean;
+  caregiver: boolean;
+}>;
+
+/**
+ * Portable representation of the Firestore `/users/{uid}` document.
+ * Firebase Timestamp values are mapped to Date here so UI code never depends
+ * on a Firebase SDK type.
+ */
+export interface UserProfile {
+  uid: string;
+  displayName: string;
+  primaryRole: UserRole;
+  roles: UserProfileRoles;
+  locale: typeof userProfileLocale;
+  timeZone: typeof userProfileTimeZone;
+  onboardingCompleted: true;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface AppUser {
   id: string;
   displayName: string;

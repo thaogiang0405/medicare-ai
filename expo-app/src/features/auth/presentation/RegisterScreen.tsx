@@ -52,7 +52,7 @@ export default function RegisterScreen() {
 
     try {
       await register({ displayName: displayName.trim(), email: email.trim(), password });
-      router.replace('/role-selection');
+      // The Auth observer loads a missing/existing profile before navigation.
     } catch {
       // The repository has already mapped the error to safe Vietnamese feedback.
     }
@@ -68,7 +68,8 @@ export default function RegisterScreen() {
           Thông tin cơ bản
         </Text>
         <Text style={styles.description}>
-          Tài khoản được tạo bằng Firebase Authentication. Vai trò và hồ sơ sức khỏe chưa được lưu ở giai đoạn này.
+          Tài khoản được tạo bằng Firebase Authentication. Sau đó, bạn sẽ chọn một vai trò ban đầu; dữ liệu sức khỏe
+          chưa được lưu ở giai đoạn này.
         </Text>
       </View>
       <View style={styles.form}>

@@ -15,6 +15,7 @@ export type ActionCardProps = {
   description: string;
   icon?: ReactNode;
   onPress: () => void;
+  disabled?: boolean;
   accessibilityHint?: string;
   style?: StyleProp<ViewStyle>;
   testID?: string;
@@ -25,6 +26,7 @@ export function ActionCard({
   description,
   icon,
   onPress,
+  disabled = false,
   accessibilityHint,
   style,
   testID,
@@ -34,8 +36,10 @@ export function ActionCard({
       accessibilityHint={accessibilityHint ?? description}
       accessibilityLabel={title}
       accessibilityRole="button"
+      accessibilityState={{ disabled }}
+      disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [styles.card, pressed && styles.pressed, style]}
+      style={({ pressed }) => [styles.card, disabled && styles.disabled, pressed && !disabled && styles.pressed, style]}
       testID={testID}>
       {icon ? <View style={styles.icon}>{icon}</View> : null}
       <View style={styles.copy}>
@@ -98,5 +102,8 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.74,
     backgroundColor: medicareColors.surfaceMuted,
+  },
+  disabled: {
+    opacity: 0.6,
   },
 });

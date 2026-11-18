@@ -34,7 +34,7 @@ export default function LoginScreen() {
     clearError();
   };
 
-  const continueToRoleSelection = async () => {
+  const signInWithEmail = async () => {
     resetFeedback();
 
     if (!isValidEmail(email.trim())) {
@@ -49,7 +49,8 @@ export default function LoginScreen() {
 
     try {
       await signIn({ email: email.trim(), password });
-      router.replace('/role-selection');
+      // Auth + profile state decides whether onboarding or a persisted role
+      // dashboard is the valid next route.
     } catch {
       // The repository has already mapped the error to safe Vietnamese feedback.
     }
@@ -123,7 +124,7 @@ export default function LoginScreen() {
           accessibilityHint="Đăng nhập bằng email và mật khẩu đã nhập"
           label="Đăng nhập"
           loading={isLoading}
-          onPress={() => void continueToRoleSelection()}
+          onPress={() => void signInWithEmail()}
         />
         <SecondaryButton
           accessibilityHint="Gửi hướng dẫn đặt lại mật khẩu nếu email phù hợp"

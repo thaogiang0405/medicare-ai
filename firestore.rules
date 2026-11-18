@@ -5,169 +5,128 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function ownsProfile(elderlyId) {
-      return signedIn() && request.auth.uid == elderlyId;
+    function ownsUser(uid) {
+      return signedIn() && request.auth.uid == uid;
     }
 
-    function linkExists(elderlyId) {
-      return signedIn()
-        && exists(/databases/$(database)/documents/elderlyProfiles/$(elderlyId)/caregiverLinks/$(request.auth.uid));
-    }
-
-    function activeLink(elderlyId) {
-      return linkExists(elderlyId)
-        && get(/databases/$(database)/documents/elderlyProfiles/$(elderlyId)/caregiverLinks/$(request.auth.uid)).data.status == 'active';
-    }
-
-    function canReadProfile(elderlyId) {
-      return activeLink(elderlyId)
-        && get(/databases/$(database)/documents/elderlyProfiles/$(elderlyId)/caregiverLinks/$(request.auth.uid)).data.scopes.profileRead == true;
-    }
-
-    function canReadMedications(elderlyId) {
-      return activeLink(elderlyId)
-        && get(/databases/$(database)/documents/elderlyProfiles/$(elderlyId)/caregiverLinks/$(request.auth.uid)).data.scopes.medicationsRead == true;
-    }
-
-    function canManageMedications(elderlyId) {
-      return activeLink(elderlyId)
-        && get(/databases/$(database)/documents/elderlyProfiles/$(elderlyId)/caregiverLinks/$(request.auth.uid)).data.scopes.medicationsWrite == true;
-    }
-
-    function canReadSchedules(elderlyId) {
-      return activeLink(elderlyId)
-        && get(/databases/$(database)/documents/elderlyProfiles/$(elderlyId)/caregiverLinks/$(request.auth.uid)).data.scopes.schedulesRead == true;
-    }
-
-    function canManageSchedules(elderlyId) {
-      return activeLink(elderlyId)
-        && get(/databases/$(database)/documents/elderlyProfiles/$(elderlyId)/caregiverLinks/$(request.auth.uid)).data.scopes.schedulesWrite == true;
-    }
-
-    function canReadDoseHistory(elderlyId) {
-      return activeLink(elderlyId)
-        && get(/databases/$(database)/documents/elderlyProfiles/$(elderlyId)/caregiverLinks/$(request.auth.uid)).data.scopes.doseHistoryRead == true;
-    }
-
-    function canReadOcr(elderlyId) {
-      return activeLink(elderlyId)
-        && get(/databases/$(database)/documents/elderlyProfiles/$(elderlyId)/caregiverLinks/$(request.auth.uid)).data.scopes.ocrRead == true;
-    }
-
-    function belongsToProfile(elderlyId) {
-      return request.resource.data.elderlyId == elderlyId;
-    }
-
-    function preservesRecordIdentity() {
-      return request.resource.data.elderlyId == resource.data.elderlyId
-        && request.resource.data.createdBy == resource.data.createdBy
-        && request.resource.data.createdAt == resource.data.createdAt;
-    }
-
-    function isValidDoseResponse() {
-      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'status', 'respondedAt', 'respondedBy', 'responseSource', 'updatedAt'
+    function hasExactUserProfileFields(data) {
+      return data.keys().hasAll([
+          'uid',
+          'displayName',
+          'primaryRole',
+          'roles',
+          'locale',
+          'timeZone',
+          'onboardingCompleted',
+          'createdAt',
+          'updatedAt'
         ])
-        && request.resource.data.respondedBy == request.auth.uid
-        && request.resource.data.status in ['reportedTaken', 'reportedSkipped', 'snoozed'];
+        && data.keys().hasOnly([
+          'uid',
+          'displayName',
+          'primaryRole',
+          'roles',
+          'locale',
+          'timeZone',
+          'onboardingCompleted',
+          'createdAt',
+          'updatedAt'
+        ]);
     }
 
-    match /users/{uid} {
-      allow create: if signedIn()
-        && request.auth.uid == uid
-        && request.resource.data.uid == request.auth.uid;
-      allow read, delete: if signedIn() && request.auth.uid == uid;
-      allow update: if signedIn()
-        && request.auth.uid == uid
+    function hasSingleValidRole(data) {
+      return data.primaryRole is string
+        && data.primaryRole in ['elderly', 'caregiver']
+        && data.roles is map
+        && data.roles.keys().hasAll(['elderly', 'caregiver'])
+        && data.roles.keys().hasOnly(['elderly', 'caregiver'])
+        && data.roles.elderly is bool
+        && data.roles.caregiver is bool
+        && (
+          (data.primaryRole == 'elderly'
+            && data.roles.elderly == true
+            && data.roles.caregiver == false)
+          || (data.primaryRole == 'caregiver'
+            && data.roles.elderly == false
+            && data.roles.caregiver == true)
+        );
+    }
+
+    function hasValidUserProfileSchema(data) {
+      return hasExactUserProfileFields(data)
+        && data.uid is string
+        && data.displayName is string
+        && data.displayName.size() >= 2
+        && data.displayName.size() <= 120
+        && hasSingleValidRole(data)
+        && data.locale == 'vi'
+        && data.timeZone == 'Asia/Ho_Chi_Minh'
+        && data.onboardingCompleted is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidInitialUserProfile(uid) {
+      return ownsUser(uid)
+        && hasValidUserProfileSchema(request.resource.data)
+        && request.resource.data.uid == uid
+        && request.resource.data.onboardingCompleted == true
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    function isValidUserProfileUpdate(uid) {
+      return ownsUser(uid)
+        && hasValidUserProfileSchema(request.resource.data)
+        && resource.data.uid == uid
         && request.resource.data.uid == resource.data.uid
+        && request.resource.data.uid == uid
         && request.resource.data.primaryRole == resource.data.primaryRole
-        && request.resource.data.roles == resource.data.roles;
+        && request.resource.data.roles == resource.data.roles
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.onboardingCompleted == resource.data.onboardingCompleted
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'displayName',
+          'locale',
+          'timeZone',
+          'updatedAt'
+        ]);
+    }
 
-      match /devices/{deviceId} {
-        allow read, create, update, delete: if signedIn() && request.auth.uid == uid;
-      }
+    // Migration 2.3's only enabled client-write surface. `get` deliberately
+    // excludes collection queries so users cannot enumerate other profiles.
+    match /users/{uid} {
+      allow get: if ownsUser(uid);
+      allow list: if false;
+      allow create: if isValidInitialUserProfile(uid);
+      allow update: if isValidUserProfileUpdate(uid);
+      allow delete: if false;
 
-      match /notifications/{notificationId} {
-        allow read: if signedIn() && request.auth.uid == uid;
-        allow write: if false;
-      }
-
-      match /elderlyIndex/{elderlyId} {
-        allow read: if signedIn() && request.auth.uid == uid;
-        allow write: if false;
+      // Device, notification, and index schemas are not part of M2.3 yet.
+      match /{document=**} {
+        allow read, write: if false;
       }
     }
 
-    match /caregiverProfiles/{caregiverId} {
-      allow create, read, update, delete: if signedIn() && request.auth.uid == caregiverId;
-    }
-
-    match /caregiverInvites/{inviteId} {
+    // A role selected by the client is not a health-data authorization grant.
+    // These surfaces remain closed until their schema, server workflow, and
+    // emulator coverage are approved in a later milestone.
+    match /caregiverProfiles/{document=**} {
       allow read, write: if false;
     }
 
-    match /elderlyProfiles/{elderlyId} {
-      allow create: if ownsProfile(elderlyId)
-        && request.resource.data.ownerUid == request.auth.uid;
-      allow read: if ownsProfile(elderlyId) || canReadProfile(elderlyId);
-      allow update: if ownsProfile(elderlyId)
-        && request.resource.data.ownerUid == resource.data.ownerUid;
-      allow delete: if false;
+    match /caregiverInvites/{document=**} {
+      allow read, write: if false;
+    }
 
-      match /caregiverLinks/{caregiverId} {
-        allow read: if ownsProfile(elderlyId)
-          || (signedIn() && request.auth.uid == caregiverId);
-        allow write: if false;
-      }
+    match /elderlyProfiles/{document=**} {
+      allow read, write: if false;
+    }
 
-      match /prescriptions/{prescriptionId} {
-        allow read: if ownsProfile(elderlyId);
-        allow create: if ownsProfile(elderlyId)
-          && belongsToProfile(elderlyId)
-          && request.resource.data.createdBy == request.auth.uid;
-        allow update: if ownsProfile(elderlyId) && preservesRecordIdentity();
-        allow delete: if false;
-      }
-
-      match /medications/{medicationId} {
-        allow read: if ownsProfile(elderlyId) || canReadMedications(elderlyId);
-        allow create: if (ownsProfile(elderlyId) || canManageMedications(elderlyId))
-          && belongsToProfile(elderlyId)
-          && request.resource.data.createdBy == request.auth.uid;
-        allow update: if (ownsProfile(elderlyId) || canManageMedications(elderlyId))
-          && preservesRecordIdentity();
-        allow delete: if false;
-      }
-
-      match /medicationSchedules/{scheduleId} {
-        allow read: if ownsProfile(elderlyId) || canReadSchedules(elderlyId);
-        allow create: if (ownsProfile(elderlyId) || canManageSchedules(elderlyId))
-          && belongsToProfile(elderlyId)
-          && request.resource.data.createdBy == request.auth.uid;
-        allow update: if (ownsProfile(elderlyId) || canManageSchedules(elderlyId))
-          && preservesRecordIdentity();
-        allow delete: if false;
-      }
-
-      match /doseEvents/{doseEventId} {
-        allow read: if ownsProfile(elderlyId) || canReadDoseHistory(elderlyId);
-        allow update: if ownsProfile(elderlyId) && isValidDoseResponse();
-        allow create, delete: if false;
-      }
-
-      match /ocrResults/{ocrResultId} {
-        allow read: if ownsProfile(elderlyId) || canReadOcr(elderlyId);
-        allow create: if ownsProfile(elderlyId)
-          && belongsToProfile(elderlyId)
-          && request.resource.data.createdBy == request.auth.uid;
-        allow update: if ownsProfile(elderlyId) && preservesRecordIdentity();
-        allow delete: if false;
-      }
-
-      match /auditLogs/{auditLogId} {
-        allow read: if ownsProfile(elderlyId);
-        allow write: if false;
-      }
+    // Explicit default-deny for every future collection and subcollection.
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

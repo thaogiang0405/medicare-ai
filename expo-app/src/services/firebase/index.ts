@@ -3,7 +3,7 @@ export {
   getFirebaseAuth,
 } from './firebase-auth-boundary';
 export { getFirebaseApp } from './firebase-app';
-export { getFirebaseAppForFirestore } from './firestore-boundary';
+export { getFirebaseAppForFirestore, getFirebaseFirestore } from './firestore-boundary';
 export {
   createFirebaseConfig,
   FirebaseConfigurationError,

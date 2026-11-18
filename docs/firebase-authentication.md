@@ -7,10 +7,13 @@ Password của Firebase project `medicare-ai-cf804`. Ứng dụng Expo dùng Fir
 JavaScript SDK modular và `@react-native-async-storage/async-storage` để
 Firebase tự duy trì phiên trên iOS/Android.
 
-Đây **không** phải là phân quyền y tế hay hồ sơ người dùng. `AppUser.role` luôn
-`null`; màn hình chọn vai trò chỉ mở giao diện xem thử. Firestore User Profile,
-Firestore CRUD, Security Rules deployment, chia sẻ gia đình và dữ liệu thuốc
-thật nằm ngoài Migration 2.2.
+Đây **không** phải là phân quyền y tế. Tài liệu này mô tả trạng thái Migration
+2.2 tại thời điểm hoàn thành; Migration 2.3 đã thêm profile Firestore giới hạn
+để `AppUser.role` được lấy từ document của chính tài khoản sau khi Auth observer
+khôi phục phiên. Role chỉ quyết định route UI, không cấp quyền đọc dữ liệu sức
+khỏe. Xem [Firestore User Profiles — Migration 2.3](firestore-user-profiles.md)
+cho scope hiện tại. Firestore CRUD cho thuốc/lịch, chia sẻ gia đình và dữ liệu
+thuốc thật vẫn nằm ngoài M2.3; chỉ Rules owner-profile đã được deploy.
 
 ## Trạng thái xác minh
 
@@ -41,8 +44,9 @@ Firebase Web config (.env, ignored)
   → Firebase App singleton
   → initializeAuth + React Native AsyncStorage persistence
   → FirebaseAuthRepository
-  → Zustand session UI state
-  → Expo Router Stack.Protected
+  → Zustand session + profile gate
+  → FirestoreUserProfileRepository (khi feature flag được duyệt)
+  → Expo Router Stack.Protected theo profile role
 ```
 
 - `firebase-auth-boundary.ts` gọi `initializeAuth()` trước, truyền
@@ -51,10 +55,14 @@ Firebase Web config (.env, ignored)
 - `FirebaseAuthRepository` là nơi duy nhất gọi Firebase Auth APIs. UI chỉ dùng
   `AuthRepository` qua Zustand.
 - `onAuthStateChanged` là nguồn trạng thái để khôi phục phiên khi mở lại app.
-- Zustand chỉ giữ `AppUser`, trạng thái khởi tạo và lỗi trình bày. Nó không lưu
-  mật khẩu, ID token hay refresh token.
-- `Stack.Protected` chặn `/role-selection`, `/elderly` và `/caregiver` khi chưa
-  đăng nhập. Khi logout, Expo Router loại history của route protected.
+- Auth observer tải profile trước khi route riêng tư được mở. Profile thiếu chỉ
+  cho phép role onboarding; profile lỗi hoặc feature flag tắt hiển thị error
+  gate, không có fallback role.
+- Zustand chỉ giữ `AppUser`, profile đã map, trạng thái khởi tạo và lỗi trình
+  bày. Nó không lưu mật khẩu, ID token hay refresh token.
+- `Stack.Protected` chặn route theo authentication và role profile; khi logout,
+  Expo Router loại history của route protected. Đây vẫn chỉ là chặn client-side;
+  Firestore Rules mới là lớp authorization cho dữ liệu.
 
 ## Hành vi Auth
 
@@ -77,14 +85,16 @@ Firebase Web config (.env, ignored)
 
 2. Đặt iPhone cùng Wi-Fi, mở Expo Go SDK 58 và quét QR. Nếu LAN bị chặn, dùng
    `npx expo start --tunnel`.
-3. Đăng ký bằng **email riêng của người kiểm thử** và mật khẩu tuân theo policy
-   đã bật trong Firebase Console. Không dùng email/mật khẩu demo.
+3. Đăng ký bằng **Firebase Auth test account riêng** và mật khẩu tuân theo policy
+   đã bật trong Firebase Console. Không dùng dữ liệu nhận diện hoặc mật khẩu thật.
 4. Trong Firebase Console → Authentication → Users, xác nhận user mới xuất
    hiện. Chỉ làm sau khi Email/Password provider đã bật.
 5. Đóng màn hình project trong Expo Go hoặc khởi động lại Expo Go, rồi mở lại
    cùng project. Không xóa dữ liệu Expo Go hoặc cài lại ứng dụng. Auth gate phải
-   khôi phục phiên và đưa bạn tới màn hình chọn giao diện xem thử, không quay về
-   Login.
+   khôi phục phiên. Khi feature Profile đã được chủ project bật và Rules đã
+   deploy, tài khoản chưa có document chỉ tới màn chọn role một lần; tài khoản
+   có profile đi thẳng tới dashboard role đã lưu. Khi feature tắt, app hiển thị
+   error gate rõ ràng thay vì vào dashboard.
 6. Dùng **Đăng xuất**, sau đó thử nút Back hoặc mở trực tiếp `/elderly`/
    `/caregiver`; navigation phải đưa về Login.
 
@@ -98,9 +108,16 @@ Khi nhóm đã cấu hình Firebase Auth Emulator, chỉ kết nối nó ở mô
 triển bằng cấu hình được phê duyệt riêng. iPhone phải dùng địa chỉ IP LAN của
 máy Windows, không dùng `localhost`. Không nhập credential thật vào emulator.
 
-## Việc tiếp theo — Migration 2.3
+## Trạng thái sau Migration 2.3
 
-- Thiết kế và phê duyệt Firestore User Profile cùng role claims/Rules.
-- Thay giao diện xem thử bằng role/profile được xác minh phía backend.
-- Thêm Auth/Firestore Emulator tests và kiểm thử Rules.
-- Đánh giá lại Firebase dependency advisories trước khi import Firestore.
+Cloud Firestore `(default)` tại `asia-east1` và Rules M2.3 owner-profile đã
+được project owner deploy. Khi feature flag profile được bật trong `.env` local
+đã được phê duyệt, Auth observer tải đúng `/users/{auth.uid}` trước route role;
+profile thiếu chỉ đi tới role onboarding và profile hợp lệ đi tới dashboard role
+đã lưu. Đây vẫn không phải quyền đọc dữ liệu sức khỏe.
+
+Chủ dự án đã cho biết đã thực hiện kiểm thử profile trên iPhone, nhưng không
+cung cấp danh sách case pass/fail để tài liệu có thể xác nhận chi tiết. Xem
+checklist và giới hạn tại
+[`firestore-user-profiles.md`](firestore-user-profiles.md). Vẫn cần đánh giá
+Firebase dependency advisories trước khi mở rộng Firestore.

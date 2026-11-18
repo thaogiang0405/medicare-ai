@@ -1,43 +1,88 @@
 # Firebase security strategy
 
-## Nguyên tắc
+## Trạng thái triển khai thực tế
 
-1. Authentication state, route redirect và role selector trong UI chỉ là trải nghiệm. Firestore/Storage Rules là lớp enforcement client-facing.
-2. Hồ sơ người cao tuổi là boundary sở hữu. Owner UID có toàn quyền cần thiết; caregiver chỉ dùng scope của một `caregiverLink` có `status == active`.
-3. Invite approval/revoke, dashboard projection, audit log, future dose-event generation and caregiver FCM happen in Cloud Functions/Admin SDK, not arbitrary clients.
-4. Defaults are least privilege: caregiver does not see raw OCR/prescription image and cannot report a dose on behalf of elderly by default.
-5. Rules must be tested in Firebase Emulator with authenticated personas and query tests, not only single-document gets.
+Cloud Firestore Native database `(default)` của `medicare-ai-cf804` hoạt động
+tại `asia-east1`. `firestore.rules` trong repository là source M2.3 đã được
+release lên production bằng `firebase deploy --only firestore:rules --project
+medicare-ai-cf804`. Source SHA-256 của release được ghi tại
+[`firestore-production-deny-all-baseline.md`](firestore-production-deny-all-baseline.md),
+cùng baseline deny-all và thủ tục rollback có kiểm soát.
 
-## Baseline files
+Rules Emulator pass là bằng chứng behavior local hữu ích, nhưng không thay thế
+quản lý release, Console timeline hoặc kiểm thử runtime trên thiết bị. Không tự
+deploy lại Rules, Storage, indexes hay thay đổi database configuration từ source
+code.
 
-- [`firestore.rules`](../firestore.rules) — conservative client permissions and owner/scope checks.
-- [`storage.rules`](../storage.rules) — same ownership boundary for prescription/medication images.
-- [`firestore.indexes.json`](../firestore.indexes.json) — known compound query indexes.
+## Nguyên tắc M2.3
 
-These are a baseline, not an authorization certification. Before deployment, add schema/type/field validation for every final DTO and run emulator tests per use case.
+1. Firebase Auth, `Stack.Protected`, feature flag và role selector chỉ điều
+   khiển trải nghiệm client. Firestore Rules mới là lớp enforcement cho request
+   từ client.
+2. Client chỉ có surface profile `/users/{auth.uid}`. Repository luôn lấy UID
+   từ Firebase Auth; UI không cung cấp UID, role hay timestamp authority.
+3. `primaryRole`/`roles` xác định route UI đầu tiên, **không** cấp quyền đọc
+   thuốc, lịch, OCR, family link hoặc dữ liệu sức khỏe của người khác.
+4. Least privilege: `get` profile của chính mình có thể được phép; `list`, đọc
+   chéo, delete, thay role/UID/created timestamp và mọi subcollection bị chặn.
+5. Mọi collection health/caregiver/device/index/audit/notification chưa có
+   schema + workflow server được duyệt đều default deny.
+6. Không có Firebase Admin SDK, service account, private key, password hoặc
+   token trong Expo client. `EXPO_PUBLIC_*` là giá trị nhúng vào client bundle,
+   không được dùng để chứa secret.
+
+## Rules M2.3 đang được version-control
+
+| Surface | Policy local M2.3 |
+| --- | --- |
+| `/users/{uid}` `get` | Chỉ `request.auth.uid == uid` |
+| `/users/{uid}` `list` | Deny |
+| Create profile | Chỉ owner, exact schema, một role hợp lệ, server timestamps |
+| Update profile | Chỉ owner; chỉ display name/locale/timezone/updated timestamp có thể đổi |
+| Delete profile | Deny |
+| `/users/{uid}/...` | Deny |
+| Medications, schedules, doses, OCR, caregiver links/invites/indexes | Deny |
+| Mọi path khác | Deny |
+
+Role ban đầu được ràng buộc vào một map `elderly`/`caregiver` nhất quán với
+`primaryRole`; Rules không cho client escalate thành nhiều role hay đổi role sau
+khi tạo. Những restriction này không thay thế approval/invite workflow cho Family
+Care trong milestone sau.
 
 ## Required authorization tests
 
+Rules Emulator hiện dùng identity tổng hợp, không có dữ liệu sức khỏe thật. Bộ
+test phải luôn gồm ít nhất các case sau:
+
 | Scenario | Expected result |
-|---|---|
-| Unauthenticated user reads any profile | Denied |
-| Elderly owner creates own profile, medication and response | Allowed only for own `elderlyId` |
-| Caregiver with no link / pending / revoked link queries health data | Denied |
-| Active caregiver reads medication with `medicationsRead` | Allowed |
-| Active caregiver reads OCR with `ocrRead: false` | Denied |
-| Caregiver sets own link to active | Denied |
-| Caregiver marks `reportedTaken` without special assisted-flow scope | Denied |
-| Client writes audit log, notification or caregiver index | Denied |
-| User tries to change immutable `uid`, owner or role fields | Denied |
-| Storage download after revoke | Denied for future request |
+| --- | --- |
+| Unauthenticated read/write profile | Denied |
+| Owner creates profile đúng schema | Allowed |
+| Owner reads chính profile | Allowed |
+| User A reads User B hoặc query/list profiles | Denied |
+| Client đổi UID, role, role map, created timestamp hoặc thêm field | Denied |
+| Owner update display name hợp lệ | Allowed |
+| Direct create active caregiver link hoặc health document | Denied |
 
-## Production hardening checklist
+Chạy local từ `expo-app/`:
 
-- Enable App Check for Android and enforce it after staged rollout.
-- Require Firebase Auth email/phone verification policy appropriate to the thesis demo and privacy policy.
-- Store invite code hash only; give code expiry, single-use semantics and brute-force rate limit via Callable Function.
-- Filter or turn off crash/analytics collection for prescription text, image paths and health metadata.
-- Use Cloud Functions service account with minimum IAM roles; never ship Admin credentials to Flutter.
-- Use Firestore TTL or scheduled cleanup for expired OCR docs/images and inactive device tokens.
-- Put a generic notification payload on lock screen; medication names are sensitive.
-- Document retention, consent, access/revoke behavior and incident process before using real patient data.
+```powershell
+npm run test:rules
+```
+
+Lệnh mở Firestore Emulator tạm thời, nạp `../firestore.rules` từ `firebase.json`
+và chạy test với project/UID test riêng. Nó không deploy, không gọi database
+production và không thay đổi Rules production đang active.
+
+## Production hardening sau M2.3
+
+- Chỉ thiết kế Rules cho medication/schedule/dose/OCR sau khi schema final và
+  emulator personas/query tests được review.
+- Thiết kế invite/approval/revoke qua workflow server-trusted (ví dụ Cloud
+  Functions) trước khi cho caregiver đọc bất kỳ dữ liệu health nào.
+- Enable App Check theo rollout có kiểm chứng; xác nhận email/phone verification
+  policy, data retention, consent, revoke behavior và incident process trước dữ
+  liệu thật.
+- Không ghi raw prescription/OCR, token hoặc health metadata vào analytics/log.
+- Notification lock-screen phải generic; Firebase server credentials chỉ được
+  đặt trong secret manager với IAM tối thiểu khi milestone server được duyệt.

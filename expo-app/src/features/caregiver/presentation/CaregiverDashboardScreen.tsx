@@ -40,7 +40,7 @@ export default function CaregiverDashboardScreen() {
         title={`Chào ${user?.displayName ?? 'bạn'}`}
       />
       <DemoModeBanner
-        description="Hồ sơ và trạng thái dưới đây là dữ liệu giả lập; chưa có đồng bộ hoặc phân quyền Firebase."
+        description="Vai trò đã được kiểm tra từ hồ sơ của chính bạn. Hồ sơ và trạng thái dưới đây là dữ liệu giả lập; chưa có liên kết chăm sóc, đồng bộ hay quyền dữ liệu sức khỏe."
         title="Chế độ trình diễn"
       />
       {authErrorMessage ? (
@@ -89,7 +89,6 @@ export default function CaregiverDashboardScreen() {
           title="Liên kết hồ sơ"
         />
       </View>
-      <SecondaryButton label="Đổi giao diện xem thử" onPress={() => router.replace('/role-selection')} />
       <SecondaryButton
         accessibilityHint="Đăng xuất và xóa trạng thái phiên trong bộ nhớ"
         disabled={isSigningOut}

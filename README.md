@@ -13,14 +13,31 @@ Web App chính thức của project `medicare-ai-cf804`. Cấu hình được đ
 `expo-app/.env` bị Git ignore qua các biến `EXPO_PUBLIC_FIREBASE_*`; không dùng
 lại `firebase_options.dart` của Flutter cho TypeScript. Firebase Authentication
 Email/Password có `FirebaseAuthRepository`, observer khôi phục phiên và
-React Native AsyncStorage persistence chính thức. Không có Firestore CRUD,
-service account hay server secret trong Expo app.
+React Native AsyncStorage persistence chính thức. Khi Migration 2.2 hoàn thành,
+chưa có Firestore CRUD; Migration 2.3 chỉ thêm profile giới hạn được mô tả bên
+dưới. Không có service account hay server secret trong Expo app.
 
 Luồng Firebase Authentication của Expo đã được người kiểm thử xác nhận chạy
 trên iPhone thật bằng Expo Go SDK 58. Xác minh này không bao gồm Firestore,
 phân quyền backend hoặc dữ liệu sức khỏe thật.
 
-Xem [kế hoạch Migration](docs/migration-to-expo.md), [hướng dẫn chạy Expo](expo-app/README.md), [Firebase JavaScript SDK Integration](docs/firebase-js-sdk-integration.md) và [Firebase Authentication — Migration 2.2](docs/firebase-authentication.md). Flutter vẫn là mã tham chiếu cho đến khi migration được kiểm thử thiết bị và được phê duyệt riêng.
+Migration 2.3 triển khai Firestore User Profile giới hạn tại
+`/users/{auth.uid}`: repository chỉ dùng UID Firebase Auth, route được quyết
+định bởi role đã lưu và Rules Emulator kiểm tra schema/ownership. Firestore
+database `(default)` tại `asia-east1` đang dùng Rules M2.3 đã deploy; bản
+deny-all trước deploy được lưu làm baseline rollback tại
+[`docs/firestore-production-deny-all-baseline.md`](docs/firestore-production-deny-all-baseline.md).
+Template `EXPO_PUBLIC_FIRESTORE_USER_PROFILES_ENABLED` vẫn mặc định `false`;
+chủ project chỉ bật nó trong `.env` local đã ignore khi kiểm thử có chủ đích.
+Cờ public này không phải lớp phân quyền và app không có fallback gán role mock.
+Role chỉ là điều hướng UI, không phải quyền đọc dữ liệu sức khỏe.
+
+Chủ project cho biết đã kiểm thử User Profile trên iPhone bằng Expo Go SDK 58,
+nhưng kết quả theo từng trường hợp chưa được ghi nhận trong repository; tài liệu
+không coi role onboarding, persistence hoặc đổi tài khoản là đã pass nếu không
+có bằng chứng tương ứng.
+
+Xem [kế hoạch Migration](docs/migration-to-expo.md), [hướng dẫn chạy Expo](expo-app/README.md), [Firebase JavaScript SDK Integration](docs/firebase-js-sdk-integration.md), [Firebase Authentication — Migration 2.2](docs/firebase-authentication.md) và [Firestore User Profiles — Migration 2.3](docs/firestore-user-profiles.md). Flutter vẫn là mã tham chiếu cho đến khi migration được kiểm thử thiết bị và được phê duyệt riêng.
 
 ## Trạng thái hiện tại — Phase 2.1: Firebase Setup
 
@@ -70,7 +87,7 @@ lib/
     profile/
     settings/
 docs/                  # Quyết định kiến trúc và mô hình dữ liệu
-firestore.rules         # Quy tắc truy cập Firestore mẫu
+firestore.rules         # Rules M2.3 đã deploy cho Firestore (default)
 storage.rules           # Quy tắc truy cập Firebase Storage mẫu
 firestore.indexes.json  # Composite indexes dự kiến
 ```
@@ -85,6 +102,7 @@ Mỗi feature sẽ phát triển theo hướng `data → domain → presentation
 - [Phạm vi Phase 1](docs/phase-1-foundation.md)
 - [Firebase Setup — Phase 2.1](docs/firebase-setup.md)
 - [Migration sang React Native + Expo — Migration 1](docs/migration-to-expo.md)
+- [Firestore User Profiles & Role Security — Migration 2.3](docs/firestore-user-profiles.md)
 
 ## Firebase Setup — Phase 2.1
 

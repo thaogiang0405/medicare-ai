@@ -5,6 +5,10 @@ export {
 export { getFirebaseApp } from './firebase-app';
 export { getFirebaseAppForFirestore, getFirebaseFirestore } from './firestore-boundary';
 export {
+  firestoreMedicationsUnavailableMessage,
+  isFirestoreMedicationsFeatureEnabled,
+} from './firestore-medication-feature';
+export {
   createFirebaseConfig,
   FirebaseConfigurationError,
   getFirebaseConfig,

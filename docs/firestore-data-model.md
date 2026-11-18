@@ -119,23 +119,17 @@ Status lifecycle: `pending → active | rejected | expired`; `active → revoked
 
 Allowed OCR statuses: `processing`, `reviewRequired`, `confirmed`, `rejected`, `expired`. `rawText` and images have retention/cleanup policy and never go to client logs. A schedule creation use case must reject an OCR-derived request whose prescription/result is not confirmed.
 
-### Medication and schedule
+### Medication M3.2 and future schedule
 
 ```json
-// medications/{medicationId}
+// elderlyProfiles/{elderlyId}/medications/{medicationId}
 {
-  "elderlyId": "elderlyUid",
-  "prescriptionId": "prescription-id",
-  "name": "Tên thuốc theo đơn",
+  "ownerUid": "elderlyUid",
+  "name": "Tên thuốc do chủ hồ sơ ghi nhận",
   "strengthText": "500 mg",
-  "form": "tablet",
-  "directionsText": "Nguyên văn đã kiểm tra",
-  "imagePath": "medications/{elderlyId}/{medicationId}/photo.jpg",
-  "startDate": "2026-11-16",
-  "endDate": null,
-  "isActive": true,
+  "directionsText": "Nguyên văn do chủ hồ sơ cung cấp",
+  "status": "active",
   "revision": 1,
-  "createdBy": "uid",
   "createdAt": "Timestamp",
   "updatedAt": "Timestamp"
 }
@@ -161,6 +155,13 @@ Allowed OCR statuses: `processing`, `reviewRequired`, `confirmed`, `rejected`, `
   "updatedAt": "Timestamp"
 }
 ```
+
+M3.2 chỉ cho phép exact schema Medication ở trên. `ownerUid` và `createdAt`
+không thay đổi; `revision` tăng đúng một lần cho mỗi update; `status` chỉ đi từ
+`active` sang `inactive` (không hard delete hoặc re-activate). `prescriptionId`,
+image, form, ngày bắt đầu/kết thúc, schedule và bất kỳ dữ liệu lâm sàng nào chưa
+thuộc schema M3.2 và vẫn bị Rules từ chối. Client không tạo lịch hay tự suy luận
+liều dùng từ các trường text này.
 
 One schedule is one local administration time. This makes recurrence, notification IDs and edit semantics simpler. Preserve user-entered strings such as strength/directions; do not normalize into a dosage decision.
 
@@ -202,4 +203,4 @@ Server-generated notification docs use deterministic IDs, e.g. `{doseEventId}_in
 
 ## Queries/indexes
 
-Prepare collection-group indexes for dose events (`status + scheduledAt`), active medications (`isActive + updatedAt`), schedules (`active + nextOccurrenceAt`) and notification delivery (`deliveryState + scheduledFor`). See `firestore.indexes.json`.
+Prepare collection-group indexes for dose events (`status + scheduledAt`), active medications (`status + updatedAt`), schedules (`active + nextOccurrenceAt`) and notification delivery (`deliveryState + scheduledFor`). M3.2 lists a single owner's collection by `updatedAt`, so it does not deploy an index. See `firestore.indexes.json` for future work.

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-import { mockMedicationRepository } from '@/features/medications/data/mock-medication-repository';
+import { getMedicationRepository } from '@/features/medications/data/medication-repository-selector';
 import type { MedicationInput, MedicationRepository } from '@/features/medications/domain/medication-repository';
 import type { Medication } from '@/types/domain';
 
@@ -44,11 +44,11 @@ function requireActiveUserId(state: MedicationState): string {
 }
 
 /**
- * Presentation state for in-memory medication management. Repository calls are
- * scoped to the currently authenticated user and delayed results are discarded
- * after logout/account switching. This does not replace production security.
+ * Presentation state selects the M3.1 mock repository unless the explicit
+ * Firestore medication flag is enabled. Repository calls remain scoped to the
+ * authenticated user and delayed results are discarded after logout/switching.
  */
-export function createMedicationStore(repository: MedicationRepository = mockMedicationRepository) {
+export function createMedicationStore(repository: MedicationRepository = getMedicationRepository()) {
   let listRequestVersion = 0;
 
   return create<MedicationState>((set, get) => {

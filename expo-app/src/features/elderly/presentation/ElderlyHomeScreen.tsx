@@ -11,6 +11,7 @@ import {
   SecondaryButton,
 } from '@/components/medicare';
 import { medicareColors, medicareSpacing, medicareTypography } from '@/constants/medicare-theme';
+import { isFirestoreMedicationsFeatureEnabled } from '@/services/firebase/firestore-medication-feature';
 import { useSessionStore } from '@/store';
 import { formatVietnameseTime } from '@/utils/formatters';
 
@@ -26,6 +27,7 @@ export default function ElderlyHomeScreen() {
   const operationStatus = useSessionStore((state) => state.operationStatus);
   const authErrorMessage = useSessionStore((state) => state.errorMessage);
   const isSigningOut = operationStatus === 'loading';
+  const medicationsUseFirestore = isFirestoreMedicationsFeatureEnabled();
 
   const handleSignOut = async () => {
     try {
@@ -43,11 +45,13 @@ export default function ElderlyHomeScreen() {
         title={`Chào ${user?.displayName ?? 'bạn'}`}
       />
       <DemoModeBanner
-        description="Vai trò đã được kiểm tra từ hồ sơ của chính bạn. Lịch, thuốc và phản hồi dưới đây vẫn chỉ dùng để thử giao diện; không phải hồ sơ y tế."
-        title="Chế độ trình diễn"
+        description={medicationsUseFirestore
+          ? 'Thuốc của bạn được lưu trong Firestore theo hồ sơ đã xác thực. Lịch và phản hồi bên dưới vẫn là dữ liệu demo; không phải hồ sơ y tế.'
+          : 'Vai trò đã được kiểm tra từ hồ sơ của chính bạn. Lịch, thuốc và phản hồi dưới đây vẫn chỉ dùng để thử giao diện; không phải hồ sơ y tế.'}
+        title={medicationsUseFirestore ? 'Thuốc trên Firebase · lịch demo' : 'Chế độ trình diễn'}
       />
       {errorMessage ? (
-        <SafetyNotice message={errorMessage} title="Không thể tải dữ liệu demo" tone="error" />
+        <SafetyNotice message={errorMessage} title={medicationsUseFirestore ? 'Không thể tải thuốc' : 'Không thể tải dữ liệu demo'} tone="error" />
       ) : null}
       {authErrorMessage ? (
         <SafetyNotice message={authErrorMessage} title="Không thể hoàn tất phiên đăng nhập" tone="error" />
@@ -102,8 +106,12 @@ export default function ElderlyHomeScreen() {
           title="Quét đơn thuốc"
         />
         <ActionCard
-          accessibilityHint="Mở danh sách thuốc được lưu trong chế độ trình diễn của tài khoản này"
-          description="Xem, thêm, chỉnh sửa hoặc đánh dấu ngừng sử dụng thuốc demo."
+          accessibilityHint={medicationsUseFirestore
+            ? 'Mở danh sách thuốc được lưu trong hồ sơ Firebase của tài khoản này'
+            : 'Mở danh sách thuốc được lưu trong chế độ trình diễn của tài khoản này'}
+          description={medicationsUseFirestore
+            ? 'Xem, thêm, chỉnh sửa hoặc đánh dấu ngừng sử dụng thuốc của chính bạn. Lịch thuốc vẫn là demo.'
+            : 'Xem, thêm, chỉnh sửa hoặc đánh dấu ngừng sử dụng thuốc demo.'}
           icon={<Text style={styles.icon}>☰</Text>}
           onPress={() => router.push('/elderly/medications')}
           title="Thuốc của tôi"

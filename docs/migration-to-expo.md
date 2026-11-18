@@ -255,3 +255,19 @@ indexes hay Functions. Firestore production tiếp tục deny medication CRUD ch
 đến milestone M3.2 được thiết kế/review riêng. Xem
 [`medication-management-m3.1.md`](medication-management-m3.1.md) để biết
 validation, accessibility, tests và chuẩn bị M3.2.
+
+## Migration 3.2 — Firestore Medication CRUD
+
+M3.2 thêm `FirestoreMedicationRepository` sau `MedicationRepository` hiện có.
+Mỗi thao tác đối chiếu UID session với Firebase Auth, sau đó chỉ truy cập
+`elderlyProfiles/{auth.uid}/medications/{medicationId}`. Domain model không phụ
+thuộc Firebase; DTO exact schema dùng owner UID, text người dùng, status,
+server timestamps và revision. Update/inactivate dùng transaction; không có
+hard delete, re-activate, seed demo hoặc tạo schedule.
+
+Rules local mở duy nhất owner có profile `elderly` hợp lệ đọc/list/create/update
+Medication của chính mình, với schema/immutable field/timestamp/revision checks.
+`EXPO_PUBLIC_FIRESTORE_MEDICATIONS_ENABLED` mặc định `false`; Rules M3.2 và flag
+không được deploy/bật cho production trong migration này. DoseEvent/lịch vẫn là
+mock độc lập, caregiver vẫn bị deny. Chi tiết ở
+[`medication-management-m3.2.md`](medication-management-m3.2.md).

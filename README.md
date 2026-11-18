@@ -37,13 +37,17 @@ nhưng kết quả theo từng trường hợp chưa được ghi nhận trong r
 không coi role onboarding, persistence hoặc đổi tài khoản là đã pass nếu không
 có bằng chứng tương ứng.
 
-Migration 3.1 bổ sung Medication Management **chỉ trong bộ nhớ** cho profile
-`elderly`: danh sách, thêm, chi tiết, chỉnh sửa và đánh dấu ngừng sử dụng.
-Mock records và DoseEvent demo được cô lập theo UID; không có Medication
-Firestore CRUD, AsyncStorage medication persistence, lịch nhắc thật hoặc quyền
-caregiver. Xem [Medication Management — Migration 3.1](docs/medication-management-m3.1.md).
+Migration 3.1 bổ sung Medication Management cho profile `elderly`: danh sách,
+thêm, chi tiết, chỉnh sửa và đánh dấu ngừng sử dụng. Migration 3.2 bổ sung
+`FirestoreMedicationRepository` phía client tại
+`elderlyProfiles/{auth.uid}/medications/{medicationId}`, nhưng cờ
+`EXPO_PUBLIC_FIRESTORE_MEDICATIONS_ENABLED` vẫn mặc định `false` và Rules M3.2
+local **chưa được deploy**. Khi flag tắt, mock M3.1 vẫn chạy; DoseEvent/lịch vẫn
+là demo theo UID, không có AsyncStorage medication persistence, lịch nhắc thật
+hoặc quyền caregiver. Xem [M3.1](docs/medication-management-m3.1.md) và
+[M3.2](docs/medication-management-m3.2.md).
 
-Xem [kế hoạch Migration](docs/migration-to-expo.md), [hướng dẫn chạy Expo](expo-app/README.md), [Firebase JavaScript SDK Integration](docs/firebase-js-sdk-integration.md), [Firebase Authentication — Migration 2.2](docs/firebase-authentication.md), [Firestore User Profiles — Migration 2.3](docs/firestore-user-profiles.md) và [Medication Management — Migration 3.1](docs/medication-management-m3.1.md). Flutter vẫn là mã tham chiếu cho đến khi migration được kiểm thử thiết bị và được phê duyệt riêng.
+Xem [kế hoạch Migration](docs/migration-to-expo.md), [hướng dẫn chạy Expo](expo-app/README.md), [Firebase JavaScript SDK Integration](docs/firebase-js-sdk-integration.md), [Firebase Authentication — Migration 2.2](docs/firebase-authentication.md), [Firestore User Profiles — Migration 2.3](docs/firestore-user-profiles.md) và [Medication CRUD — Migration 3.2](docs/medication-management-m3.2.md). Flutter vẫn là mã tham chiếu cho đến khi migration được kiểm thử thiết bị và được phê duyệt riêng.
 
 ## Trạng thái hiện tại — Phase 2.1: Firebase Setup
 
@@ -93,7 +97,7 @@ lib/
     profile/
     settings/
 docs/                  # Quyết định kiến trúc và mô hình dữ liệu
-firestore.rules         # Rules M2.3 đã deploy cho Firestore (default)
+firestore.rules         # Rules local M3.2; production vẫn M2.3 đến khi deploy được phê duyệt
 storage.rules           # Quy tắc truy cập Firebase Storage mẫu
 firestore.indexes.json  # Composite indexes dự kiến
 ```
@@ -110,6 +114,7 @@ Mỗi feature sẽ phát triển theo hướng `data → domain → presentation
 - [Migration sang React Native + Expo — Migration 1](docs/migration-to-expo.md)
 - [Firestore User Profiles & Role Security — Migration 2.3](docs/firestore-user-profiles.md)
 - [Medication Management Foundation — Migration 3.1](docs/medication-management-m3.1.md)
+- [Firestore Medication CRUD — Migration 3.2](docs/medication-management-m3.2.md)
 
 ## Firebase Setup — Phase 2.1
 

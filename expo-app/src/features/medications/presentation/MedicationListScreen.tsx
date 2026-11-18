@@ -20,6 +20,7 @@ import {
   medicareTypography,
 } from '@/constants/medicare-theme';
 import type { MedicationListStatus } from '@/features/medications/domain/medication-repository';
+import { isFirestoreMedicationsFeatureEnabled } from '@/services/firebase/firestore-medication-feature';
 
 import { filterVisibleMedications } from './medication-list-utils';
 import { useMedicationManagement } from './useMedicationManagement';
@@ -50,6 +51,7 @@ export default function MedicationListScreen() {
   const [filter, setFilter] = useState<MedicationListStatus>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const normalizedQuery = searchQuery.trim();
+  const medicationsUseFirestore = isFirestoreMedicationsFeatureEnabled();
 
   const visibleMedications = useMemo(
     () => filterVisibleMedications(medications, filter, searchQuery),
@@ -62,12 +64,14 @@ export default function MedicationListScreen() {
       <AppHeader
         backAccessibilityLabel="Quay lại trang chủ"
         onBack={() => router.replace('/elderly')}
-        subtitle="Danh sách được lưu tạm trong phiên hiện tại"
+        subtitle={medicationsUseFirestore ? 'Danh sách được lưu trong hồ sơ Firebase của bạn' : 'Danh sách được lưu tạm trong phiên hiện tại'}
         title="Thuốc của tôi"
       />
       <DemoModeBanner
-        description="Thông tin dưới đây là chế độ trình diễn theo tài khoản đang đăng nhập. Việc thêm hoặc sửa không tạo lịch uống và không lưu lên Firebase."
-        title="Chế độ trình diễn"
+        description={medicationsUseFirestore
+          ? 'Thông tin thuốc chỉ thuộc hồ sơ đang đăng nhập. Việc thêm hoặc sửa không tạo lịch uống, nhắc uống hoặc chỉ định y tế.'
+          : 'Thông tin dưới đây là chế độ trình diễn theo tài khoản đang đăng nhập. Việc thêm hoặc sửa không tạo lịch uống và không lưu lên Firebase.'}
+        title={medicationsUseFirestore ? 'Thuốc trên Firebase' : 'Chế độ trình diễn'}
       />
       <PrimaryButton
         accessibilityHint="Mở biểu mẫu để ghi lại một thuốc do bạn nhập"
@@ -120,7 +124,7 @@ export default function MedicationListScreen() {
       {listStatus === 'error' ? (
         <View style={styles.stateGap}>
           <SafetyNotice
-            message={errorMessage ?? 'Không thể tải danh sách thuốc demo.'}
+            message={errorMessage ?? (medicationsUseFirestore ? 'Không thể tải danh sách thuốc.' : 'Không thể tải danh sách thuốc demo.')}
             title="Không thể tải thuốc"
             tone="error"
           />

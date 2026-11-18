@@ -20,21 +20,23 @@ chỉ nằm trong `expo-app/` để đội ngũ có thể đối chiếu và chu
   của `medicare-ai-cf804`; Firebase Authentication Email/Password dùng
   persistence React Native chính thức với AsyncStorage.
 - `FirebaseAuthRepository` là ranh giới duy nhất giữa UI và Firebase Auth.
-  Mock repository chỉ còn dùng cho dữ liệu thuốc/lịch và trong test.
+  Mock repository còn dùng cho DoseEvent/lịch demo và trong test; Medication có
+  repository Firestore opt-in riêng, mặc định vẫn dùng mock M3.1.
 - User Profile giới hạn chỉ có thể đọc/tạo/cập nhật tại `/users/{auth.uid}` qua
   repository; UID luôn lấy từ Firebase Auth. Role đã lưu chỉ điều hướng UI.
 - Firestore database `(default)` tại `asia-east1` dùng Rules M2.3 đã deploy.
   User Profile vẫn bị feature-gate mặc định ở template; chủ project chỉ bật cờ
   trong `.env` local khi kiểm thử có chủ đích và không có fallback role mock.
-- Medication Management M3.1 có list/add/detail/edit/inactivate trong mock
-  repository in-memory theo UID của session. UI chỉ mở cho role `elderly`; không
-  có AsyncStorage medication persistence hoặc Medication Firestore CRUD.
-- Không có Firestore CRUD cho thuốc/lịch, dữ liệu sức khỏe thật, liên kết người
-  chăm sóc, phân quyền backend hay đồng bộ gia đình.
+- Medication M3.2 có Firestore CRUD owner-only tại
+  `elderlyProfiles/{auth.uid}/medications/{medicationId}` qua flag public
+  `EXPO_PUBLIC_FIRESTORE_MEDICATIONS_ENABLED`, mặc định `false`. Rules M3.2
+  local chưa được deploy; khi flag tắt, M3.1 mock in-memory theo UID vẫn dùng.
+- Không có Firestore CRUD cho lịch, dữ liệu sức khỏe thật, liên kết người chăm
+  sóc, phân quyền backend hay đồng bộ gia đình.
 
-Không triển khai trong Migration 3.1: thuốc/lịch Firestore, dữ liệu sức khỏe
-thật, quyền người chăm sóc với dữ liệu sức khỏe, OCR, TTS/STT nâng cao, thông
-báo đẩy, đồng bộ gia đình, Cloud Functions hoặc deploy lại Firebase Rules,
+Không triển khai trong Migration 3.2: Firestore schedule/dose event, dữ liệu
+sức khỏe thật, quyền người chăm sóc với dữ liệu thuốc, OCR, TTS/STT nâng cao,
+thông báo đẩy, đồng bộ gia đình, Cloud Functions hoặc deploy Firebase Rules,
 Storage Rules hay indexes.
 
 ## Cấu trúc
@@ -156,6 +158,16 @@ khi account B đăng nhập. Zustand clear cache hiển thị khi logout/switch 
 nhưng đây không phải authorization production và không có dữ liệu Medication
 trong AsyncStorage/Firebase. Chi tiết tại
 [Medication Management Foundation — Migration 3.1](../docs/medication-management-m3.1.md).
+
+### Firestore Medication CRUD — Migration 3.2
+
+`FirestoreMedicationRepository` kiểm tra lại UID từ Firebase Auth cho mỗi thao
+tác, dùng path `elderlyProfiles/{auth.uid}/medications/{medicationId}`, server
+timestamps và transaction/revision. Cờ
+`EXPO_PUBLIC_FIRESTORE_MEDICATIONS_ENABLED` vẫn mặc định `false` trong template;
+không bật trước khi Rules M3.2 được review và deploy riêng. Medication Firestore
+không seed demo data; DoseEvent/lịch vẫn là mock độc lập. Xem
+[Firestore Medication CRUD — Migration 3.2](../docs/medication-management-m3.2.md).
 
 Expo Go dùng native container riêng. Trước EAS/development build, nhóm cần
 quyết định Android/iOS identifiers và Firebase client apps của Expo một cách có

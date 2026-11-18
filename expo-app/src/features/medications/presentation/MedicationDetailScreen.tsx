@@ -17,6 +17,7 @@ import {
   medicareSpacing,
   medicareTypography,
 } from '@/constants/medicare-theme';
+import { isFirestoreMedicationsFeatureEnabled } from '@/services/firebase/firestore-medication-feature';
 import type { Medication } from '@/types/domain';
 
 import { useMedicationManagement } from './useMedicationManagement';
@@ -38,6 +39,7 @@ export default function MedicationDetailScreen() {
   const resolvedMedicationId = Array.isArray(medicationId) ? medicationId[0] : medicationId;
   const medication = medications.find((item) => item.id === resolvedMedicationId);
   const isUpdating = operationStatus === 'loading';
+  const medicationsUseFirestore = isFirestoreMedicationsFeatureEnabled();
 
   const goToList = () => router.replace('/elderly/medications');
 
@@ -48,7 +50,12 @@ export default function MedicationDetailScreen() {
 
     try {
       await markMedicationInactive(medication.id);
-      Alert.alert('Đã cập nhật trạng thái', 'Thuốc được đánh dấu là đã ngừng sử dụng trong chế độ trình diễn.');
+      Alert.alert(
+        'Đã cập nhật trạng thái',
+        medicationsUseFirestore
+          ? 'Thuốc được đánh dấu là đã ngừng sử dụng trong hồ sơ Firebase của bạn.'
+          : 'Thuốc được đánh dấu là đã ngừng sử dụng trong chế độ trình diễn.',
+      );
     } catch {
       // The store exposes a Vietnamese error in the screen below.
     }
@@ -82,8 +89,10 @@ export default function MedicationDetailScreen() {
         title="Chi tiết thuốc"
       />
       <DemoModeBanner
-        description="Đây là dữ liệu minh họa theo tài khoản hiện tại. Không có lịch nhắc mới được tạo hoặc cập nhật từ màn hình này."
-        title="Chế độ trình diễn"
+        description={medicationsUseFirestore
+          ? 'Đây là dữ liệu thuốc của hồ sơ hiện tại. Không có lịch nhắc mới được tạo hoặc cập nhật từ màn hình này.'
+          : 'Đây là dữ liệu minh họa theo tài khoản hiện tại. Không có lịch nhắc mới được tạo hoặc cập nhật từ màn hình này.'}
+        title={medicationsUseFirestore ? 'Thuốc trên Firebase' : 'Chế độ trình diễn'}
       />
       {errorMessage ? <SafetyNotice message={errorMessage} title="Không thể hoàn tất thao tác" tone="error" /> : null}
       <MedicationInformation medication={medication} />

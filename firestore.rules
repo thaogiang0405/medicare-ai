@@ -94,7 +94,96 @@ service cloud.firestore {
         ]);
     }
 
-    // Migration 2.3's only enabled client-write surface. `get` deliberately
+    function hasValidElderlyProfile(uid) {
+      return ownsUser(uid)
+        && exists(/databases/$(database)/documents/users/$(uid))
+        && hasValidUserProfileSchema(get(/databases/$(database)/documents/users/$(uid)).data)
+        && get(/databases/$(database)/documents/users/$(uid)).data.uid == uid
+        && get(/databases/$(database)/documents/users/$(uid)).data.primaryRole == 'elderly'
+        && get(/databases/$(database)/documents/users/$(uid)).data.roles.elderly == true
+        && get(/databases/$(database)/documents/users/$(uid)).data.roles.caregiver == false
+        && get(/databases/$(database)/documents/users/$(uid)).data.onboardingCompleted == true;
+    }
+
+    function hasExactMedicationFields(data) {
+      return data.keys().hasAll([
+          'ownerUid',
+          'name',
+          'strengthText',
+          'directionsText',
+          'status',
+          'createdAt',
+          'updatedAt',
+          'revision'
+        ])
+        && data.keys().hasOnly([
+          'ownerUid',
+          'name',
+          'strengthText',
+          'directionsText',
+          'status',
+          'createdAt',
+          'updatedAt',
+          'revision'
+        ]);
+    }
+
+    function hasValidMedicationSchema(data) {
+      return hasExactMedicationFields(data)
+        && data.ownerUid is string
+        && data.name is string
+        && data.name.size() >= 1
+        && data.name.size() <= 120
+        && data.name.matches('.*\\S.*')
+        && data.strengthText is string
+        && data.strengthText.size() <= 80
+        && data.directionsText is string
+        && data.directionsText.size() <= 500
+        && data.status is string
+        && data.status in ['active', 'inactive']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && data.revision is int
+        && data.revision >= 1;
+    }
+
+    function isValidMedicationCreate(uid) {
+      return hasValidElderlyProfile(uid)
+        && hasValidMedicationSchema(request.resource.data)
+        && request.resource.data.ownerUid == uid
+        && request.resource.data.status == 'active'
+        && request.resource.data.revision == 1
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    function isValidMedicationUpdate(uid) {
+      return hasValidElderlyProfile(uid)
+        && hasValidMedicationSchema(resource.data)
+        && hasValidMedicationSchema(request.resource.data)
+        && resource.data.ownerUid == uid
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.ownerUid == uid
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.revision == resource.data.revision + 1
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'name',
+          'strengthText',
+          'directionsText',
+          'status',
+          'updatedAt',
+          'revision'
+        ])
+        && (
+          (resource.data.status == 'active'
+            && request.resource.data.status in ['active', 'inactive'])
+          || (resource.data.status == 'inactive'
+            && request.resource.data.status == 'inactive')
+        );
+    }
+
+    // Migration 2.3 profile surface. `get` deliberately
     // excludes collection queries so users cannot enumerate other profiles.
     match /users/{uid} {
       allow get: if ownsUser(uid);
@@ -118,6 +207,16 @@ service cloud.firestore {
 
     match /caregiverInvites/{document=**} {
       allow read, write: if false;
+    }
+
+    // M3.2: an elderly owner may access only their own medication records.
+    // A profile role from the UI never grants access; the canonical M2.3
+    // `/users/{uid}` document is checked for every operation.
+    match /elderlyProfiles/{uid}/medications/{medicationId} {
+      allow get, list: if hasValidElderlyProfile(uid);
+      allow create: if isValidMedicationCreate(uid);
+      allow update: if isValidMedicationUpdate(uid);
+      allow delete: if false;
     }
 
     match /elderlyProfiles/{document=**} {

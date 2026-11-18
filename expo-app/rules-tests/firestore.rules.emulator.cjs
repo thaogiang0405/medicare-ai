@@ -12,6 +12,8 @@ const {
   deleteDoc,
   getDoc,
   getDocs,
+  orderBy,
+  query,
   runTransaction,
   serverTimestamp,
   setDoc,
@@ -52,6 +54,28 @@ function firestoreAs(uid) {
 
 function userProfileReference(database, uid) {
   return doc(database, 'users', uid);
+}
+
+function medication(ownerUid, overrides = {}) {
+  return {
+    ownerUid,
+    name: 'Paracetamol',
+    strengthText: '500 mg',
+    directionsText: 'Nội dung do người dùng cung cấp',
+    status: 'active',
+    revision: 1,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    ...overrides,
+  };
+}
+
+function medicationReference(database, ownerUid, medicationId = 'medication-a') {
+  return doc(database, 'elderlyProfiles', ownerUid, 'medications', medicationId);
+}
+
+function medicationsCollection(database, ownerUid) {
+  return collection(database, 'elderlyProfiles', ownerUid, 'medications');
 }
 
 async function seed(documentPath, data) {
@@ -199,8 +223,9 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
   });
 
   it('denies caregiver access to health data without an active server-trusted link', async () => {
+    await seed(`users/${caregiver}`, userProfile(caregiver, 'caregiver'));
     await seed(`elderlyProfiles/${userA}/medications/medication-a`, {
-      elderlyId: userA,
+      ownerUid: userA,
       name: 'Dữ liệu giả lập',
     });
     const database = firestoreAs(caregiver);
@@ -301,10 +326,157 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
     await assertFails(deleteDoc(userProfileReference(database, userA)));
   });
 
+  it('allows an elderly owner to create, get, and query only their own medication collection', async () => {
+    await seed(`users/${userA}`, userProfile(userA));
+    const database = firestoreAs(userA);
+    const reference = medicationReference(database, userA);
+
+    await assertSucceeds(setDoc(reference, medication(userA)));
+    await assertSucceeds(getDoc(reference));
+    await assertSucceeds(getDocs(query(medicationsCollection(database, userA), orderBy('updatedAt', 'desc'))));
+  });
+
+  it('allows an elderly owner to update and inactivate medication records with server timestamps and revisions', async () => {
+    await seed(`users/${userA}`, userProfile(userA));
+    await seed(`elderlyProfiles/${userA}/medications/medication-a`, medication(userA));
+    const database = firestoreAs(userA);
+    const reference = medicationReference(database, userA);
+
+    await assertSucceeds(
+      updateDoc(reference, {
+        name: 'Paracetamol đã cập nhật',
+        revision: 2,
+        updatedAt: serverTimestamp(),
+      }),
+    );
+    await assertSucceeds(
+      updateDoc(reference, {
+        status: 'inactive',
+        revision: 3,
+        updatedAt: serverTimestamp(),
+      }),
+    );
+  });
+
+  it('allows the transaction-backed medication update used by the repository', async () => {
+    await seed(`users/${userA}`, userProfile(userA));
+    await seed(`elderlyProfiles/${userA}/medications/medication-a`, medication(userA));
+    const database = firestoreAs(userA);
+    const reference = medicationReference(database, userA);
+
+    await assertSucceeds(
+      runTransaction(database, async (transaction) => {
+        await transaction.get(reference);
+        transaction.update(reference, {
+          directionsText: 'Nội dung đã cập nhật bởi chủ tài khoản',
+          revision: 2,
+          updatedAt: serverTimestamp(),
+        });
+      }),
+    );
+  });
+
+  it('denies unauthenticated medication get, list, create, update, and delete', async () => {
+    await seed(`users/${userA}`, userProfile(userA));
+    await seed(`elderlyProfiles/${userA}/medications/medication-a`, medication(userA));
+    const database = testEnvironment.unauthenticatedContext().firestore();
+    const reference = medicationReference(database, userA);
+
+    await assertFails(getDoc(reference));
+    await assertFails(getDocs(medicationsCollection(database, userA)));
+    await assertFails(setDoc(medicationReference(database, userA, 'new-medication'), medication(userA)));
+    await assertFails(updateDoc(reference, { name: 'Trái phép', revision: 2, updatedAt: serverTimestamp() }));
+    await assertFails(deleteDoc(reference));
+  });
+
+  it('denies every cross-user medication operation even when both users have elderly profiles', async () => {
+    await seed(`users/${userA}`, userProfile(userA));
+    await seed(`users/${userB}`, userProfile(userB));
+    await seed(`elderlyProfiles/${userA}/medications/medication-a`, medication(userA));
+    const database = firestoreAs(userB);
+    const reference = medicationReference(database, userA);
+
+    await assertFails(getDoc(reference));
+    await assertFails(getDocs(medicationsCollection(database, userA)));
+    await assertFails(setDoc(medicationReference(database, userA, 'new-medication'), medication(userA)));
+    await assertFails(updateDoc(reference, { name: 'Trái phép', revision: 2, updatedAt: serverTimestamp() }));
+    await assertFails(deleteDoc(reference));
+  });
+
+  it('denies a caregiver medication access even on a path matching the caregiver UID', async () => {
+    await seed(`users/${caregiver}`, userProfile(caregiver, 'caregiver'));
+    await seed(`elderlyProfiles/${caregiver}/medications/medication-a`, medication(caregiver));
+    const database = firestoreAs(caregiver);
+    const reference = medicationReference(database, caregiver);
+
+    await assertFails(getDoc(reference));
+    await assertFails(getDocs(medicationsCollection(database, caregiver)));
+    await assertFails(setDoc(medicationReference(database, caregiver, 'new-medication'), medication(caregiver)));
+    await assertFails(updateDoc(reference, { name: 'Trái phép', revision: 2, updatedAt: serverTimestamp() }));
+    await assertFails(deleteDoc(reference));
+  });
+
+  it('denies owner UID spoofing, immutable fields, invalid revisions, and reactivation', async () => {
+    await seed(`users/${userA}`, userProfile(userA));
+    await seed(`elderlyProfiles/${userA}/medications/medication-a`, medication(userA));
+    await seed(
+      `elderlyProfiles/${userA}/medications/medication-inactive`,
+      medication(userA, { status: 'inactive' }),
+    );
+    const database = firestoreAs(userA);
+    const reference = medicationReference(database, userA);
+
+    await assertFails(setDoc(medicationReference(database, userA, 'spoofed-owner'), medication(userB)));
+    await assertFails(updateDoc(reference, { ownerUid: userB, revision: 2, updatedAt: serverTimestamp() }));
+    await assertFails(updateDoc(reference, { createdAt: serverTimestamp(), revision: 2, updatedAt: serverTimestamp() }));
+    await assertFails(updateDoc(reference, { name: 'Revision không tăng', updatedAt: serverTimestamp() }));
+    await assertFails(updateDoc(reference, { name: 'Revision nhảy cóc', revision: 3, updatedAt: serverTimestamp() }));
+    await assertFails(
+      updateDoc(medicationReference(database, userA, 'medication-inactive'), {
+        status: 'active',
+        revision: 2,
+        updatedAt: serverTimestamp(),
+      }),
+    );
+  });
+
+  it('denies malformed medication schemas and forged timestamps', async () => {
+    await seed(`users/${userA}`, userProfile(userA));
+    const database = firestoreAs(userA);
+    const invalidDocuments = [
+      medication(userA, { extraPrivilegedField: true }),
+      medication(userA, { name: '   ' }),
+      medication(userA, { name: 42 }),
+      medication(userA, { name: 'x'.repeat(121) }),
+      medication(userA, { strengthText: 'x'.repeat(81) }),
+      medication(userA, { strengthText: 500 }),
+      medication(userA, { directionsText: 'x'.repeat(501) }),
+      medication(userA, { directionsText: ['Không hợp lệ'] }),
+      medication(userA, { status: 'deleted' }),
+      medication(userA, { status: 'inactive' }),
+      medication(userA, { revision: 2 }),
+      medication(userA, { revision: '1' }),
+      medication(userA, { createdAt: new Date('2000-01-01T00:00:00.000Z') }),
+      medication(userA, { updatedAt: new Date('2000-01-01T00:00:00.000Z') }),
+    ];
+
+    for (const [index, data] of invalidDocuments.entries()) {
+      await assertFails(setDoc(medicationReference(database, userA, `invalid-${index}`), data));
+    }
+  });
+
+  it('denies deleting medication records for the owner', async () => {
+    await seed(`users/${userA}`, userProfile(userA));
+    await seed(`elderlyProfiles/${userA}/medications/medication-a`, medication(userA));
+    const database = firestoreAs(userA);
+
+    await assertFails(deleteDoc(medicationReference(database, userA)));
+  });
+
   it('denies every deferred health, caregiver, device, and unknown surface to the profile owner', async () => {
+    await seed(`users/${userA}`, userProfile(userA));
     const database = firestoreAs(userA);
     const blockedWrites = [
-      [`elderlyProfiles/${userA}/medications/medication-a`, { elderlyId: userA }],
       [`elderlyProfiles/${userA}/prescriptions/prescription-a`, { elderlyId: userA }],
       [`elderlyProfiles/${userA}/ocrResults/ocr-a`, { elderlyId: userA }],
       [`elderlyProfiles/${userA}/caregiverLinks/${caregiver}`, { elderlyId: userA, status: 'active' }],
@@ -320,9 +492,9 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
   });
 
   it('denies profile-owner reads from every deferred health and caregiver surface', async () => {
+    await seed(`users/${userA}`, userProfile(userA));
     const database = firestoreAs(userA);
     const blockedReads = [
-      `elderlyProfiles/${userA}/medications/medication-a`,
       `elderlyProfiles/${userA}/prescriptions/prescription-a`,
       `elderlyProfiles/${userA}/ocrResults/ocr-a`,
       `elderlyProfiles/${userA}/caregiverLinks/${caregiver}`,

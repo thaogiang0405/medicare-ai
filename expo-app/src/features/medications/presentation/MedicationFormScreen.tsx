@@ -26,6 +26,7 @@ import {
   type MedicationInputErrors,
 } from '@/features/medications/domain/medication-validation';
 import { medicationFieldLimits, type MedicationInput } from '@/features/medications/domain/medication-repository';
+import { isFirestoreMedicationsFeatureEnabled } from '@/services/firebase/firestore-medication-feature';
 import type { Medication } from '@/types/domain';
 
 import { useMedicationManagement } from './useMedicationManagement';
@@ -63,6 +64,7 @@ function MedicationForm({ mode, medication }: Readonly<{ mode: MedicationFormMod
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isEdit = mode === 'edit';
   const isSaving = isSubmitting || operationStatus === 'loading';
+  const medicationsUseFirestore = isFirestoreMedicationsFeatureEnabled();
 
   const pageCopy = useMemo(
     () =>
@@ -72,16 +74,20 @@ function MedicationForm({ mode, medication }: Readonly<{ mode: MedicationFormMod
             subtitle: 'Chỉ sửa nội dung bạn đã ghi nhận',
             saveLabel: 'Lưu thay đổi',
             successTitle: 'Đã cập nhật thuốc',
-            successMessage: 'Thông tin thuốc đã được cập nhật trong chế độ trình diễn.',
+            successMessage: medicationsUseFirestore
+              ? 'Thông tin thuốc đã được cập nhật trong hồ sơ Firebase của bạn.'
+              : 'Thông tin thuốc đã được cập nhật trong chế độ trình diễn.',
           }
         : {
             title: 'Thêm thuốc',
             subtitle: 'Ghi lại thông tin bạn cung cấp',
             saveLabel: 'Lưu thuốc',
             successTitle: 'Đã lưu thuốc',
-            successMessage: 'Thuốc đã được thêm trong chế độ trình diễn.',
+            successMessage: medicationsUseFirestore
+              ? 'Thuốc đã được thêm vào hồ sơ Firebase của bạn.'
+              : 'Thuốc đã được thêm trong chế độ trình diễn.',
           },
-    [isEdit],
+    [isEdit, medicationsUseFirestore],
   );
 
   const updateField = (field: keyof MedicationInput, value: string) => {
@@ -147,8 +153,10 @@ function MedicationForm({ mode, medication }: Readonly<{ mode: MedicationFormMod
           title={pageCopy.title}
         />
         <DemoModeBanner
-          description="Chỉ ghi lại tên, quy cách và hướng dẫn bạn cung cấp. Ứng dụng không suy luận liều, giờ uống hoặc tạo lịch nhắc."
-          title="Chế độ trình diễn"
+          description={medicationsUseFirestore
+            ? 'Chỉ ghi lại tên, quy cách và hướng dẫn bạn cung cấp trong hồ sơ Firebase. Ứng dụng không suy luận liều, giờ uống hoặc tạo lịch nhắc.'
+            : 'Chỉ ghi lại tên, quy cách và hướng dẫn bạn cung cấp. Ứng dụng không suy luận liều, giờ uống hoặc tạo lịch nhắc.'}
+          title={medicationsUseFirestore ? 'Thuốc trên Firebase' : 'Chế độ trình diễn'}
         />
         <View style={styles.form}>
           <TextField
@@ -207,7 +215,9 @@ function MedicationForm({ mode, medication }: Readonly<{ mode: MedicationFormMod
           ) : null}
           <View style={styles.actions}>
             <PrimaryButton
-              accessibilityHint="Lưu thông tin thuốc đã nhập trong chế độ trình diễn"
+              accessibilityHint={medicationsUseFirestore
+                ? 'Lưu thông tin thuốc đã nhập trong hồ sơ Firebase của bạn'
+                : 'Lưu thông tin thuốc đã nhập trong chế độ trình diễn'}
               disabled={!activeUserId}
               label={pageCopy.saveLabel}
               loading={isSaving}

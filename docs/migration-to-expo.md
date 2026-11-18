@@ -235,3 +235,23 @@ Expo và thu thập bằng chứng riêng cho role onboarding, persistence và �
 khoản. Chủ project đã cho biết đã thực hiện kiểm thử User Profile trên iPhone,
 nhưng kết quả từng trường hợp chưa được ghi nhận ở đây. Tài liệu chi tiết là
 [`firestore-user-profiles.md`](firestore-user-profiles.md).
+
+## Migration 3.1 — Medication Management Foundation
+
+Migration 3.1 chỉ xây UI và domain mock cho Medication Management của role
+`elderly`. Route `elderly/medications` có list/add/detail/edit/inactivate và
+được bảo vệ lại ở nested elderly layout; caregiver không mở được bằng direct
+route. `MedicationRepository` dùng data source mutable in-memory theo `uid`,
+trim/validate text người dùng nhập và không nhận owner UID từ form/UI.
+
+Hai medication demo Metformin/Amlodipine và DoseEvent demo được tạo riêng cho
+mỗi UID để dashboard cũ tiếp tục hiển thị. Đánh dấu inactive chỉ cập nhật status
+mock; không sinh schedule, không xóa dose event, không suy luận hướng dẫn sử
+dụng và không persist qua app restart. Logout/account switch reset Zustand cache
+và bỏ stale request; đây là demo isolation, không thay thế Rules production.
+
+Không import Firestore Medication, không đổi/deploy Firestore Rules, Storage,
+indexes hay Functions. Firestore production tiếp tục deny medication CRUD cho
+đến milestone M3.2 được thiết kế/review riêng. Xem
+[`medication-management-m3.1.md`](medication-management-m3.1.md) để biết
+validation, accessibility, tests và chuẩn bị M3.2.

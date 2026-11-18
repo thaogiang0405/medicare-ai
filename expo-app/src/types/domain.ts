@@ -46,6 +46,12 @@ export interface Medication {
   strengthText: string;
   directionsText: string;
   status: MedicationStatus;
+  /**
+   * In-memory ISO timestamps keep the portable model ready for a future
+   * Firestore mapping. They are not clinical timestamps or dose history.
+   */
+  createdAt: string;
+  updatedAt: string;
 }
 
 export type DoseStatus =

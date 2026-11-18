@@ -6,6 +6,7 @@ import {
   medicareSpacing,
   medicareTypography,
 } from '@/constants/medicare-theme';
+import type { MedicationStatus } from '@/types/domain';
 
 export type DoseStatus =
   | 'pending'
@@ -14,12 +15,16 @@ export type DoseStatus =
   | 'snoozed'
   | 'unanswered';
 
+export type DisplayStatus = DoseStatus | MedicationStatus;
+
 export type StatusBadgeProps = {
-  status: DoseStatus;
+  status: DisplayStatus;
   label?: string;
 };
 
-const defaultLabels: Record<DoseStatus, string> = {
+const defaultLabels: Record<DisplayStatus, string> = {
+  active: 'Đang sử dụng',
+  inactive: 'Đã ngừng sử dụng',
   pending: 'Đang chờ',
   reportedTaken: 'Đã báo đã uống',
   reportedSkipped: 'Đã báo bỏ qua',
@@ -41,6 +46,16 @@ export function StatusBadge({ status, label }: StatusBadgeProps) {
 }
 
 const statusPalettes = {
+  active: {
+    backgroundColor: medicareColors.successContainer,
+    borderColor: medicareColors.success,
+    text: { color: medicareColors.success },
+  },
+  inactive: {
+    backgroundColor: medicareColors.surfaceMuted,
+    borderColor: medicareColors.border,
+    text: { color: medicareColors.textMuted },
+  },
   pending: {
     backgroundColor: medicareColors.warningContainer,
     borderColor: medicareColors.warning,

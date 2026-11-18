@@ -1,19 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 
-import { mockMedicationRepository } from '@/features/medications';
-import { useDoseEventStore, useSessionStore } from '@/store';
+import { useDoseEventStore, useMedicationStore, useSessionStore } from '@/store';
 import type { DoseEvent, Medication } from '@/types/domain';
+
+import { resolveMedicationForDose } from './elderly-dashboard-utils';
 
 export type ElderlyDashboardDose = {
   event: DoseEvent;
   medication: Medication | null;
-};
-
-type MedicationLoadState = {
-  errorMessage: string | null;
-  isLoading: boolean;
-  medications: Medication[];
-  userId: string | null;
 };
 
 /**
@@ -27,74 +21,44 @@ export function useElderlyDashboard() {
   const doseErrorMessage = useDoseEventStore((state) => state.errorMessage);
   const loadToday = useDoseEventStore((state) => state.loadToday);
   const recordResponse = useDoseEventStore((state) => state.recordResponse);
-  const [medicationState, setMedicationState] = useState<MedicationLoadState>({
-    errorMessage: null,
-    isLoading: false,
-    medications: [],
-    userId: null,
-  });
+  const activeMedicationUserId = useMedicationStore((state) => state.activeUserId);
+  const medications = useMedicationStore((state) => state.medications);
+  const medicationListStatus = useMedicationStore((state) => state.listStatus);
+  const medicationErrorMessage = useMedicationStore((state) => state.errorMessage);
+  const loadMedications = useMedicationStore((state) => state.loadForAuthenticatedUser);
 
   const userId = user?.id;
 
   useEffect(() => {
-    let isActive = true;
-
     if (!userId) {
-      return () => {
-        isActive = false;
-      };
+      return;
     }
 
     void loadToday(userId);
-    void mockMedicationRepository
-      .getActiveMedications(userId)
-      .then((result) => {
-        if (isActive) {
-          setMedicationState({
-            errorMessage: null,
-            isLoading: false,
-            medications: result,
-            userId,
-          });
-        }
-      })
-      .catch(() => {
-        if (isActive) {
-          setMedicationState({
-            errorMessage: 'Không thể tải danh sách thuốc demo.',
-            isLoading: false,
-            medications: [],
-            userId,
-          });
-        }
-      });
+    void loadMedications(userId);
+  }, [loadMedications, loadToday, userId]);
 
-    return () => {
-      isActive = false;
-    };
-  }, [loadToday, userId]);
-
-  const hasCurrentMedicationState = medicationState.userId === userId;
-  const medicationLoading = Boolean(userId) && (!hasCurrentMedicationState || medicationState.isLoading);
-  const medicationErrorMessage = hasCurrentMedicationState ? medicationState.errorMessage : null;
+  const hasCurrentMedicationState = activeMedicationUserId === userId;
+  const medicationLoading = Boolean(userId) && (!hasCurrentMedicationState || medicationListStatus === 'loading');
+  const currentMedicationErrorMessage = hasCurrentMedicationState ? medicationErrorMessage : null;
 
   const doses = useMemo<ElderlyDashboardDose[]>(
     () => {
-      const medications = hasCurrentMedicationState ? medicationState.medications : [];
+      const currentMedications = hasCurrentMedicationState ? medications : [];
 
       return events.map((event) => ({
         event,
-        medication: medications.find((medication) => medication.id === event.medicationId) ?? null,
+        medication: resolveMedicationForDose(event, currentMedications),
       }));
     },
-    [events, hasCurrentMedicationState, medicationState.medications],
+    [events, hasCurrentMedicationState, medications],
   );
 
   return {
     user,
     doses,
     isLoading: doseLoading || medicationLoading,
-    errorMessage: doseErrorMessage ?? medicationErrorMessage,
+    errorMessage: doseErrorMessage ?? currentMedicationErrorMessage,
     recordResponse,
   };
 }

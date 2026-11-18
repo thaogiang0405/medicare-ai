@@ -102,9 +102,10 @@ export default function ElderlyHomeScreen() {
           title="Quét đơn thuốc"
         />
         <ActionCard
-          description="Danh sách thuốc đầy đủ sẽ có ở migration sau."
+          accessibilityHint="Mở danh sách thuốc được lưu trong chế độ trình diễn của tài khoản này"
+          description="Xem, thêm, chỉnh sửa hoặc đánh dấu ngừng sử dụng thuốc demo."
           icon={<Text style={styles.icon}>☰</Text>}
-          onPress={() => showDeferredFeature('Thuốc của tôi')}
+          onPress={() => router.push('/elderly/medications')}
           title="Thuốc của tôi"
         />
         <ActionCard

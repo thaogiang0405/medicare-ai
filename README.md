@@ -37,7 +37,13 @@ nhưng kết quả theo từng trường hợp chưa được ghi nhận trong r
 không coi role onboarding, persistence hoặc đổi tài khoản là đã pass nếu không
 có bằng chứng tương ứng.
 
-Xem [kế hoạch Migration](docs/migration-to-expo.md), [hướng dẫn chạy Expo](expo-app/README.md), [Firebase JavaScript SDK Integration](docs/firebase-js-sdk-integration.md), [Firebase Authentication — Migration 2.2](docs/firebase-authentication.md) và [Firestore User Profiles — Migration 2.3](docs/firestore-user-profiles.md). Flutter vẫn là mã tham chiếu cho đến khi migration được kiểm thử thiết bị và được phê duyệt riêng.
+Migration 3.1 bổ sung Medication Management **chỉ trong bộ nhớ** cho profile
+`elderly`: danh sách, thêm, chi tiết, chỉnh sửa và đánh dấu ngừng sử dụng.
+Mock records và DoseEvent demo được cô lập theo UID; không có Medication
+Firestore CRUD, AsyncStorage medication persistence, lịch nhắc thật hoặc quyền
+caregiver. Xem [Medication Management — Migration 3.1](docs/medication-management-m3.1.md).
+
+Xem [kế hoạch Migration](docs/migration-to-expo.md), [hướng dẫn chạy Expo](expo-app/README.md), [Firebase JavaScript SDK Integration](docs/firebase-js-sdk-integration.md), [Firebase Authentication — Migration 2.2](docs/firebase-authentication.md), [Firestore User Profiles — Migration 2.3](docs/firestore-user-profiles.md) và [Medication Management — Migration 3.1](docs/medication-management-m3.1.md). Flutter vẫn là mã tham chiếu cho đến khi migration được kiểm thử thiết bị và được phê duyệt riêng.
 
 ## Trạng thái hiện tại — Phase 2.1: Firebase Setup
 
@@ -46,7 +52,7 @@ Xem [kế hoạch Migration](docs/migration-to-expo.md), [hướng dẫn chạy 
 - Splash, onboarding, đăng nhập/đăng ký trình diễn và chọn vai trò.
 - Repository contract cùng `Mock*Repository` in-memory cho auth, thuốc và dose event; UI không phụ thuộc Firebase trực tiếp.
 - Trang chủ cho Người cao tuổi và Người chăm sóc.
-- Danh sách thuốc, thêm thuốc, chi tiết/ngừng thuốc trong bộ nhớ.
+- Danh sách thuốc, thêm/chỉnh sửa, chi tiết/ngừng thuốc trong bộ nhớ.
 - Lịch thuốc hôm nay; nút `Đã uống`, `Bỏ qua`, `Nhắc lại` cập nhật trạng thái giả lập.
 - Luồng kiểm tra đơn thuốc có bước xác nhận bắt buộc trước khi tạo thuốc giả lập.
 - Các màn hình nền tảng cho lịch sử, liên kết gia đình, theo dõi, hồ sơ và cài đặt.
@@ -103,6 +109,7 @@ Mỗi feature sẽ phát triển theo hướng `data → domain → presentation
 - [Firebase Setup — Phase 2.1](docs/firebase-setup.md)
 - [Migration sang React Native + Expo — Migration 1](docs/migration-to-expo.md)
 - [Firestore User Profiles & Role Security — Migration 2.3](docs/firestore-user-profiles.md)
+- [Medication Management Foundation — Migration 3.1](docs/medication-management-m3.1.md)
 
 ## Firebase Setup — Phase 2.1
 

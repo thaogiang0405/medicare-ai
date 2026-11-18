@@ -3,6 +3,16 @@
 jest.mock('@/features/auth', () => ({ getFirebaseAuthRepository: jest.fn() }));
 jest.mock('@/features/profile', () => ({ getFirestoreUserProfileRepository: jest.fn() }));
 
+const mockResetDoseEvents = jest.fn();
+const mockResetMedications = jest.fn();
+
+jest.mock('./dose-event-store', () => ({
+  useDoseEventStore: { getState: () => ({ reset: mockResetDoseEvents }) },
+}));
+jest.mock('./medication-store', () => ({
+  useMedicationStore: { getState: () => ({ reset: mockResetMedications }) },
+}));
+
 import type {
   AuthRepository,
   AuthStateErrorObserver,
@@ -12,7 +22,7 @@ import type {
 import type { UserProfileRepository } from '@/features/profile/domain/user-profile-repository';
 import type { AppUser, UserProfile, UserRole } from '@/types/domain';
 
-import { createSessionStore } from './session-store';
+import { createSessionStore, resetDemoSessionData } from './session-store';
 
 const createdAt = new Date('2026-11-17T00:00:00.000Z');
 const updatedAt = new Date('2026-11-17T00:01:00.000Z');
@@ -82,6 +92,13 @@ async function flushProfileLoad(): Promise<void> {
 }
 
 describe('session store', () => {
+  it('clears both medication and dose presentation state on logout or account switching', () => {
+    resetDemoSessionData();
+
+    expect(mockResetDoseEvents).toHaveBeenCalledTimes(1);
+    expect(mockResetMedications).toHaveBeenCalledTimes(1);
+  });
+
   it('waits for Firebase observer state instead of auto-signing in with mock data', () => {
     const { repository, emitAuthState } = createAuthRepository();
     const store = createSessionStore(() => repository, jest.fn(), () => createProfileRepository(), () => true);

@@ -17,6 +17,7 @@ import {
 import type { AppUser, UserProfile, UserRole } from '@/types/domain';
 
 import { useDoseEventStore } from './dose-event-store';
+import { useMedicationStore } from './medication-store';
 
 export type AuthStatus = 'initializing' | 'authenticated' | 'unauthenticated';
 export type ProfileStatus = 'idle' | 'loading' | 'missing' | 'ready' | 'error' | 'disabled';
@@ -44,6 +45,12 @@ type AuthRepositoryFactory = () => AuthRepository;
 type ProfileRepositoryFactory = () => UserProfileRepository;
 type ResetSessionData = () => void;
 type ProfileFeatureEnabled = () => boolean;
+
+/** Clears account-bound demo presentation state without deleting repository data. */
+export function resetDemoSessionData(): void {
+  useDoseEventStore.getState().reset();
+  useMedicationStore.getState().reset();
+}
 
 function toSafeErrorMessage(error: unknown): string {
   return error instanceof Error
@@ -91,7 +98,7 @@ async function performAuthenticationAction(
  */
 export function createSessionStore(
   getAuthRepository: AuthRepositoryFactory = getFirebaseAuthRepository,
-  resetSessionData: ResetSessionData = () => useDoseEventStore.getState().reset(),
+  resetSessionData: ResetSessionData = resetDemoSessionData,
   getProfileRepository: ProfileRepositoryFactory = getFirestoreUserProfileRepository,
   isProfileFeatureEnabled: ProfileFeatureEnabled = isFirestoreUserProfilesFeatureEnabled,
 ) {

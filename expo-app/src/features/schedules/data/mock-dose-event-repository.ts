@@ -29,32 +29,58 @@ function cloneEvent(event: DoseEvent): DoseEvent {
   return { ...event };
 }
 
-/**
- * An in-memory data source for UI demonstration. A fresh app session resets
- * the dose responses; this is intentionally not a medication record.
- */
-export class MockDoseEventRepository implements DoseEventRepository {
-  private events: DoseEvent[] = createInitialEvents().map(cloneEvent);
+function assertUserId(userId: string): string {
+  const normalizedUserId = userId.trim();
 
-  async getTodayEvents(_userId: string): Promise<DoseEvent[]> {
-    return this.events.map(cloneEvent);
+  if (!normalizedUserId) {
+    throw new Error('Không thể xác định tài khoản hiện tại. Vui lòng đăng nhập lại.');
   }
 
-  async recordResponse(eventId: string, status: DoseResponseStatus): Promise<DoseEvent> {
-    const eventIndex = this.events.findIndex((event) => event.id === eventId);
+  return normalizedUserId;
+}
+
+/**
+ * An in-memory data source for UI demonstration. Events are partitioned by
+ * signed-in UID so one test account never receives another account's response.
+ * This remains demo data, not a medication record or production authorization.
+ */
+export class MockDoseEventRepository implements DoseEventRepository {
+  private readonly eventsByUserId = new Map<string, DoseEvent[]>();
+
+  private getUserEvents(userId: string): DoseEvent[] {
+    const safeUserId = assertUserId(userId);
+    const existing = this.eventsByUserId.get(safeUserId);
+
+    if (existing) {
+      return existing;
+    }
+
+    const initialEvents = createInitialEvents().map(cloneEvent);
+    this.eventsByUserId.set(safeUserId, initialEvents);
+    return initialEvents;
+  }
+
+  async getTodayEvents(userId: string): Promise<DoseEvent[]> {
+    return this.getUserEvents(userId).map(cloneEvent);
+  }
+
+  async recordResponse(userId: string, eventId: string, status: DoseResponseStatus): Promise<DoseEvent> {
+    const safeUserId = assertUserId(userId);
+    const events = this.getUserEvents(safeUserId);
+    const eventIndex = events.findIndex((event) => event.id === eventId);
 
     if (eventIndex < 0) {
       throw new Error('Không tìm thấy lịch uống thuốc demo.');
     }
 
     const updatedEvent: DoseEvent = {
-      ...this.events[eventIndex],
+      ...events[eventIndex],
       status,
       respondedAt: new Date().toISOString(),
-      respondedBy: 'self-reported-demo',
+      respondedBy: safeUserId,
     };
 
-    this.events[eventIndex] = updatedEvent;
+    events[eventIndex] = updatedEvent;
     return cloneEvent(updatedEvent);
   }
 }

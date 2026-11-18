@@ -49,7 +49,7 @@ describe('getAuthRouteAccess', () => {
     });
   });
 
-  it('allows only the caregiver dashboard for a caregiver profile', () => {
+  it('allows only the caregiver dashboard for a caregiver profile, including direct elderly medication URLs', () => {
     expect(getAuthRouteAccess('authenticated', 'ready', 'caregiver')).toMatchObject({
       allowRoleSelection: false,
       allowElderlyDashboard: false,

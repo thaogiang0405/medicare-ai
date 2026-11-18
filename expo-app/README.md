@@ -26,10 +26,13 @@ chỉ nằm trong `expo-app/` để đội ngũ có thể đối chiếu và chu
 - Firestore database `(default)` tại `asia-east1` dùng Rules M2.3 đã deploy.
   User Profile vẫn bị feature-gate mặc định ở template; chủ project chỉ bật cờ
   trong `.env` local khi kiểm thử có chủ đích và không có fallback role mock.
+- Medication Management M3.1 có list/add/detail/edit/inactivate trong mock
+  repository in-memory theo UID của session. UI chỉ mở cho role `elderly`; không
+  có AsyncStorage medication persistence hoặc Medication Firestore CRUD.
 - Không có Firestore CRUD cho thuốc/lịch, dữ liệu sức khỏe thật, liên kết người
   chăm sóc, phân quyền backend hay đồng bộ gia đình.
 
-Không triển khai trong Migration 2.3: thuốc/lịch Firestore, dữ liệu sức khỏe
+Không triển khai trong Migration 3.1: thuốc/lịch Firestore, dữ liệu sức khỏe
 thật, quyền người chăm sóc với dữ liệu sức khỏe, OCR, TTS/STT nâng cao, thông
 báo đẩy, đồng bộ gia đình, Cloud Functions hoặc deploy lại Firebase Rules,
 Storage Rules hay indexes.
@@ -140,6 +143,19 @@ một lần, kiểm tra route đúng, khởi động lại ứng dụng và đ�
 này là checklist/evidence requirement, không phải kết quả pass được suy ra từ
 tài liệu. Xem schema, giới hạn quyền và trạng thái deploy tại
 [Firestore User Profiles — Migration 2.3](../docs/firestore-user-profiles.md).
+
+### Medication Management — Migration 3.1
+
+Chỉ `elderly` profile đã ready được đi tới `/elderly/medications`; nested route
+guard chặn caregiver và session chưa xác thực. Danh sách và form chỉ ghi nhận
+text người dùng nhập, giới hạn length và trim outer whitespace. Không suy luận
+liều/tần suất/giờ uống, không tạo schedule và không thay đổi DoseEvent demo.
+
+Mock repository có `Map<uid, Medication[]>`; account A không thấy bản ghi A tạo
+khi account B đăng nhập. Zustand clear cache hiển thị khi logout/switch account,
+nhưng đây không phải authorization production và không có dữ liệu Medication
+trong AsyncStorage/Firebase. Chi tiết tại
+[Medication Management Foundation — Migration 3.1](../docs/medication-management-m3.1.md).
 
 Expo Go dùng native container riêng. Trước EAS/development build, nhóm cần
 quyết định Android/iOS identifiers và Firebase client apps của Expo một cách có

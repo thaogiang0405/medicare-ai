@@ -14,10 +14,11 @@ import {
   firestoreUserProfilesUnavailableMessage,
   isFirestoreUserProfilesFeatureEnabled,
 } from '@/services/firebase/firestore-profile-feature';
-import { getLocalReminderService, isLocalRemindersFeatureEnabled } from '@/services/notifications';
+import { getLocalReminderService } from '@/services/notifications';
 import type { AppUser, UserProfile, UserRole } from '@/types/domain';
 
 import { useDoseEventStore } from './dose-event-store';
+import { useDoseHistoryStore } from './dose-history-store';
 import { useDoseTrackingStore } from './dose-tracking-store';
 import { useMedicationScheduleStore } from './medication-schedule-store';
 import { useMedicationStore } from './medication-store';
@@ -52,11 +53,12 @@ type ProfileFeatureEnabled = () => boolean;
 /** Clears account-bound presentation state without deleting repository data. */
 export function resetDemoSessionData(previousUserId?: string): void {
   useDoseEventStore.getState().reset();
+  useDoseHistoryStore.getState().reset();
   useDoseTrackingStore.getState().reset();
   useMedicationStore.getState().reset();
   useMedicationScheduleStore.getState().reset();
 
-  if (previousUserId?.trim() && isLocalRemindersFeatureEnabled()) {
+  if (previousUserId?.trim()) {
     // Never let a local notification cleanup failure block auth state reset.
     void getLocalReminderService().cancelUserReminders(previousUserId).catch(() => undefined);
   }

@@ -1,6 +1,8 @@
 # MediCare AI
 
-Ứng dụng Flutter Android hỗ trợ người cao tuổi quản lý lịch thuốc và cho phép người chăm sóc theo dõi dữ liệu **sau khi được cấp quyền rõ ràng**.
+MediCare AI gồm baseline Flutter Android được bảo toàn tại thư mục gốc và ứng
+dụng React Native + Expo hiện hành tại [`expo-app/`](expo-app/), hỗ trợ người
+cao tuổi quản lý lịch thuốc sau khi được cấp quyền rõ ràng.
 
 > MediCare AI hỗ trợ ghi nhận thông tin, không thay thế bác sĩ. Ứng dụng không tư vấn liều, không tự suy luận dữ liệu thiếu từ đơn thuốc, và trạng thái “Đã uống” chỉ là tự báo cáo.
 
@@ -51,16 +53,25 @@ Migration 3.3 bổ sung Medication Schedules cho elderly owner tại
 `elderlyProfiles/{auth.uid}/medicationSchedules/{scheduleId}`. UI có lịch theo
 từng thuốc, giờ `HH:mm`, lặp hằng ngày/theo thứ, ngày bắt đầu/kết thúc, chỉnh
 sửa và tạm dừng. `EXPO_PUBLIC_FIRESTORE_SCHEDULES_ENABLED` mặc định `false`;
-khi tắt dùng repository in-memory. Rules M3.3 hiện chỉ là source local đã có
-Emulator coverage, **chưa được deploy**. Schedule không tạo DoseEvent, local
-notification, FCM, background job hoặc quyền caregiver. Xem
-[Medication Schedules — M3.3](docs/medication-schedules-m3.3.md).
+khi tắt dùng repository in-memory. Rules M3.3 cho Medication/Schedules đã được
+deploy trong milestone trước; source M3.4 mở thêm DoseEvent owner-only nhưng
+không được coi là production cho đến khi có phê duyệt deploy riêng.
+
+Hoàn thiện luồng phi-AI bổ sung self-reported DoseEvent bất biến, lịch sử dose
+event có phân trang, và local reminder cục bộ theo UID/thiết bị với horizon 14
+ngày và tối đa 48 ID của MediCare AI. Tất cả các cờ Firestore/DoseEvent/local
+reminder vẫn mặc định `false` trong `.env.example`; không có mock bypass Auth,
+không có FCM/server scheduler, OCR hay suy luận liều. Lịch sử và reminder chỉ
+an toàn để bật trên Firebase sau khi Rules M3.4 và index history đã được review
+và deploy riêng. Xem [mô hình Firestore](docs/firestore-data-model.md).
 
 Xem [kế hoạch Migration](docs/migration-to-expo.md), [hướng dẫn chạy Expo](expo-app/README.md), [Firebase JavaScript SDK Integration](docs/firebase-js-sdk-integration.md), [Firebase Authentication — Migration 2.2](docs/firebase-authentication.md), [Firestore User Profiles — Migration 2.3](docs/firestore-user-profiles.md) và [Medication CRUD — Migration 3.2](docs/medication-management-m3.2.md). Flutter vẫn là mã tham chiếu cho đến khi migration được kiểm thử thiết bị và được phê duyệt riêng.
 
-## Trạng thái hiện tại — Phase 2.1: Firebase Setup
+## Flutter baseline — Phase 2.1 (giữ nguyên)
 
-Đã có nền Flutter Android, kiến trúc feature-first, điều hướng GoRouter, state Riverpod, theme tiếng Việt dễ tiếp cận và luồng dữ liệu giả lập có thể thao tác:
+Phần này chỉ mô tả baseline Flutter ở thư mục gốc, không phải trạng thái hiện
+hành của Expo đã nêu ở trên. Baseline có kiến trúc feature-first, GoRouter,
+Riverpod, theme tiếng Việt dễ tiếp cận và dữ liệu giả lập có thể thao tác:
 
 - Splash, onboarding, đăng nhập/đăng ký trình diễn và chọn vai trò.
 - Repository contract cùng `Mock*Repository` in-memory cho auth, thuốc và dose event; UI không phụ thuộc Firebase trực tiếp.
@@ -73,9 +84,11 @@ Xem [kế hoạch Migration](docs/migration-to-expo.md), [hướng dẫn chạy 
 - Firebase Android đã được liên kết chính thức với project `medicare-ai-cf804` thông qua FlutterFire CLI.
 - `firebase_core`, `firebase_auth` và `cloud_firestore` đã được cài đặt; ứng dụng chỉ khởi tạo Firebase, chưa dùng chúng để xác thực hoặc đọc/ghi dữ liệu.
 
-Firebase Authentication, Firestore CRUD, camera/ML Kit OCR, local notification, TTS và FCM **chưa được triển khai**. Không có dữ liệu y tế thật, service account hoặc khóa bí mật phía server trong repository.
+Trong Flutter baseline, Firebase Authentication, Firestore CRUD, camera/ML Kit
+OCR, local notification, TTS và FCM **chưa được triển khai**. Không có dữ liệu
+y tế thật, service account hoặc khóa bí mật phía server trong repository.
 
-## Chạy dự án
+## Chạy Flutter baseline
 
 Yêu cầu: Flutter 3.47.5 hoặc SDK tương thích Dart `^3.13.4`, Android SDK và một emulator/thiết bị Android.
 
@@ -106,7 +119,7 @@ lib/
     profile/
     settings/
 docs/                  # Quyết định kiến trúc và mô hình dữ liệu
-firestore.rules         # Rules local M3.3; production vẫn M3.2 đến khi M3.3 được phê duyệt deploy
+firestore.rules         # Source local M3.4; production vẫn M3.3 đến khi Rules M3.4 được phê duyệt deploy
 storage.rules           # Quy tắc truy cập Firebase Storage mẫu
 firestore.indexes.json  # Composite indexes dự kiến
 ```
@@ -125,6 +138,7 @@ Mỗi feature sẽ phát triển theo hướng `data → domain → presentation
 - [Medication Management Foundation — Migration 3.1](docs/medication-management-m3.1.md)
 - [Firestore Medication CRUD — Migration 3.2](docs/medication-management-m3.2.md)
 - [Medication Schedules — Migration 3.3](docs/medication-schedules-m3.3.md)
+- [Medication tracking & local reminders](docs/medication-workflow-finalization.md)
 
 ## Firebase Setup — Phase 2.1
 

@@ -211,6 +211,13 @@ từ chối status khác. Client không update/delete document sau đó; `respon
 và medication snapshot vì vậy bất biến, kể cả sau khi thuốc/lịch được sửa hoặc
 tạm dừng. Đây là phản hồi tự báo, không phải xác nhận y tế.
 
+Màn hình lịch sử chỉ query collection con của chính owner với cửa sổ lịch HCM
+giới hạn (hôm nay, 7 ngày hoặc 30 ngày), `pageSize` tối đa 30 và cursor gồm
+`scheduledLocalDate`, `scheduledLocalTime`, document ID. Không có truy vấn
+collection-group từ client và không tải toàn bộ `doseEvents`. Lịch sử chỉ hiển
+thị DoseEvent bất biến đã tồn tại; với các ngày trước, app không dựng lại hay
+suy đoán lần uống bị thiếu sau khi schedule đã đổi hoặc tạm dừng.
+
 Local reminders M3.4 không tạo Firestore `/notifications` document. Sau thao tác
 đồng ý rõ ràng của người dùng, thiết bị chỉ lưu mapping opaque giữa notification
 ID do hệ điều hành cấp và occurrence key trong AsyncStorage; mapping không chứa
@@ -218,14 +225,23 @@ tên thuốc. Nội dung màn hình khóa luôn chung chung. Không có FCM, Clo
 Functions, background server scheduler hoặc đảm bảo thời điểm chính xác khi
 offline/chưa đồng bộ.
 
+Trên một thiết bị, app chỉ lập rolling horizon tối đa 14 ngày và tối đa 48
+notification ID do MediCare AI quản lý. Khi thiết bị đã có reminder không thuộc
+mapping của account hiện tại, app dành trước capacity thay vì hủy chúng. Tắt
+reminder chỉ hủy ID được lưu cho đúng UID và thu hồi consent local của UID đó;
+đăng xuất chỉ hủy ID pending của UID, không dùng `cancelAll`. Horizon được refill
+khi app quay foreground, sang ngày HCM, đồng bộ tay hoặc dữ liệu thuốc/lịch đổi;
+không thể bảo đảm refill nếu app không được mở trong thời gian dài.
+
 Rules xác minh owner elderly, schema, server timestamps, ID/key, schedule/medication
-cùng owner đang active, snapshot thuốc và `scheduledAt <= request.time`. Firestore
-Rules không thể chứng minh hoàn toàn phép đổi ISO local date/weekday sang instant
-Asia/Ho_Chi_Minh, cũng không thể tự suy ra recurrence hằng ngày/hằng tuần từ dữ
-liệu client; vì vậy một chủ hồ sơ vẫn có thể tự báo một lần trong quá khứ thuộc
-phạm vi ngày của schedule nhưng không đúng thứ lặp. Occurrence metadata là
-client-derived self-report. Một scheduler server-trusted là điều kiện cần nếu
-milestone sau cần chống giả mạo ngày/tuần ở mức mật mã.
+cùng owner đang active, snapshot thuốc và `scheduledAt <= request.time`. Với múi
+giờ cố định Asia/Ho_Chi_Minh, Rules cũng so sánh exact UTC instant với local date
+và `HH:mm`, rồi kiểm tra recurrence daily/weekly và weekday của schedule. Điều này
+ngăn client đổi local date, local time hoặc thứ lặp để tạo occurrence khác từ một
+schedule đã lưu; nhưng không tạo nguồn occurrence độc lập client hoặc chứng minh
+hành vi uống thuốc ngoài đời. DoseEvent vẫn là self-report, không phải xác nhận y
+tế; một scheduler server-trusted là điều kiện cần nếu milestone sau cần bảo đảm
+recurrence/clock tuyệt đối ngoài dữ liệu client khai báo.
 
 ## Timestamp, update and idempotency rules
 
@@ -238,4 +254,4 @@ milestone sau cần chống giả mạo ngày/tuần ở mức mật mã.
 
 ## Queries/indexes
 
-Prepare collection-group indexes for dose events (`status + scheduledAt`), active medications (`status + updatedAt`), future trusted schedule occurrence metadata, and notification delivery (`deliveryState + scheduledFor`). M3.2/M3.3 list a single owner's collection by `updatedAt`, so no index is deployed in this milestone. See `firestore.indexes.json` for future work.
+`doseEvents` history dùng index `scheduledLocalDate DESC + scheduledLocalTime DESC + __name__ DESC`; source đã được thêm vào `firestore.indexes.json` nhưng **chưa được deploy**. Việc deploy index cần phê duyệt riêng cùng với Rules M3.4, vì production phải được đối chiếu trước. Các index dự kiến khác gồm `status + scheduledAt`, active medications (`status + updatedAt`), future trusted schedule occurrence metadata và notification delivery (`deliveryState + scheduledFor`).

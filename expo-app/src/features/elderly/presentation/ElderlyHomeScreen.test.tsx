@@ -57,7 +57,9 @@ jest.mock('./useElderlyDashboard', () => ({
   useElderlyDashboard: jest.fn(),
 }));
 
+import { router } from 'expo-router';
 import { fireEvent, render } from '@testing-library/react-native';
+import { Alert } from 'react-native';
 import type { DoseEvent, Medication, MedicationSchedule } from '@/types/domain';
 import { useSessionStore } from '@/store';
 
@@ -177,6 +179,7 @@ describe('ElderlyHomeScreen', () => {
 
   it('shows real self-report actions only when M3.4 dose tracking is enabled', async () => {
     const recordDoseResponse = jest.fn();
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
     mockDashboard({
       usesFirestoreDoseTracking: true,
       doseEventsFeatureEnabled: true,
@@ -185,6 +188,7 @@ describe('ElderlyHomeScreen', () => {
         schedule,
         medication,
         event: null,
+        priorResponseEvent: null,
         eventId: 'schedule-1__2026-11-23__08:00',
         scheduledLocalDate: '2026-11-23',
         scheduledAt: '2026-11-23T01:00:00.000Z',
@@ -198,7 +202,31 @@ describe('ElderlyHomeScreen', () => {
 
     expect(view.getByTestId('dose-tracking-schedule-schedule-1')).toBeOnTheScreen();
     await fireEvent.press(view.getByLabelText('Đã uống'));
+    expect(alertSpy).toHaveBeenCalledWith(
+      'Xác nhận phản hồi tự báo',
+      expect.stringContaining('sẽ được lưu một lần'),
+      expect.any(Array),
+      expect.objectContaining({ cancelable: true }),
+    );
+    expect(recordDoseResponse).not.toHaveBeenCalled();
+
+    await fireEvent.press(view.getByLabelText('Đã uống'));
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+
+    const confirmationButtons = alertSpy.mock.calls[0]?.[2];
+    confirmationButtons?.find((button) => button.text === 'Đã uống')?.onPress?.();
     expect(recordDoseResponse).toHaveBeenCalledWith(expect.objectContaining({ schedule, medication }), 'reportedTaken');
     expect(view.queryByTestId('demo-dose-event')).toBeNull();
+    alertSpy.mockRestore();
+  });
+
+  it('offers protected elderly navigation to response history and device reminder settings', async () => {
+    const view = await render(<ElderlyHomeScreen />);
+
+    await fireEvent.press(view.getByLabelText('Lịch sử uống thuốc'));
+    await fireEvent.press(view.getByLabelText('Cài đặt nhắc lịch'));
+
+    expect(router.push).toHaveBeenCalledWith('/elderly/dose-history');
+    expect(router.push).toHaveBeenCalledWith('/elderly/reminder-settings');
   });
 });

@@ -18,6 +18,8 @@ export default function ElderlyLayout() {
       <Stack.Protected guard={routeAccess.allowElderlyDashboard} redirectTo={routeAccess.redirectTo}>
         <Stack.Screen name="index" />
         <Stack.Screen name="medications" />
+        <Stack.Screen name="dose-history" />
+        <Stack.Screen name="reminder-settings" />
       </Stack.Protected>
     </Stack>
   );

@@ -8,6 +8,7 @@ const {
 } = require('@firebase/rules-unit-testing');
 const {
   collection,
+  documentId,
   doc,
   deleteDoc,
   getDoc,
@@ -18,6 +19,7 @@ const {
   serverTimestamp,
   setDoc,
   updateDoc,
+  where,
 } = require('firebase/firestore');
 
 const projectId = 'medicare-ai-rules-test';
@@ -737,6 +739,14 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
     await assertSucceeds(setDoc(reference, doseEvent(userA)));
     await assertSucceeds(getDoc(reference));
     await assertSucceeds(getDocs(doseEventsCollection(database, userA)));
+    await assertSucceeds(getDocs(query(
+      doseEventsCollection(database, userA),
+      where('scheduledLocalDate', '>=', '2020-01-01'),
+      where('scheduledLocalDate', '<=', '2020-01-07'),
+      orderBy('scheduledLocalDate', 'desc'),
+      orderBy('scheduledLocalTime', 'desc'),
+      orderBy(documentId(), 'desc'),
+    )));
 
     const transactionReference = doseEventReference(
       database,
@@ -755,6 +765,25 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
         }
       }),
     );
+  });
+
+  it('keeps immutable historical DoseEvents readable after its schedule or medication is inactive', async () => {
+    await seed(`users/${userA}`, userProfile(userA));
+    await seed(`elderlyProfiles/${userA}/medications/medication-a`, medication(userA, { status: 'inactive' }));
+    await seed(
+      `elderlyProfiles/${userA}/medicationSchedules/schedule-a`,
+      medicationSchedule(userA, { startDate: '2020-01-01', active: false }),
+    );
+    await seed(`elderlyProfiles/${userA}/doseEvents/schedule-a__2020-01-01__08:00`, doseEvent(userA));
+
+    await assertSucceeds(getDocs(query(
+      doseEventsCollection(firestoreAs(userA), userA),
+      where('scheduledLocalDate', '>=', '2020-01-01'),
+      where('scheduledLocalDate', '<=', '2020-01-07'),
+      orderBy('scheduledLocalDate', 'desc'),
+      orderBy('scheduledLocalTime', 'desc'),
+      orderBy(documentId(), 'desc'),
+    )));
   });
 
   it('denies unauthenticated, cross-user, and caregiver dose event access', async () => {
@@ -802,6 +831,48 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
       medicationSchedule(userA, { startDate: '2020-01-01' }),
     );
     await assertFails(setDoc(doseEventReference(database, userA), doseEvent(userA)));
+  });
+
+  it('denies a self-report on a weekday excluded by a weekly schedule', async () => {
+    await seed(`users/${userA}`, userProfile(userA));
+    await seed(`elderlyProfiles/${userA}/medications/medication-a`, medication(userA));
+    await seed(
+      `elderlyProfiles/${userA}/medicationSchedules/schedule-a`,
+      medicationSchedule(userA, {
+        startDate: '2020-01-01',
+        recurrence: 'weekly',
+        weekdays: [1],
+      }),
+    );
+
+    // 2020-01-01 was Wednesday in Asia/Ho_Chi_Minh, not Monday.
+    await assertFails(setDoc(
+      doseEventReference(firestoreAs(userA), userA),
+      doseEvent(userA),
+    ));
+  });
+
+  it('denies a self-report whose UTC instant does not match its claimed HCM date and time', async () => {
+    await seed(`users/${userA}`, userProfile(userA));
+    await seed(`elderlyProfiles/${userA}/medications/medication-a`, medication(userA));
+    await seed(
+      `elderlyProfiles/${userA}/medicationSchedules/schedule-a`,
+      medicationSchedule(userA, { startDate: '2020-01-01' }),
+    );
+    const database = firestoreAs(userA);
+
+    await assertFails(setDoc(
+      doseEventReference(database, userA),
+      doseEvent(userA, { scheduledAt: new Date('2020-01-01T02:00:00.000Z') }),
+    ));
+    await assertFails(setDoc(
+      doseEventReference(database, userA, 'schedule-a__2020-01-02__08:00'),
+      doseEvent(userA, {
+        occurrenceKey: '2020-01-02T08:00@Asia/Ho_Chi_Minh',
+        scheduledLocalDate: '2020-01-02',
+        scheduledAt: new Date('2020-01-01T01:00:00.000Z'),
+      }),
+    ));
   });
 
   it('denies spoofed owner or references, invalid ID/key/schema, future events, and forged timestamps', async () => {

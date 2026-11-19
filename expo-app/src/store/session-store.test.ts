@@ -3,6 +3,12 @@
 jest.mock('@/features/auth', () => ({ getFirebaseAuthRepository: jest.fn() }));
 jest.mock('@/features/profile', () => ({ getFirestoreUserProfileRepository: jest.fn() }));
 
+const mockCancelUserReminders = jest.fn(async () => 0);
+
+jest.mock('@/services/notifications', () => ({
+  getLocalReminderService: () => ({ cancelUserReminders: mockCancelUserReminders }),
+}));
+
 const mockResetDoseEvents = jest.fn();
 const mockResetMedications = jest.fn();
 const mockResetSchedules = jest.fn();
@@ -96,12 +102,23 @@ async function flushProfileLoad(): Promise<void> {
 }
 
 describe('session store', () => {
+  beforeEach(() => {
+    mockCancelUserReminders.mockClear();
+  });
+
   it('clears medication, schedule, and dose presentation state on logout or account switching', () => {
     resetDemoSessionData();
 
     expect(mockResetDoseEvents).toHaveBeenCalledTimes(1);
     expect(mockResetMedications).toHaveBeenCalledTimes(1);
     expect(mockResetSchedules).toHaveBeenCalledTimes(1);
+  });
+
+  it('always cancels only the prior account reminders on logout, even if reminder scheduling is disabled', async () => {
+    resetDemoSessionData('previous-user');
+    await Promise.resolve();
+
+    expect(mockCancelUserReminders).toHaveBeenCalledWith('previous-user');
   });
 
   it('waits for Firebase observer state instead of auto-signing in with mock data', () => {

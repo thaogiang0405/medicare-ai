@@ -1,5 +1,6 @@
 import { Alert, ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
+import { useRef, useState } from 'react';
 
 import {
   ActionCard,
@@ -14,6 +15,7 @@ import {
 import { medicareColors, medicareSpacing, medicareTypography } from '@/constants/medicare-theme';
 import { medicationScheduleRecurrenceLabel } from '@/features/schedules/presentation/medication-schedule-utils';
 import { useSessionStore } from '@/store';
+import type { PersistedDoseResponseStatus } from '@/types/domain';
 import { formatVietnameseTime } from '@/utils/formatters';
 
 import { useElderlyDashboard } from './useElderlyDashboard';
@@ -47,6 +49,8 @@ export default function ElderlyHomeScreen() {
   const authErrorMessage = useSessionStore((state) => state.errorMessage);
   const isSigningOut = operationStatus === 'loading';
   const usesFirestoreSchedules = dashboardMode === 'firestore-schedules';
+  const [pendingDoseResponseId, setPendingDoseResponseId] = useState<string | null>(null);
+  const pendingDoseResponseRef = useRef<string | null>(null);
 
   const handleSignOut = async () => {
     try {
@@ -55,6 +59,42 @@ export default function ElderlyHomeScreen() {
     } catch {
       // The session store exposes a safe localized error below.
     }
+  };
+
+  const confirmDoseResponse = (
+    item: (typeof doseTrackingSchedules)[number],
+    status: PersistedDoseResponseStatus,
+  ) => {
+    if (!recordDoseResponse || !item.canRespond || isRecordingDoseResponse || pendingDoseResponseRef.current) {
+      return;
+    }
+
+    const actionLabel = status === 'reportedTaken' ? 'Đã uống' : 'Bỏ qua';
+    const clearPending = () => {
+      if (pendingDoseResponseRef.current === item.eventId) {
+        pendingDoseResponseRef.current = null;
+      }
+      setPendingDoseResponseId((current) => current === item.eventId ? null : current);
+    };
+    pendingDoseResponseRef.current = item.eventId;
+    setPendingDoseResponseId(item.eventId);
+
+    Alert.alert(
+      'Xác nhận phản hồi tự báo',
+      `Bạn sắp ghi nhận “${actionLabel}” cho lần uống lúc ${item.schedule.localTime}. Phản hồi này chỉ do bạn tự báo, sẽ được lưu một lần và không thể sửa hoặc xóa trên ứng dụng.`,
+      [
+        { text: 'Hủy', style: 'cancel', onPress: clearPending },
+        {
+          text: actionLabel,
+          onPress: () => {
+            void Promise.resolve(recordDoseResponse(item, status))
+              .catch(() => undefined)
+              .finally(clearPending);
+          },
+        },
+      ],
+      { cancelable: true, onDismiss: clearPending },
+    );
   };
 
   const dashboardBanner = usesFirestoreSchedules
@@ -126,10 +166,13 @@ export default function ElderlyHomeScreen() {
             medicationName={item.medication.name}
             recurrenceText={medicationScheduleRecurrenceLabel(item.schedule)}
             responseActions={{
-              canRespond: item.canRespond,
+              canRespond: item.canRespond && pendingDoseResponseId === null,
               isSubmitting: isRecordingDoseResponse,
-              onReportTaken: () => void recordDoseResponse?.(item, 'reportedTaken'),
-              onReportSkipped: () => void recordDoseResponse?.(item, 'reportedSkipped'),
+              blockedMessage: item.priorResponseEvent
+                ? `Đã có phản hồi tự báo lúc ${item.priorResponseEvent.scheduledLocalTime}; lịch sử được giữ nguyên sau khi lịch đổi giờ.`
+                : undefined,
+              onReportTaken: () => confirmDoseResponse(item, 'reportedTaken'),
+              onReportSkipped: () => confirmDoseResponse(item, 'reportedSkipped'),
             }}
             strengthText={item.medication.strengthText}
             testID={`dose-tracking-schedule-${item.schedule.id}`}
@@ -214,10 +257,21 @@ export default function ElderlyHomeScreen() {
               tone="error"
             />
           ) : null}
+          {localReminderStatus === 'capacity-limited' ? (
+            <SafetyNotice
+              message="Thiết bị đang giữ giới hạn an toàn cho lời nhắc gần nhất. Mở Cài đặt nhắc lịch để xem trạng thái và đồng bộ lại khi cần."
+              title="Đã giới hạn lời nhắc đang chờ"
+              tone="information"
+            />
+          ) : null}
           <SecondaryButton
             accessibilityHint="Yêu cầu quyền thông báo nếu cần, rồi tạo lời nhắc cục bộ cho lịch thuốc đang hoạt động"
             disabled={isLoading || localReminderStatus === 'syncing'}
-            label={localReminderStatus === 'synced' ? 'Đồng bộ lại lời nhắc' : localReminderStatus === 'syncing' ? 'Đang đồng bộ…' : 'Bật nhắc lịch trên thiết bị này'}
+            label={localReminderStatus === 'synced' || localReminderStatus === 'capacity-limited'
+              ? 'Đồng bộ lại lời nhắc'
+              : localReminderStatus === 'syncing'
+                ? 'Đang đồng bộ…'
+                : 'Bật nhắc lịch trên thiết bị này'}
             onPress={() => void enableLocalReminders()}
           />
         </View>
@@ -244,6 +298,24 @@ export default function ElderlyHomeScreen() {
           icon={<Text style={styles.icon}>☰</Text>}
           onPress={() => router.push('/elderly/medications')}
           title="Thuốc của tôi"
+        />
+        <ActionCard
+          accessibilityHint="Mở các phản hồi tự báo đã lưu cho tài khoản hiện tại"
+          description={usesFirestoreDoseTracking
+            ? 'Xem phản hồi tự báo theo hôm nay, 7 ngày hoặc 30 ngày gần đây.'
+            : 'Lịch sử phản hồi sẽ sẵn sàng khi tính năng DoseEvent Firebase được bật.'}
+          icon={<Text style={styles.icon}>◷</Text>}
+          onPress={() => router.push('/elderly/dose-history')}
+          title="Lịch sử uống thuốc"
+        />
+        <ActionCard
+          accessibilityHint="Mở cài đặt lời nhắc lịch thuốc trên thiết bị này"
+          description={localRemindersFeatureEnabled && usesFirestoreSchedules
+            ? 'Bật, tắt hoặc đồng bộ lời nhắc cục bộ chỉ cho tài khoản này trên thiết bị này.'
+            : 'Nhắc lịch cục bộ hiện chưa được bật trong cấu hình ứng dụng.'}
+          icon={<Text style={styles.icon}>⌁</Text>}
+          onPress={() => router.push('/elderly/reminder-settings')}
+          title="Cài đặt nhắc lịch"
         />
         <ActionCard
           description="Liên kết gia đình chưa được triển khai."

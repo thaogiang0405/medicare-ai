@@ -4,6 +4,7 @@ import {
   getHcmScheduledAt,
   getUpcomingLocalReminderOccurrences,
   LocalReminderService,
+  localReminderMaxPendingNotifications,
   localReminderRollingHorizonDays,
   localReminderStorageMetadataKey,
   type LocalReminderNotificationPort,
@@ -53,6 +54,39 @@ class MemoryStorage implements LocalReminderStoragePort {
 
   async setItem(key: string, value: string): Promise<void> {
     this.values.set(key, value);
+  }
+}
+
+class DelayedWriteStorage extends MemoryStorage {
+  private nextWriteGate: {
+    notifyStarted: () => void;
+    waitForRelease: Promise<void>;
+  } | null = null;
+
+  delayNextWrite(): { writeStarted: Promise<void>; release: () => void } {
+    let notifyStarted!: () => void;
+    let release!: () => void;
+    const writeStarted = new Promise<void>((resolve) => {
+      notifyStarted = resolve;
+    });
+    const waitForRelease = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.nextWriteGate = { notifyStarted, waitForRelease };
+
+    return { writeStarted, release };
+  }
+
+  override async setItem(key: string, value: string): Promise<void> {
+    const gate = this.nextWriteGate;
+    this.nextWriteGate = null;
+
+    if (gate) {
+      gate.notifyStarted();
+      await gate.waitForRelease;
+    }
+
+    await super.setItem(key, value);
   }
 }
 
@@ -146,7 +180,7 @@ describe('LocalReminderService', () => {
     const notifications = createNotificationPort('undetermined');
     const service = new LocalReminderService(notifications, new MemoryStorage());
 
-    await expect(service.syncIfConsented(syncInput)).resolves.toEqual({
+    await expect(service.syncIfConsented(syncInput)).resolves.toMatchObject({
       status: 'needs-consent',
       scheduledCount: 0,
       cancelledCount: 0,
@@ -160,7 +194,7 @@ describe('LocalReminderService', () => {
     const storage = new MemoryStorage();
     const service = new LocalReminderService(notifications, storage);
 
-    await expect(service.requestPermissionAndSync(syncInput)).resolves.toEqual({
+    await expect(service.requestPermissionAndSync(syncInput)).resolves.toMatchObject({
       status: 'permission-denied',
       scheduledCount: 0,
       cancelledCount: 0,
@@ -186,9 +220,41 @@ describe('LocalReminderService', () => {
     });
     expect(JSON.stringify(notifications.scheduleNotificationMock.mock.calls[0][0])).not.toContain('Paracetamol');
 
-    const second = await service.syncIfConsented(syncInput);
+    const restartedService = new LocalReminderService(notifications, storage);
+    const second = await restartedService.syncIfConsented(syncInput);
     expect(second).toMatchObject({ status: 'synced', scheduledCount: 0, cancelledCount: 0 });
     expect(notifications.scheduleNotificationMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('requests iOS permission only after the explicit enable action, then schedules after a grant', async () => {
+    const notifications = createNotificationPort('undetermined');
+    notifications.requestPermissionMock.mockResolvedValue('granted');
+    const service = new LocalReminderService(notifications, new MemoryStorage());
+
+    await expect(service.requestPermissionAndSync(syncInput)).resolves.toMatchObject({
+      status: 'synced',
+      scheduledCount: 1,
+      pendingCount: 1,
+    });
+    expect(notifications.requestPermissionMock).toHaveBeenCalledTimes(1);
+    expect(notifications.scheduleNotificationMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not let a passive refresh interrupt an explicit permission request', async () => {
+    const notifications = createNotificationPort('undetermined');
+    let resolvePermission!: (permission: LocalReminderPermission) => void;
+    const permissionRequest = new Promise<LocalReminderPermission>((resolve) => {
+      resolvePermission = resolve;
+    });
+    notifications.requestPermissionMock.mockImplementationOnce(async () => permissionRequest);
+    const service = new LocalReminderService(notifications, new MemoryStorage());
+
+    const explicitEnable = service.requestPermissionAndSync(syncInput);
+    await Promise.resolve();
+
+    await expect(service.syncIfConsented(syncInput)).resolves.toMatchObject({ status: 'stale' });
+    resolvePermission('granted');
+    await expect(explicitEnable).resolves.toMatchObject({ status: 'synced', scheduledCount: 1 });
   });
 
   it('cancels only MediCare-owned reminder ids when a plan is removed or an account signs out', async () => {
@@ -244,6 +310,87 @@ describe('LocalReminderService', () => {
     expect(notifications.scheduledIds).toEqual(new Set());
   });
 
+  it('keeps a conservative device-wide budget, prioritizes earliest occurrences, and reserves room for other pending ids', async () => {
+    const notifications = createNotificationPort();
+    const storage = new MemoryStorage();
+    storage.values.set(localReminderStorageMetadataKey, JSON.stringify({
+      version: 1,
+      consentedUserIds: [userA, userB],
+      reminders: [
+        { ownerUid: userB, scheduleId: 'other-schedule', occurrenceKey: 'mcare-reminder:other', notificationId: 'other-owned' },
+      ],
+    }));
+    notifications.scheduledIds.add('other-owned');
+    notifications.scheduledIds.add('unmanaged-one');
+    notifications.scheduledIds.add('unmanaged-two');
+    const service = new LocalReminderService(notifications, storage);
+    const denseSchedules = ['06:00', '08:00', '10:00', '12:00'].map((localTime, index) =>
+      schedule({ id: `dense-${index}`, localTime }));
+
+    const result = await service.requestPermissionAndSync({
+      userId: userA,
+      now: new Date('2026-11-21T17:01:00.000Z'),
+      medications: [medication()],
+      schedules: denseSchedules,
+    });
+
+    expect(result).toMatchObject({
+      status: 'capacity-limited',
+      desiredCount: 56,
+      scheduledCount: localReminderMaxPendingNotifications - 3,
+      pendingCount: localReminderMaxPendingNotifications - 3,
+      omittedCount: 11,
+    });
+    expect(notifications.scheduledIds.size).toBe(localReminderMaxPendingNotifications);
+    expect(notifications.scheduledIds.has('other-owned')).toBe(true);
+    expect(notifications.scheduledIds.has('unmanaged-one')).toBe(true);
+    expect(notifications.scheduledIds.has('unmanaged-two')).toBe(true);
+    const triggerTimes = notifications.scheduleNotificationMock.mock.calls
+      .map(([request]) => (request as { triggerAt: Date }).triggerAt.getTime());
+    expect(triggerTimes).toEqual([...triggerTimes].sort((left, right) => left - right));
+  });
+
+  it('revokes one account consent only after an explicit disable and never cancels another account', async () => {
+    const notifications = createNotificationPort();
+    const storage = new MemoryStorage();
+    const service = new LocalReminderService(notifications, storage);
+
+    await service.requestPermissionAndSync(syncInput);
+    await service.requestPermissionAndSync({ ...syncInput, userId: userB });
+    const disable = await service.disableUserReminders(userA);
+
+    expect(disable).toEqual({ status: 'disabled', cancelledCount: 1 });
+    expect(notifications.cancelScheduledNotificationMock).toHaveBeenCalledWith('owned-1');
+    expect(notifications.cancelScheduledNotificationMock).not.toHaveBeenCalledWith('owned-2');
+    await expect(service.getUserReminderSettings(userA)).resolves.toMatchObject({
+      consented: false,
+      pendingCount: 0,
+      maxPendingCount: localReminderMaxPendingNotifications,
+    });
+    await expect(service.getUserReminderSettings(userB)).resolves.toMatchObject({
+      consented: true,
+      pendingCount: 1,
+    });
+    await expect(service.syncIfConsented(syncInput)).resolves.toMatchObject({ status: 'needs-consent' });
+  });
+
+  it('records prior consent even when there are no eligible schedules, without scheduling a notification', async () => {
+    const notifications = createNotificationPort();
+    const service = new LocalReminderService(notifications, new MemoryStorage());
+
+    await expect(service.requestPermissionAndSync({
+      ...syncInput,
+      schedules: [schedule({ active: false })],
+    })).resolves.toMatchObject({
+      status: 'synced',
+      desiredCount: 0,
+      pendingCount: 0,
+      scheduledCount: 0,
+    });
+    expect(notifications.scheduleNotificationMock).not.toHaveBeenCalled();
+    await expect(service.getUserReminderSettings(userA)).resolves.toMatchObject({ consented: true, pendingCount: 0 });
+  });
+
   it('cancels a just-scheduled owned reminder when a newer operation makes the sync stale', async () => {
     const notifications = createNotificationPort();
     const storage = new MemoryStorage();
@@ -267,15 +414,34 @@ describe('LocalReminderService', () => {
     const firstSync = service.requestPermissionAndSync(syncInput);
     await scheduleStarted;
 
-    await service.cancelUserReminders(userA);
+    const logout = service.cancelUserReminders(userA);
     resolveNotificationId('owned-stale');
 
-    await expect(firstSync).resolves.toEqual({
+    await expect(firstSync).resolves.toMatchObject({
       status: 'stale',
       scheduledCount: 0,
       cancelledCount: 0,
     });
+    await expect(logout).resolves.toBe(0);
     expect(notifications.cancelScheduledNotificationMock).toHaveBeenCalledWith('owned-stale');
+    expect(notifications.scheduledIds).toEqual(new Set());
+    expect(JSON.parse((await storage.getItem(localReminderStorageMetadataKey)) ?? '{}').reminders).toEqual([]);
+  });
+
+  it('removes reminder metadata written immediately before a logout invalidates the sync', async () => {
+    const notifications = createNotificationPort();
+    const storage = new DelayedWriteStorage();
+    const service = new LocalReminderService(notifications, storage);
+    const delayedWrite = storage.delayNextWrite();
+
+    const sync = service.requestPermissionAndSync(syncInput);
+    await delayedWrite.writeStarted;
+    const logout = service.cancelUserReminders(userA);
+    delayedWrite.release();
+
+    await expect(sync).resolves.toMatchObject({ status: 'stale', scheduledCount: 0 });
+    await expect(logout).resolves.toBe(0);
+    expect(notifications.cancelScheduledNotificationMock).toHaveBeenCalledWith('owned-1');
     expect(notifications.scheduledIds).toEqual(new Set());
     expect(JSON.parse((await storage.getItem(localReminderStorageMetadataKey)) ?? '{}').reminders).toEqual([]);
   });

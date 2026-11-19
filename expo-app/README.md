@@ -24,20 +24,16 @@ chỉ nằm trong `expo-app/` để đội ngũ có thể đối chiếu và chu
   repository Firestore opt-in riêng, mặc định vẫn dùng mock M3.1.
 - User Profile giới hạn chỉ có thể đọc/tạo/cập nhật tại `/users/{auth.uid}` qua
   repository; UID luôn lấy từ Firebase Auth. Role đã lưu chỉ điều hướng UI.
-- Firestore database `(default)` tại `asia-east1` dùng Rules M2.3 đã deploy.
-  User Profile vẫn bị feature-gate mặc định ở template; chủ project chỉ bật cờ
-  trong `.env` local khi kiểm thử có chủ đích và không có fallback role mock.
-- Medication M3.2 có Firestore CRUD owner-only tại
-  `elderlyProfiles/{auth.uid}/medications/{medicationId}` qua flag public
-  `EXPO_PUBLIC_FIRESTORE_MEDICATIONS_ENABLED`, mặc định `false`. Rules M3.2
-  local chưa được deploy; khi flag tắt, M3.1 mock in-memory theo UID vẫn dùng.
-- Không có Firestore CRUD cho lịch, dữ liệu sức khỏe thật, liên kết người chăm
-  sóc, phân quyền backend hay đồng bộ gia đình.
-
-Không triển khai trong Migration 3.2: Firestore schedule/dose event, dữ liệu
-sức khỏe thật, quyền người chăm sóc với dữ liệu thuốc, OCR, TTS/STT nâng cao,
-thông báo đẩy, đồng bộ gia đình, Cloud Functions hoặc deploy Firebase Rules,
-Storage Rules hay indexes.
+- Firestore database `(default)` tại `asia-east1` đang có Rules M3.3 owner-only
+  cho profile, medication và schedule. User Profile vẫn bị feature-gate mặc
+  định ở template; không có fallback role mock.
+- Medication M3.2 và Schedule M3.3 có Firestore CRUD owner-only qua các public
+  feature flag mặc định `false`. Khi flag tắt, mock in-memory theo UID vẫn dùng.
+- DoseEvent self-report, lịch sử có phân trang và reminder cục bộ theo thiết bị
+  đã có source M3.4, nhưng flag mặc định `false`; Rules DoseEvent M3.4 và index
+  history chưa được deploy trong đợt hoàn thiện này.
+- Không có dữ liệu sức khỏe thật, quyền caregiver với thuốc/lịch/dose event,
+  OCR, TTS/STT, push notification, Cloud Functions hay đồng bộ gia đình.
 
 ## Cấu trúc
 
@@ -125,12 +121,11 @@ Xem [hướng dẫn Firebase JS SDK](../docs/firebase-js-sdk-integration.md) và
 
 ### Firestore User Profile & Role Security — Migration 2.3
 
-Cloud Firestore `(default)` tại `asia-east1` đang dùng Rules M2.3 đã deploy cho
-project `medicare-ai-cf804`. Rules chỉ cấp owner `get/create/update` đúng
-`/users/{auth.uid}`; list, delete, subcollection và mọi surface
-medication/prescription/OCR/caregiver/devices/health data chưa định nghĩa vẫn
-default-deny. Bản deny-all trước deploy cùng checksum và quy trình rollback được
-lưu tại [Firestore production deny-all baseline](../docs/firestore-production-deny-all-baseline.md).
+Cloud Firestore `(default)` tại `asia-east1` của project `medicare-ai-cf804`
+đang giữ baseline Rules M3.3 đã deploy: owner elderly được giới hạn trong profile,
+medication và schedule đã phê duyệt; caregiver/cross-user/delete và collection
+chưa định nghĩa vẫn default-deny. Bản deny-all trước deploy cùng checksum và quy
+trình rollback được lưu tại [Firestore production deny-all baseline](../docs/firestore-production-deny-all-baseline.md).
 
 `EXPO_PUBLIC_FIRESTORE_USER_PROFILES_ENABLED` là cờ public Expo nhúng vào bundle,
 **không phải** lớp phân quyền và không được chứa secret. `.env.example` để
@@ -165,9 +160,26 @@ trong AsyncStorage/Firebase. Chi tiết tại
 tác, dùng path `elderlyProfiles/{auth.uid}/medications/{medicationId}`, server
 timestamps và transaction/revision. Cờ
 `EXPO_PUBLIC_FIRESTORE_MEDICATIONS_ENABLED` vẫn mặc định `false` trong template;
-không bật trước khi Rules M3.2 được review và deploy riêng. Medication Firestore
-không seed demo data; DoseEvent/lịch vẫn là mock độc lập. Xem
+Medication Firestore không seed demo data. Xem
 [Firestore Medication CRUD — Migration 3.2](../docs/medication-management-m3.2.md).
+
+### Medication Schedules, Dose Tracking and local reminders
+
+Schedule owner-only dùng `elderlyProfiles/{auth.uid}/medicationSchedules/{scheduleId}`;
+khi Medication và Schedule flags cùng bật, Home hiển thị lịch thật theo múi giờ
+`Asia/Ho_Chi_Minh`. Schedule/Medication inactive không tạo reminder mới hoặc
+hiện như lịch đang dùng; DoseEvent đã self-report vẫn bất biến để tra lịch sử.
+
+`EXPO_PUBLIC_FIRESTORE_DOSE_EVENTS_ENABLED` và
+`EXPO_PUBLIC_LOCAL_REMINDERS_ENABLED` mặc định `false`. Nếu chủ project bật
+chúng trên `.env` local sau khi Rules M3.4 được deploy riêng, elderly owner có
+thể tự báo Đã uống/Bỏ qua sau giờ dự kiến, xem lịch sử 1/7/30 ngày với phân trang,
+và chủ động đồng ý reminder cục bộ. Reminder không đưa tên thuốc/liều lên lock
+screen, giữ horizon tối đa 14 ngày/48 ID MediCare AI, và không dùng FCM hay
+server scheduler. History index trong `../firestore.indexes.json` cũng cần
+deploy riêng. Tất cả đây là phản hồi tự báo, không phải bằng chứng y tế.
+Quy trình safety, checklist iPhone và điều kiện deploy được ghi tại
+[Medication tracking & local reminders](../docs/medication-workflow-finalization.md).
 
 Expo Go dùng native container riêng. Trước EAS/development build, nhóm cần
 quyết định Android/iOS identifiers và Firebase client apps của Expo một cách có

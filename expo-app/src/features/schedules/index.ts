@@ -3,6 +3,12 @@ export type {
   DoseEventResponseInput,
   DoseTrackingRepository,
 } from './domain/dose-tracking-repository';
+export type {
+  DoseHistoryPage,
+  DoseHistoryQuery,
+  DoseHistoryRange,
+  DoseHistoryRepository,
+} from './domain/dose-history-repository';
 export {
   createDoseEventResponseInput,
   getDoseEventId,

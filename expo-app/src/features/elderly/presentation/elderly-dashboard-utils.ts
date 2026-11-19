@@ -21,6 +21,8 @@ export type ElderlyDashboardMedicationSchedule = Readonly<{
 
 export type ElderlyDashboardDoseTrackingSchedule = ElderlyDashboardMedicationSchedule & Readonly<{
   event: DoseEvent | null;
+  /** A same-schedule/day immutable response retained after an in-day time edit. */
+  priorResponseEvent: DoseEvent | null;
   eventId: string;
   scheduledLocalDate: string;
   scheduledAt: string;
@@ -138,16 +140,24 @@ export function getTodayDoseTrackingSchedules(
     const eventId = getDoseEventId(schedule.id, isoDate, schedule.localTime);
     const scheduledAt = getDoseEventScheduledAt(isoDate, schedule.localTime);
     const event = eventsById.get(eventId) ?? null;
+    const priorResponseEvent = event
+      ? null
+      : events.find((candidate) => candidate.scheduleId === schedule.id
+        && candidate.scheduledLocalDate === isoDate
+        && candidate.id !== eventId) ?? null;
 
     return {
       schedule,
       medication,
       event,
+      priorResponseEvent,
       eventId,
       scheduledLocalDate: isoDate,
       scheduledAt,
       status: event?.status ?? 'pending',
-      canRespond: event === null && isDoseEventDue({ scheduledAt }, now),
+      // Editing a schedule's time later in the same HCM day must not make an
+      // immutable response for the original occurrence appear as a second dose.
+      canRespond: event === null && priorResponseEvent === null && isDoseEventDue({ scheduledAt }, now),
     };
   });
 }

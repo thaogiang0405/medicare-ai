@@ -5,6 +5,7 @@ export {
   getLocalReminderOccurrenceKey,
   getUpcomingLocalReminderOccurrences,
   LocalReminderService,
+  localReminderMaxPendingNotifications,
   localReminderRollingHorizonDays,
   localReminderStorageMetadataKey,
   localReminderTimeZone,
@@ -15,7 +16,10 @@ export type {
   LocalReminderNotificationRequest,
   LocalReminderOccurrence,
   LocalReminderPermission,
+  LocalReminderDisableResult,
   LocalReminderStoragePort,
   LocalReminderSyncInput,
   LocalReminderSyncResult,
+  LocalReminderSyncStatus,
+  LocalReminderUserSettings,
 } from './local-reminder-service';

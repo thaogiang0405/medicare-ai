@@ -9,6 +9,15 @@
       ]
     },
     {
+      "collectionGroup": "doseEvents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "scheduledLocalDate", "order": "DESCENDING" },
+        { "fieldPath": "scheduledLocalTime", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "medications",
       "queryScope": "COLLECTION_GROUP",
       "fields": [

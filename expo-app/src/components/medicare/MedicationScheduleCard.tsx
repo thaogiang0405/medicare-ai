@@ -26,6 +26,7 @@ export type MedicationScheduleCardProps = {
     onReportTaken: () => void;
     onReportSkipped: () => void;
     isSubmitting?: boolean;
+    blockedMessage?: string;
   }>;
   style?: StyleProp<ViewStyle>;
   testID?: string;
@@ -51,7 +52,7 @@ export function MedicationScheduleCard({
     ? isPendingResponse
       ? responseActions?.canRespond
         ? 'Chưa ghi nhận phản hồi tự báo'
-        : 'Chưa ghi nhận phản hồi – chờ đến giờ dự kiến'
+        : responseActions?.blockedMessage ?? 'Chưa ghi nhận phản hồi – chờ đến giờ dự kiến'
       : 'Phản hồi do bạn tự báo, không phải xác nhận y tế'
     : 'Lịch dự kiến – Chưa ghi nhận uống';
 

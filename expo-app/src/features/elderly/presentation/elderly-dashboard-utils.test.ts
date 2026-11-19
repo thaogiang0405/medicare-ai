@@ -168,4 +168,45 @@ describe('getTodayDoseTrackingSchedules', () => {
     ]);
     expect(tracked[0].event?.id).toBe('morning__2026-11-23__08:00');
   });
+
+  it('does not create a second response after an in-day schedule time edit, while preserving the original record for history', () => {
+    const oldTimeResponse: DoseEvent = {
+      id: 'morning__2026-11-23__08:00',
+      ownerUid: 'elderly-a',
+      scheduleId: 'morning',
+      medicationId: 'med-active',
+      occurrenceKey: '2026-11-23T08:00@Asia/Ho_Chi_Minh',
+      scheduledAt: '2026-11-23T01:00:00.000Z',
+      scheduledLocalDate: '2026-11-23',
+      scheduledLocalTime: '08:00',
+      timeZone: 'Asia/Ho_Chi_Minh',
+      medicationSnapshot: { name: 'Metformin', strengthText: '500 mg', directionsText: 'Uống sau bữa sáng' },
+      status: 'reportedTaken',
+      responseSource: 'selfReported',
+      respondedAt: '2026-11-23T01:30:00.000Z',
+      respondedBy: 'elderly-a',
+      responseHistory: {
+        initial: {
+          status: 'reportedTaken',
+          responseSource: 'selfReported',
+          respondedAt: '2026-11-23T01:30:00.000Z',
+          respondedBy: 'elderly-a',
+        },
+      },
+      revision: 1,
+    };
+
+    const [plan] = getTodayDoseTrackingSchedules(
+      [schedule({ id: 'morning', localTime: '09:00' })],
+      [activeMedication],
+      [oldTimeResponse],
+      new Date('2026-11-23T03:00:00.000Z'),
+    );
+
+    expect(plan).toMatchObject({
+      event: null,
+      priorResponseEvent: expect.objectContaining({ id: oldTimeResponse.id }),
+      canRespond: false,
+    });
+  });
 });

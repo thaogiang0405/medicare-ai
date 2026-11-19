@@ -392,6 +392,21 @@ service cloud.firestore {
         && history.initial.respondedBy == uid;
     }
 
+    // Firestore stores timestamps in UTC. Viet Nam does not observe daylight
+    // saving time, so adding seven hours lets Rules validate the exact HCM
+    // calendar day and wall-clock time supplied by the client.
+    function hasExactHcmDoseEventTimestamp(data) {
+      let dateParts = data.scheduledLocalDate.split('-');
+      let timeParts = data.scheduledLocalTime.split(':');
+      let hcmScheduledAt = data.scheduledAt + duration.time(7, 0, 0, 0);
+      let expectedHcmScheduledAt = timestamp.date(
+        int(dateParts[0]),
+        int(dateParts[1]),
+        int(dateParts[2])
+      ) + duration.time(int(timeParts[0]), int(timeParts[1]), 0, 0);
+      return hcmScheduledAt == expectedHcmScheduledAt;
+    }
+
     function hasValidDoseEventSchema(data, uid) {
       return hasExactDoseEventFields(data)
         && data.ownerUid is string
@@ -411,6 +426,7 @@ service cloud.firestore {
         && data.occurrenceKey == data.scheduledLocalDate + 'T' + data.scheduledLocalTime + '@Asia/Ho_Chi_Minh'
         && data.scheduledAt is timestamp
         && data.scheduledAt <= request.time
+        && hasExactHcmDoseEventTimestamp(data)
         && data.timeZone == 'Asia/Ho_Chi_Minh'
         && hasValidDoseEventMedicationSnapshot(data.medicationSnapshot)
         && data.status is string
@@ -427,14 +443,23 @@ service cloud.firestore {
     function hasValidDoseEventScheduleReference(uid, data) {
       let schedulePath = /databases/$(database)/documents/elderlyProfiles/$(uid)/medicationSchedules/$(data.scheduleId);
       let schedule = get(schedulePath).data;
+      let hcmScheduledAt = data.scheduledAt + duration.time(7, 0, 0, 0);
       return exists(schedulePath)
-        // M3.3 Rules enforce the exact persisted schema. Keep this reference
-        // check focused so a valid write stays below the Rules expression cap.
         && schedule.ownerUid == uid
         && schedule.active == true
         && schedule.medicationId == data.medicationId
         && schedule.localTime == data.scheduledLocalTime
         && schedule.timeZone == data.timeZone
+        && schedule.recurrence is string
+        && schedule.recurrence in ['daily', 'weekly']
+        && schedule.weekdays is list
+        && (
+          schedule.recurrence == 'daily'
+          || (
+            schedule.recurrence == 'weekly'
+            && schedule.weekdays.toSet().hasAll([hcmScheduledAt.dayOfWeek()])
+          )
+        )
         && schedule.startDate is string
         && data.scheduledLocalDate >= schedule.startDate
         && (

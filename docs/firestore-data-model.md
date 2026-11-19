@@ -165,45 +165,74 @@ client. Tạo lịch yêu cầu medication cùng owner đang `active`.
 
 `nextOccurrenceAt`, `medicationRevision`, `createdBy`, notification metadata,
 và bất kỳ metadata tin cậy nào để kích hoạt nhắc uống đều không thuộc client
-schema M3.3. Chúng chỉ có thể được tính/lưu qua một cơ chế server-trusted đã
-được review ở milestone sau. M3.3 không tạo DoseEvent, thông báo hoặc suy luận
-liều dùng từ tên/hướng dẫn thuốc.
+schedule schema. Chúng chỉ có thể được tính/lưu qua một cơ chế server-trusted
+đã được review ở milestone sau. Ứng dụng không suy luận liều dùng từ tên hoặc
+hướng dẫn thuốc.
 
 One schedule is one local administration time. This makes recurrence, notification IDs and edit semantics simpler. Preserve user-entered strings such as strength/directions; do not normalize into a dosage decision.
 
-### Dose events and notifications
+### Dose events M3.4 and local notifications
 
 ```json
-// doseEvents/{scheduleId}_{utcMillis}
+// elderlyProfiles/{elderlyId}/doseEvents/{scheduleId}__{localDate}__{localTime}
 {
-  "elderlyId": "elderlyUid",
+  "ownerUid": "elderlyUid",
   "scheduleId": "schedule-id",
-  "scheduleRevision": 1,
+  "medicationId": "medication-id",
   "occurrenceKey": "2026-11-16T08:00@Asia/Ho_Chi_Minh",
   "scheduledAt": "Timestamp",
   "scheduledLocalDate": "2026-11-16",
   "scheduledLocalTime": "08:00",
   "timeZone": "Asia/Ho_Chi_Minh",
   "medicationSnapshot": { "name": "...", "strengthText": "...", "directionsText": "..." },
-  "status": "pending",
-  "respondedBy": null,
-  "respondedAt": null,
-  "responseSource": null,
+  "status": "reportedTaken",
+  "responseSource": "selfReported",
+  "respondedBy": "elderlyUid",
+  "respondedAt": "Timestamp",
+  "responseHistory": {
+    "initial": {
+      "status": "reportedTaken",
+      "responseSource": "selfReported",
+      "respondedBy": "elderlyUid",
+      "respondedAt": "Timestamp"
+    }
+  },
+  "revision": 1,
   "createdAt": "Timestamp",
   "updatedAt": "Timestamp"
 }
 ```
 
-Status: `pending`, `snoozed`, `reportedTaken`, `reportedSkipped`, `unanswered`, `cancelled`. A dose event contains immutable medication/schedule snapshots so historical views remain truthful after an edit.
+M3.4 tạo document chỉ khi chủ hồ sơ chủ động chọn `reportedTaken` hoặc
+`reportedSkipped` cho một lần uống đã đến giờ; khi chưa có document, UI hiển thị
+“Chưa ghi nhận”, không suy diễn bỏ liều. ID được quyết định bởi schedule + ngày
+và giờ địa phương. Transaction trả lại kết quả cùng status khi bấm lặp, nhưng
+từ chối status khác. Client không update/delete document sau đó; `responseHistory`
+và medication snapshot vì vậy bất biến, kể cả sau khi thuốc/lịch được sửa hoặc
+tạm dừng. Đây là phản hồi tự báo, không phải xác nhận y tế.
 
-Server-generated notification docs use deterministic IDs, e.g. `{doseEventId}_initialReminder`, and include `idempotencyKey`, `scheduledFor`, `deliveryState`, `sentAt`. Lock-screen payload must be generic and not reveal medication names by default.
+Local reminders M3.4 không tạo Firestore `/notifications` document. Sau thao tác
+đồng ý rõ ràng của người dùng, thiết bị chỉ lưu mapping opaque giữa notification
+ID do hệ điều hành cấp và occurrence key trong AsyncStorage; mapping không chứa
+tên thuốc. Nội dung màn hình khóa luôn chung chung. Không có FCM, Cloud
+Functions, background server scheduler hoặc đảm bảo thời điểm chính xác khi
+offline/chưa đồng bộ.
+
+Rules xác minh owner elderly, schema, server timestamps, ID/key, schedule/medication
+cùng owner đang active, snapshot thuốc và `scheduledAt <= request.time`. Firestore
+Rules không thể chứng minh hoàn toàn phép đổi ISO local date/weekday sang instant
+Asia/Ho_Chi_Minh, cũng không thể tự suy ra recurrence hằng ngày/hằng tuần từ dữ
+liệu client; vì vậy một chủ hồ sơ vẫn có thể tự báo một lần trong quá khứ thuộc
+phạm vi ngày của schedule nhưng không đúng thứ lặp. Occurrence metadata là
+client-derived self-report. Một scheduler server-trusted là điều kiện cần nếu
+milestone sau cần chống giả mạo ngày/tuần ở mức mật mã.
 
 ## Timestamp, update and idempotency rules
 
 1. Persist instant fields as Firestore `Timestamp`/UTC. Business date is ISO `YYYY-MM-DD`, local time is `HH:mm`, and each schedule carries IANA timezone.
-2. Each client mutation has `operationId`; critical updates use Firestore transaction and optimistic `revision`.
-3. Dose event ID and notification ID are deterministic. FCM/local delivery is at-least-once, so client/backend dedupe by event/key.
-4. Changing a schedule increments its revision. M3.3 has no generated dose events, and a future trusted scheduler must never rewrite dose events already generated.
+2. Critical dose-response creates use a Firestore transaction and immutable `revision: 1`; a confirmed response is never overwritten.
+3. Dose event ID and local reminder logical key are deterministic. Local delivery is best effort, so the device dedupes only MediCare-owned IDs.
+4. Changing a schedule increments its own revision. A future trusted scheduler must never rewrite self-reported dose events already generated.
 5. Stopping a medication/schedule prevents future event creation in a later milestone; it does not delete history.
 6. Revoke marks the link inactive, stops future caregiver notifications and deletes projection records. It cannot erase data already observed by the caregiver.
 

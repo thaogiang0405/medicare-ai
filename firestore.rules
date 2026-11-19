@@ -324,6 +324,149 @@ service cloud.firestore {
         );
     }
 
+    function hasExactDoseEventFields(data) {
+      return data.keys().hasAll([
+          'ownerUid',
+          'scheduleId',
+          'medicationId',
+          'occurrenceKey',
+          'scheduledAt',
+          'scheduledLocalDate',
+          'scheduledLocalTime',
+          'timeZone',
+          'medicationSnapshot',
+          'status',
+          'responseSource',
+          'respondedAt',
+          'respondedBy',
+          'responseHistory',
+          'revision',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerUid',
+          'scheduleId',
+          'medicationId',
+          'occurrenceKey',
+          'scheduledAt',
+          'scheduledLocalDate',
+          'scheduledLocalTime',
+          'timeZone',
+          'medicationSnapshot',
+          'status',
+          'responseSource',
+          'respondedAt',
+          'respondedBy',
+          'responseHistory',
+          'revision',
+          'createdAt',
+          'updatedAt'
+        ]);
+    }
+
+    function hasValidDoseEventMedicationSnapshot(snapshot) {
+      return snapshot is map
+        && snapshot.keys().hasAll(['name', 'strengthText', 'directionsText'])
+        && snapshot.keys().hasOnly(['name', 'strengthText', 'directionsText'])
+        && snapshot.name is string
+        && snapshot.name.size() >= 1
+        && snapshot.name.size() <= 120
+        && snapshot.name.matches('.*\\S.*')
+        && snapshot.strengthText is string
+        && snapshot.strengthText.size() <= 80
+        && snapshot.directionsText is string
+        && snapshot.directionsText.size() <= 500;
+    }
+
+    function hasValidDoseEventResponseHistory(history, uid, status) {
+      return history is map
+        && history.keys().hasAll(['initial'])
+        && history.keys().hasOnly(['initial'])
+        && history.initial is map
+        && history.initial.keys().hasAll(['status', 'responseSource', 'respondedAt', 'respondedBy'])
+        && history.initial.keys().hasOnly(['status', 'responseSource', 'respondedAt', 'respondedBy'])
+        && history.initial.status == status
+        && history.initial.responseSource == 'selfReported'
+        && history.initial.respondedAt == request.time
+        && history.initial.respondedBy == uid;
+    }
+
+    function hasValidDoseEventSchema(data, uid) {
+      return hasExactDoseEventFields(data)
+        && data.ownerUid is string
+        && data.scheduleId is string
+        && data.scheduleId.size() >= 1
+        && data.scheduleId.size() <= 150
+        && data.scheduleId.matches('^[^/]+$')
+        && data.medicationId is string
+        && data.medicationId.size() >= 1
+        && data.medicationId.size() <= 150
+        && data.medicationId.matches('^[^/]+$')
+        && data.occurrenceKey is string
+        && data.scheduledLocalDate is string
+        && hasValidMedicationScheduleDate(data.scheduledLocalDate)
+        && data.scheduledLocalTime is string
+        && data.scheduledLocalTime.matches('^(?:[01][0-9]|2[0-3]):[0-5][0-9]$')
+        && data.occurrenceKey == data.scheduledLocalDate + 'T' + data.scheduledLocalTime + '@Asia/Ho_Chi_Minh'
+        && data.scheduledAt is timestamp
+        && data.scheduledAt <= request.time
+        && data.timeZone == 'Asia/Ho_Chi_Minh'
+        && hasValidDoseEventMedicationSnapshot(data.medicationSnapshot)
+        && data.status is string
+        && data.status in ['reportedTaken', 'reportedSkipped']
+        && data.responseSource == 'selfReported'
+        && data.respondedAt == request.time
+        && data.respondedBy == uid
+        && hasValidDoseEventResponseHistory(data.responseHistory, uid, data.status)
+        && data.revision == 1
+        && data.createdAt == request.time
+        && data.updatedAt == request.time;
+    }
+
+    function hasValidDoseEventScheduleReference(uid, data) {
+      let schedulePath = /databases/$(database)/documents/elderlyProfiles/$(uid)/medicationSchedules/$(data.scheduleId);
+      let schedule = get(schedulePath).data;
+      return exists(schedulePath)
+        // M3.3 Rules enforce the exact persisted schema. Keep this reference
+        // check focused so a valid write stays below the Rules expression cap.
+        && schedule.ownerUid == uid
+        && schedule.active == true
+        && schedule.medicationId == data.medicationId
+        && schedule.localTime == data.scheduledLocalTime
+        && schedule.timeZone == data.timeZone
+        && schedule.startDate is string
+        && data.scheduledLocalDate >= schedule.startDate
+        && (
+          schedule.endDate == null
+          || (schedule.endDate is string && data.scheduledLocalDate <= schedule.endDate)
+        );
+    }
+
+    function hasValidDoseEventMedicationReference(uid, data) {
+      let medicationPath = /databases/$(database)/documents/elderlyProfiles/$(uid)/medications/$(data.medicationId);
+      let medication = get(medicationPath).data;
+      return exists(medicationPath)
+        // M3.2 Rules enforce the exact persisted schema; only an active
+        // same-owner medication can anchor a new self-report.
+        && medication.ownerUid == uid
+        && medication.status == 'active'
+        && medication.name == data.medicationSnapshot.name
+        && medication.strengthText == data.medicationSnapshot.strengthText
+        && medication.directionsText == data.medicationSnapshot.directionsText;
+    }
+
+    function isValidDoseEventCreate(uid, doseEventId) {
+      return hasValidElderlyProfile(uid)
+        && hasValidDoseEventSchema(request.resource.data, uid)
+        && request.resource.data.ownerUid == uid
+        && doseEventId == request.resource.data.scheduleId
+          + '__' + request.resource.data.scheduledLocalDate
+          + '__' + request.resource.data.scheduledLocalTime
+        && hasValidDoseEventScheduleReference(uid, request.resource.data)
+        && hasValidDoseEventMedicationReference(uid, request.resource.data);
+    }
+
     // Migration 2.3 profile surface. `get` deliberately
     // excludes collection queries so users cannot enumerate other profiles.
     match /users/{uid} {
@@ -367,6 +510,15 @@ service cloud.firestore {
       allow create: if isValidMedicationScheduleCreate(uid);
       allow update: if isValidMedicationScheduleUpdate(uid);
       allow delete: if false;
+    }
+
+    // M3.4: an elderly owner may create and read exactly one immutable
+    // self-reported response for a real planned occurrence. Client updates,
+    // deletes, notification documents, and caregiver access remain denied.
+    match /elderlyProfiles/{uid}/doseEvents/{doseEventId} {
+      allow get, list: if hasValidElderlyProfile(uid);
+      allow create: if isValidDoseEventCreate(uid, doseEventId);
+      allow update, delete: if false;
     }
 
     match /elderlyProfiles/{document=**} {

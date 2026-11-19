@@ -22,13 +22,24 @@ jest.mock('@/components/medicare', () => {
       localTime,
       medicationName,
       recurrenceText,
+      doseStatus,
+      responseActions,
       testID,
     }: {
       localTime: string;
       medicationName: string;
       recurrenceText: string;
+      doseStatus?: string;
+      responseActions?: { onReportTaken: () => void; onReportSkipped: () => void };
       testID?: string;
-    }) => React.createElement(View, { testID }, React.createElement(Text, null, `${localTime} ${medicationName} ${recurrenceText}`), React.createElement(Text, null, 'Lịch dự kiến – Chưa ghi nhận uống')),
+    }) => React.createElement(
+      View,
+      { testID },
+      React.createElement(Text, null, `${localTime} ${medicationName} ${recurrenceText}`),
+      React.createElement(Text, null, doseStatus ? `Dose status: ${doseStatus}` : 'Lịch dự kiến – Chưa ghi nhận uống'),
+      responseActions ? React.createElement(Pressable, { accessibilityLabel: 'Đã uống', onPress: responseActions.onReportTaken }, React.createElement(Text, null, 'Đã uống')) : null,
+      responseActions ? React.createElement(Pressable, { accessibilityLabel: 'Bỏ qua', onPress: responseActions.onReportSkipped }, React.createElement(Text, null, 'Bỏ qua')) : null,
+    ),
     SafetyNotice: ({ title, message }: { title: string; message: string }) =>
       React.createElement(View, null, React.createElement(Text, null, title), React.createElement(Text, null, message)),
     ActionCard: ({ title, onPress }: { title: string; onPress: () => void }) =>
@@ -98,12 +109,20 @@ function mockDashboard(overrides: Record<string, unknown> = {}) {
     dashboardMode: 'firestore-schedules',
     medicationsFeatureEnabled: true,
     schedulesFeatureEnabled: true,
+    doseEventsFeatureEnabled: false,
+    localRemindersFeatureEnabled: false,
+    localReminderStatus: 'disabled',
+    usesFirestoreDoseTracking: false,
     doses: [],
     medicationSchedules: [{ schedule, medication }],
+    doseTrackingSchedules: [],
     isLoading: false,
     errorMessage: null,
     retryDashboard,
     recordResponse: undefined,
+    recordDoseResponse: undefined,
+    isRecordingDoseResponse: false,
+    enableLocalReminders: jest.fn(),
     ...overrides,
   } as ReturnType<typeof useElderlyDashboard>);
 }
@@ -153,6 +172,33 @@ describe('ElderlyHomeScreen', () => {
     expect(view.getByText('Không thể tải lịch thuốc')).toBeOnTheScreen();
     await fireEvent.press(view.getByLabelText('Thử tải lại lịch thuốc'));
     expect(retryDashboard).toHaveBeenCalledTimes(1);
+    expect(view.queryByTestId('demo-dose-event')).toBeNull();
+  });
+
+  it('shows real self-report actions only when M3.4 dose tracking is enabled', async () => {
+    const recordDoseResponse = jest.fn();
+    mockDashboard({
+      usesFirestoreDoseTracking: true,
+      doseEventsFeatureEnabled: true,
+      medicationSchedules: [],
+      doseTrackingSchedules: [{
+        schedule,
+        medication,
+        event: null,
+        eventId: 'schedule-1__2026-11-23__08:00',
+        scheduledLocalDate: '2026-11-23',
+        scheduledAt: '2026-11-23T01:00:00.000Z',
+        status: 'pending',
+        canRespond: true,
+      }],
+      recordDoseResponse,
+    });
+
+    const view = await render(<ElderlyHomeScreen />);
+
+    expect(view.getByTestId('dose-tracking-schedule-schedule-1')).toBeOnTheScreen();
+    await fireEvent.press(view.getByLabelText('Đã uống'));
+    expect(recordDoseResponse).toHaveBeenCalledWith(expect.objectContaining({ schedule, medication }), 'reportedTaken');
     expect(view.queryByTestId('demo-dose-event')).toBeNull();
   });
 });

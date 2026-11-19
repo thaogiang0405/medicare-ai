@@ -2,6 +2,7 @@ import type { DoseEvent, Medication, MedicationSchedule } from '@/types/domain';
 
 import {
   getMedicationScheduleCalendarDay,
+  getTodayDoseTrackingSchedules,
   getTodayMedicationSchedules,
   hasDashboardDataForCurrentUser,
   millisecondsUntilNextMedicationScheduleDay,
@@ -111,5 +112,60 @@ describe('dashboard schedule mode and day refresh', () => {
     expect(hasDashboardDataForCurrentUser('elderly-a', 'elderly-b')).toBe(false);
     expect(hasDashboardDataForCurrentUser(undefined, 'elderly-a')).toBe(false);
     expect(millisecondsUntilNextMedicationScheduleDay(new Date('2026-11-23T16:59:59.000Z'))).toBe(1_000);
+  });
+});
+
+describe('getTodayDoseTrackingSchedules', () => {
+  it('does not invent a response, joins only the deterministic real event, and disables future reporting', () => {
+    const beforeMorning = new Date('2026-11-22T23:30:00.000Z'); // 06:30 in HCM on Monday
+    const afterMorning = new Date('2026-11-23T01:30:00.000Z'); // 08:30 in HCM on Monday
+    const plans = [
+      schedule({ id: 'morning', localTime: '08:00' }),
+      schedule({ id: 'evening', localTime: '20:00' }),
+    ];
+
+    const pending = getTodayDoseTrackingSchedules(plans, [activeMedication], [], beforeMorning);
+    expect(pending).toEqual(expect.arrayContaining([
+      expect.objectContaining({ schedule: expect.objectContaining({ id: 'morning' }), status: 'pending', event: null, canRespond: false }),
+    ]));
+
+    expect(getTodayDoseTrackingSchedules(plans, [activeMedication], [], afterMorning)[0]).toMatchObject({
+      schedule: expect.objectContaining({ id: 'morning' }),
+      status: 'pending',
+      event: null,
+      canRespond: true,
+    });
+
+    const tracked = getTodayDoseTrackingSchedules(plans, [activeMedication], [{
+      id: 'morning__2026-11-23__08:00',
+      ownerUid: 'elderly-a',
+      scheduleId: 'morning',
+      medicationId: 'med-active',
+      occurrenceKey: '2026-11-23T08:00@Asia/Ho_Chi_Minh',
+      scheduledAt: '2026-11-23T01:00:00.000Z',
+      scheduledLocalDate: '2026-11-23',
+      scheduledLocalTime: '08:00',
+      timeZone: 'Asia/Ho_Chi_Minh',
+      medicationSnapshot: { name: 'Metformin', strengthText: '500 mg', directionsText: 'Uống sau bữa sáng' },
+      status: 'reportedTaken',
+      responseSource: 'selfReported',
+      respondedAt: '2026-11-23T01:30:00.000Z',
+      respondedBy: 'elderly-a',
+      responseHistory: {
+        initial: {
+          status: 'reportedTaken',
+          responseSource: 'selfReported',
+          respondedAt: '2026-11-23T01:30:00.000Z',
+          respondedBy: 'elderly-a',
+        },
+      },
+      revision: 1,
+    }], afterMorning);
+
+    expect(tracked.map((item) => ({ id: item.schedule.id, status: item.status, canRespond: item.canRespond }))).toEqual([
+      { id: 'morning', status: 'reportedTaken', canRespond: false },
+      { id: 'evening', status: 'pending', canRespond: false },
+    ]);
+    expect(tracked[0].event?.id).toBe('morning__2026-11-23__08:00');
   });
 });

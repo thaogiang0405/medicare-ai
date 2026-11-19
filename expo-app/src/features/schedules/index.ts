@@ -1,4 +1,13 @@
 export type { DoseEventRepository } from './domain/dose-event-repository';
+export type {
+  DoseEventResponseInput,
+  DoseTrackingRepository,
+} from './domain/dose-tracking-repository';
+export {
+  createDoseEventResponseInput,
+  getDoseEventId,
+  isDoseEventDue,
+} from './domain/dose-tracking-repository';
 export {
   MockDoseEventRepository,
   mockDoseEventRepository,

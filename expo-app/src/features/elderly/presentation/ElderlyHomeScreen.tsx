@@ -28,12 +28,19 @@ export default function ElderlyHomeScreen() {
     dashboardMode,
     medicationsFeatureEnabled,
     schedulesFeatureEnabled,
+    usesFirestoreDoseTracking,
     doses,
     medicationSchedules,
+    doseTrackingSchedules,
     isLoading,
     errorMessage,
     retryDashboard,
     recordResponse,
+    recordDoseResponse,
+    isRecordingDoseResponse,
+    localRemindersFeatureEnabled,
+    localReminderStatus,
+    enableLocalReminders,
   } = useElderlyDashboard();
   const signOut = useSessionStore((state) => state.signOut);
   const operationStatus = useSessionStore((state) => state.operationStatus);
@@ -51,10 +58,15 @@ export default function ElderlyHomeScreen() {
   };
 
   const dashboardBanner = usesFirestoreSchedules
-    ? {
+    ? usesFirestoreDoseTracking
+      ? {
+        title: 'Lịch thuốc và phản hồi trên Firebase',
+        description: 'Bạn có thể tự báo Đã uống hoặc Bỏ qua sau giờ dự kiến. Đây không phải xác nhận y tế.',
+      }
+      : {
       title: 'Lịch thuốc trên Firebase',
       description: 'Lịch hôm nay là kế hoạch từ hồ sơ đã xác thực. DoseEvent, phản hồi uống thuốc và nhắc lại chưa được tạo từ lịch này.',
-    }
+      }
     : medicationsFeatureEnabled
       ? {
         title: 'Thuốc trên Firebase · Lịch demo',
@@ -81,7 +93,7 @@ export default function ElderlyHomeScreen() {
         <View style={styles.errorGroup}>
           <SafetyNotice
             message={errorMessage}
-            title={usesFirestoreSchedules ? 'Không thể tải lịch thuốc' : 'Không thể tải dữ liệu demo'}
+            title={usesFirestoreDoseTracking ? 'Không thể tải lịch hoặc phản hồi' : usesFirestoreSchedules ? 'Không thể tải lịch thuốc' : 'Không thể tải dữ liệu demo'}
             tone="error"
           />
           <SecondaryButton
@@ -106,7 +118,24 @@ export default function ElderlyHomeScreen() {
             tone="information"
           />
         ) : null}
-        {!isLoading && !errorMessage && usesFirestoreSchedules ? medicationSchedules.map(({ schedule, medication }) => (
+        {!isLoading && !errorMessage && usesFirestoreDoseTracking ? doseTrackingSchedules.map((item) => (
+          <MedicationScheduleCard
+            key={item.schedule.id}
+            doseStatus={item.status}
+            localTime={item.schedule.localTime}
+            medicationName={item.medication.name}
+            recurrenceText={medicationScheduleRecurrenceLabel(item.schedule)}
+            responseActions={{
+              canRespond: item.canRespond,
+              isSubmitting: isRecordingDoseResponse,
+              onReportTaken: () => void recordDoseResponse?.(item, 'reportedTaken'),
+              onReportSkipped: () => void recordDoseResponse?.(item, 'reportedSkipped'),
+            }}
+            strengthText={item.medication.strengthText}
+            testID={`dose-tracking-schedule-${item.schedule.id}`}
+          />
+        )) : null}
+        {!isLoading && !errorMessage && usesFirestoreSchedules && !usesFirestoreDoseTracking ? medicationSchedules.map(({ schedule, medication }) => (
           <MedicationScheduleCard
             key={schedule.id}
             localTime={schedule.localTime}
@@ -153,12 +182,46 @@ export default function ElderlyHomeScreen() {
         }) : null}
       </View>
       <SafetyNotice
-        message={usesFirestoreSchedules
-          ? 'Đây là lịch dự kiến. Ứng dụng chưa ghi nhận bạn đã uống thuốc, chưa tự tạo DoseEvent và chưa gửi thông báo.'
+        message={usesFirestoreDoseTracking
+          ? '“Đã uống” và “Bỏ qua” là phản hồi do bạn tự báo. Ứng dụng không tự xác nhận việc uống thuốc và chưa có cảnh báo y tế.'
+          : usesFirestoreSchedules
+            ? 'Đây là lịch dự kiến. Ứng dụng chưa ghi nhận bạn đã uống thuốc, chưa tự tạo DoseEvent và chưa gửi thông báo.'
           : '“Đã uống” là phản hồi do bạn tự báo. Nếu quên liều hoặc có dấu hiệu bất thường, hãy liên hệ bác sĩ hoặc dược sĩ.'}
-        title={usesFirestoreSchedules ? 'Giới hạn hiện tại' : 'Ghi nhận an toàn'}
+        title={usesFirestoreDoseTracking ? 'Phản hồi tự báo' : usesFirestoreSchedules ? 'Giới hạn hiện tại' : 'Ghi nhận an toàn'}
         tone="information"
       />
+      {usesFirestoreSchedules && localRemindersFeatureEnabled ? (
+        <View style={styles.reminderGroup}>
+          <Text accessibilityRole="header" style={styles.sectionTitle}>
+            Nhắc lịch trên thiết bị này
+          </Text>
+          <SafetyNotice
+            message="Chỉ bật khi bạn đồng ý. Thông báo không hiển thị tên thuốc trên màn hình khóa và có thể bị trễ khi thiết bị hoặc ứng dụng chưa đồng bộ."
+            title="Nhắc lịch cục bộ"
+            tone="information"
+          />
+          {localReminderStatus === 'permission-denied' ? (
+            <SafetyNotice
+              message="Bạn chưa cho phép thông báo. Hãy bật quyền Thông báo cho Expo Go hoặc MediCare AI trong Cài đặt để thử lại."
+              title="Chưa có quyền thông báo"
+              tone="error"
+            />
+          ) : null}
+          {localReminderStatus === 'error' ? (
+            <SafetyNotice
+              message="Không thể đồng bộ lời nhắc trên thiết bị. Lịch thuốc và phản hồi uống thuốc vẫn không bị thay đổi."
+              title="Không thể đồng bộ lời nhắc"
+              tone="error"
+            />
+          ) : null}
+          <SecondaryButton
+            accessibilityHint="Yêu cầu quyền thông báo nếu cần, rồi tạo lời nhắc cục bộ cho lịch thuốc đang hoạt động"
+            disabled={isLoading || localReminderStatus === 'syncing'}
+            label={localReminderStatus === 'synced' ? 'Đồng bộ lại lời nhắc' : localReminderStatus === 'syncing' ? 'Đang đồng bộ…' : 'Bật nhắc lịch trên thiết bị này'}
+            onPress={() => void enableLocalReminders()}
+          />
+        </View>
+      ) : null}
       <View style={styles.section}>
         <Text accessibilityRole="header" style={styles.sectionTitle}>
           Thao tác nhanh
@@ -213,6 +276,9 @@ const styles = StyleSheet.create({
   },
   errorGroup: {
     gap: medicareSpacing.sm,
+  },
+  reminderGroup: {
+    gap: medicareSpacing.md,
   },
   sectionTitle: {
     color: medicareColors.text,

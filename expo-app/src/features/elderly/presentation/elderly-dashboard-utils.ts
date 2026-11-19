@@ -1,16 +1,31 @@
 import {
   medicationScheduleTimeZone,
   type DoseEvent,
+  type DoseStatus,
   type Medication,
   type MedicationSchedule,
   type MedicationScheduleWeekday,
 } from '@/types/domain';
+import {
+  getDoseEventId,
+  getDoseEventScheduledAt,
+  isDoseEventDue,
+} from '@/features/schedules/domain/dose-tracking-repository';
 
 const asiaHoChiMinhUtcOffsetMilliseconds = 7 * 60 * 60 * 1000;
 
 export type ElderlyDashboardMedicationSchedule = Readonly<{
   schedule: MedicationSchedule;
   medication: Medication;
+}>;
+
+export type ElderlyDashboardDoseTrackingSchedule = ElderlyDashboardMedicationSchedule & Readonly<{
+  event: DoseEvent | null;
+  eventId: string;
+  scheduledLocalDate: string;
+  scheduledAt: string;
+  status: DoseStatus;
+  canRespond: boolean;
 }>;
 
 export type MedicationScheduleCalendarDay = Readonly<{
@@ -104,6 +119,37 @@ export function getTodayMedicationSchedules(
     left.schedule.localTime.localeCompare(right.schedule.localTime)
     || left.medication.name.localeCompare(right.medication.name, 'vi')
     || left.schedule.id.localeCompare(right.schedule.id));
+}
+
+/**
+ * Adds persisted self-reports to real plans without inventing an event for an
+ * unanswered occurrence. Schedule documents remain the source of planned time.
+ */
+export function getTodayDoseTrackingSchedules(
+  schedules: readonly MedicationSchedule[],
+  medications: readonly Medication[],
+  events: readonly DoseEvent[],
+  now: Date = new Date(),
+): ElderlyDashboardDoseTrackingSchedule[] {
+  const { isoDate } = getMedicationScheduleCalendarDay(now);
+  const eventsById = new Map(events.map((event) => [event.id, event] as const));
+
+  return getTodayMedicationSchedules(schedules, medications, now).map(({ schedule, medication }) => {
+    const eventId = getDoseEventId(schedule.id, isoDate, schedule.localTime);
+    const scheduledAt = getDoseEventScheduledAt(isoDate, schedule.localTime);
+    const event = eventsById.get(eventId) ?? null;
+
+    return {
+      schedule,
+      medication,
+      event,
+      eventId,
+      scheduledLocalDate: isoDate,
+      scheduledAt,
+      status: event?.status ?? 'pending',
+      canRespond: event === null && isDoseEventDue({ scheduledAt }, now),
+    };
+  });
 }
 
 /** Real plans are enabled only when both dependent Firestore surfaces are on. */

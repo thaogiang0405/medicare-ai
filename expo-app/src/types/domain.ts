@@ -94,6 +94,39 @@ export type DoseResponseStatus = Extract<
   'reportedTaken' | 'reportedSkipped' | 'snoozed'
 >;
 
+/** Only these final states can be persisted as a real self-reported response. */
+export type PersistedDoseResponseStatus = Extract<
+  DoseResponseStatus,
+  'reportedTaken' | 'reportedSkipped'
+>;
+
+export type DoseEventResponseSource = 'selfReported';
+
+/**
+ * A point-in-time copy keeps the response understandable if its medication is
+ * renamed or later inactivated. It is not a prescription or a recommendation.
+ */
+export interface DoseEventMedicationSnapshot {
+  name: string;
+  strengthText: string;
+  directionsText: string;
+}
+
+/**
+ * M3.4 records one immutable self-report per planned occurrence. Future
+ * milestones may add server-trusted audit history without changing this model.
+ */
+export interface DoseEventResponseHistoryEntry {
+  status: PersistedDoseResponseStatus;
+  responseSource: DoseEventResponseSource;
+  respondedAt: string;
+  respondedBy: string;
+}
+
+export interface DoseEventResponseHistory {
+  initial: DoseEventResponseHistoryEntry;
+}
+
 export interface DoseEvent {
   id: string;
   medicationId: string;
@@ -101,6 +134,17 @@ export interface DoseEvent {
   status: DoseStatus;
   respondedAt?: string;
   respondedBy?: string;
+  /** Present only for an M3.4 Firestore self-report; demo events remain lean. */
+  scheduleId?: string;
+  ownerUid?: string;
+  occurrenceKey?: string;
+  scheduledLocalDate?: string;
+  scheduledLocalTime?: string;
+  timeZone?: typeof medicationScheduleTimeZone;
+  medicationSnapshot?: DoseEventMedicationSnapshot;
+  responseSource?: DoseEventResponseSource;
+  responseHistory?: DoseEventResponseHistory;
+  revision?: number;
 }
 
 export interface DoseEventWithMedication extends DoseEvent {

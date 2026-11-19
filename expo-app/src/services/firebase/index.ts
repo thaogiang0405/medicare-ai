@@ -13,6 +13,10 @@ export {
   isFirestoreSchedulesFeatureEnabled,
 } from './firestore-schedule-feature';
 export {
+  firestoreDoseEventsUnavailableMessage,
+  isFirestoreDoseEventsFeatureEnabled,
+} from './firestore-dose-event-feature';
+export {
   createFirebaseConfig,
   FirebaseConfigurationError,
   getFirebaseConfig,

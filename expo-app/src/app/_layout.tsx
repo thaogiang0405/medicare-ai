@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 
 import { AuthInitializationGate } from '@/features/app/presentation/AuthInitializationGate';
 import { FirebaseInitializationGate } from '@/features/app/presentation/FirebaseInitializationGate';
+import { LocalReminderSynchronizationGate } from '@/features/app/presentation/LocalReminderSynchronizationGate';
 import { getAuthRouteAccess } from '@/features/auth/presentation/auth-route-policy';
 import { useSessionStore } from '@/store';
 
@@ -21,6 +22,7 @@ export default function RootLayout() {
       <StatusBar style="dark" />
       <FirebaseInitializationGate>
         <AuthInitializationGate>
+          <LocalReminderSynchronizationGate />
           <Stack
             screenOptions={{
               headerShown: false,

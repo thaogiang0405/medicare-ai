@@ -14,9 +14,11 @@ import {
   firestoreUserProfilesUnavailableMessage,
   isFirestoreUserProfilesFeatureEnabled,
 } from '@/services/firebase/firestore-profile-feature';
+import { getLocalReminderService, isLocalRemindersFeatureEnabled } from '@/services/notifications';
 import type { AppUser, UserProfile, UserRole } from '@/types/domain';
 
 import { useDoseEventStore } from './dose-event-store';
+import { useDoseTrackingStore } from './dose-tracking-store';
 import { useMedicationScheduleStore } from './medication-schedule-store';
 import { useMedicationStore } from './medication-store';
 
@@ -44,14 +46,20 @@ export interface SessionState {
 
 type AuthRepositoryFactory = () => AuthRepository;
 type ProfileRepositoryFactory = () => UserProfileRepository;
-type ResetSessionData = () => void;
+type ResetSessionData = (previousUserId?: string) => void;
 type ProfileFeatureEnabled = () => boolean;
 
 /** Clears account-bound presentation state without deleting repository data. */
-export function resetDemoSessionData(): void {
+export function resetDemoSessionData(previousUserId?: string): void {
   useDoseEventStore.getState().reset();
+  useDoseTrackingStore.getState().reset();
   useMedicationStore.getState().reset();
   useMedicationScheduleStore.getState().reset();
+
+  if (previousUserId?.trim() && isLocalRemindersFeatureEnabled()) {
+    // Never let a local notification cleanup failure block auth state reset.
+    void getLocalReminderService().cancelUserReminders(previousUserId).catch(() => undefined);
+  }
 }
 
 function toSafeErrorMessage(error: unknown): string {
@@ -77,10 +85,11 @@ async function performAuthenticationAction(
   set({ operationStatus: 'loading', errorMessage: null });
 
   try {
+    const userBeforeAction = previousUser();
     const user = await action();
 
-    if (previousUser()?.id !== user.id) {
-      resetSessionData();
+    if (userBeforeAction?.id !== user.id) {
+      resetSessionData(userBeforeAction?.id);
     }
 
     // Firebase's observer remains the source of truth for the session and
@@ -207,7 +216,7 @@ export function createSessionStore(
 
               if (!authUser) {
                 invalidateProfileRequest();
-                resetSessionData();
+                resetSessionData(previousUser?.id);
                 set({
                   user: null,
                   profile: null,
@@ -221,7 +230,7 @@ export function createSessionStore(
               }
 
               if (previousUser?.id !== authUser.id) {
-                resetSessionData();
+                resetSessionData(previousUser?.id);
               }
 
               set({
@@ -237,7 +246,7 @@ export function createSessionStore(
             },
             (error) => {
               invalidateProfileRequest();
-              resetSessionData();
+              resetSessionData(get().user?.id);
               set({
                 user: null,
                 profile: null,
@@ -365,11 +374,12 @@ export function createSessionStore(
         ),
       signOut: async () => {
         set({ operationStatus: 'loading', errorMessage: null });
+        const signedOutUserId = get().user?.id;
 
         try {
           await getAuthRepository().signOut();
           invalidateProfileRequest();
-          resetSessionData();
+          resetSessionData(signedOutUserId);
           set({
             user: null,
             profile: null,

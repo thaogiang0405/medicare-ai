@@ -104,6 +104,51 @@ function medicationSchedulesCollection(database, ownerUid) {
   return collection(database, 'elderlyProfiles', ownerUid, 'medicationSchedules');
 }
 
+function doseEvent(ownerUid, overrides = {}) {
+  const status = overrides.status ?? 'reportedTaken';
+  const respondedBy = overrides.respondedBy ?? ownerUid;
+
+  return {
+    ownerUid,
+    scheduleId: 'schedule-a',
+    medicationId: 'medication-a',
+    occurrenceKey: '2020-01-01T08:00@Asia/Ho_Chi_Minh',
+    scheduledAt: new Date('2020-01-01T01:00:00.000Z'),
+    scheduledLocalDate: '2020-01-01',
+    scheduledLocalTime: '08:00',
+    timeZone: 'Asia/Ho_Chi_Minh',
+    medicationSnapshot: {
+      name: 'Paracetamol',
+      strengthText: '500 mg',
+      directionsText: 'Nội dung do người dùng cung cấp',
+    },
+    status,
+    responseSource: 'selfReported',
+    respondedAt: serverTimestamp(),
+    respondedBy,
+    responseHistory: {
+      initial: {
+        status,
+        responseSource: 'selfReported',
+        respondedAt: serverTimestamp(),
+        respondedBy,
+      },
+    },
+    revision: 1,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    ...overrides,
+  };
+}
+
+function doseEventReference(database, ownerUid, eventId = 'schedule-a__2020-01-01__08:00') {
+  return doc(database, 'elderlyProfiles', ownerUid, 'doseEvents', eventId);
+}
+
+function doseEventsCollection(database, ownerUid) {
+  return collection(database, 'elderlyProfiles', ownerUid, 'doseEvents');
+}
+
 async function seed(documentPath, data) {
   await testEnvironment.withSecurityRulesDisabled(async (context) => {
     await setDoc(doc(context.firestore(), documentPath), data);
@@ -679,6 +724,134 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
     );
   });
 
+  it('allows an elderly owner to create, get, list, and transaction-create one immutable self-reported dose event', async () => {
+    await seed(`users/${userA}`, userProfile(userA));
+    await seed(`elderlyProfiles/${userA}/medications/medication-a`, medication(userA));
+    await seed(
+      `elderlyProfiles/${userA}/medicationSchedules/schedule-a`,
+      medicationSchedule(userA, { startDate: '2020-01-01' }),
+    );
+    const database = firestoreAs(userA);
+    const reference = doseEventReference(database, userA);
+
+    await assertSucceeds(setDoc(reference, doseEvent(userA)));
+    await assertSucceeds(getDoc(reference));
+    await assertSucceeds(getDocs(doseEventsCollection(database, userA)));
+
+    const transactionReference = doseEventReference(
+      database,
+      userA,
+      'schedule-a__2020-01-02__08:00',
+    );
+    await assertSucceeds(
+      runTransaction(database, async (transaction) => {
+        const existing = await transaction.get(transactionReference);
+        if (!existing.exists()) {
+          transaction.set(transactionReference, doseEvent(userA, {
+            occurrenceKey: '2020-01-02T08:00@Asia/Ho_Chi_Minh',
+            scheduledLocalDate: '2020-01-02',
+            scheduledAt: new Date('2020-01-02T01:00:00.000Z'),
+          }));
+        }
+      }),
+    );
+  });
+
+  it('denies unauthenticated, cross-user, and caregiver dose event access', async () => {
+    await seed(`users/${userA}`, userProfile(userA));
+    await seed(`users/${userB}`, userProfile(userB));
+    await seed(`users/${caregiver}`, userProfile(caregiver, 'caregiver'));
+    await seed(`elderlyProfiles/${userA}/medications/medication-a`, medication(userA));
+    await seed(
+      `elderlyProfiles/${userA}/medicationSchedules/schedule-a`,
+      medicationSchedule(userA, { startDate: '2020-01-01' }),
+    );
+    await seed(`elderlyProfiles/${userA}/doseEvents/schedule-a__2020-01-01__08:00`, doseEvent(userA));
+
+    const unauthenticated = testEnvironment.unauthenticatedContext().firestore();
+    const crossUser = firestoreAs(userB);
+    const caregiverDatabase = firestoreAs(caregiver);
+
+    for (const database of [unauthenticated, crossUser, caregiverDatabase]) {
+      await assertFails(getDoc(doseEventReference(database, userA)));
+      await assertFails(getDocs(doseEventsCollection(database, userA)));
+      await assertFails(setDoc(doseEventReference(database, userA, 'schedule-a__2020-01-02__08:00'), doseEvent(userA, {
+        occurrenceKey: '2020-01-02T08:00@Asia/Ho_Chi_Minh',
+        scheduledLocalDate: '2020-01-02',
+        scheduledAt: new Date('2020-01-02T01:00:00.000Z'),
+      })));
+    }
+  });
+
+  it('denies a dose event without an active same-owner schedule and medication', async () => {
+    await seed(`users/${userA}`, userProfile(userA));
+    await seed(`elderlyProfiles/${userA}/medications/medication-a`, medication(userA));
+    await seed(`elderlyProfiles/${userA}/medicationSchedules/schedule-a`, medicationSchedule(userA, {
+      startDate: '2020-01-01',
+      active: false,
+    }));
+    const database = firestoreAs(userA);
+
+    await assertFails(setDoc(doseEventReference(database, userA), doseEvent(userA)));
+
+    await testEnvironment.clearFirestore();
+    await seed(`users/${userA}`, userProfile(userA));
+    await seed(`elderlyProfiles/${userA}/medications/medication-a`, medication(userA, { status: 'inactive' }));
+    await seed(
+      `elderlyProfiles/${userA}/medicationSchedules/schedule-a`,
+      medicationSchedule(userA, { startDate: '2020-01-01' }),
+    );
+    await assertFails(setDoc(doseEventReference(database, userA), doseEvent(userA)));
+  });
+
+  it('denies spoofed owner or references, invalid ID/key/schema, future events, and forged timestamps', async () => {
+    await seed(`users/${userA}`, userProfile(userA));
+    await seed(`elderlyProfiles/${userA}/medications/medication-a`, medication(userA));
+    await seed(
+      `elderlyProfiles/${userA}/medicationSchedules/schedule-a`,
+      medicationSchedule(userA, { startDate: '2020-01-01' }),
+    );
+    const database = firestoreAs(userA);
+    const invalidEvents = [
+      doseEvent(userB),
+      doseEvent(userA, { scheduleId: 'schedule-b' }),
+      doseEvent(userA, { medicationId: 'medication-b' }),
+      doseEvent(userA, { occurrenceKey: 'forged' }),
+      doseEvent(userA, { status: 'pending' }),
+      doseEvent(userA, { responseSource: 'automated' }),
+      doseEvent(userA, { medicationSnapshot: { name: 'Khác', strengthText: '500 mg', directionsText: 'Nội dung do người dùng cung cấp' } }),
+      doseEvent(userA, { revision: 2 }),
+      doseEvent(userA, { scheduledAt: new Date('2999-01-01T00:00:00.000Z') }),
+      doseEvent(userA, { createdAt: new Date('2000-01-01T00:00:00.000Z') }),
+      doseEvent(userA, { extraPrivilegedField: true }),
+    ];
+
+    for (const [index, data] of invalidEvents.entries()) {
+      await assertFails(setDoc(doseEventReference(database, userA, `invalid-dose-${index}`), data));
+    }
+
+    await assertFails(setDoc(
+      doseEventReference(database, userA, 'wrong__id'),
+      doseEvent(userA),
+    ));
+  });
+
+  it('denies overwriting, status transitions, and deleting an existing dose event', async () => {
+    await seed(`users/${userA}`, userProfile(userA));
+    await seed(`elderlyProfiles/${userA}/medications/medication-a`, medication(userA));
+    await seed(
+      `elderlyProfiles/${userA}/medicationSchedules/schedule-a`,
+      medicationSchedule(userA, { startDate: '2020-01-01' }),
+    );
+    await seed(`elderlyProfiles/${userA}/doseEvents/schedule-a__2020-01-01__08:00`, doseEvent(userA));
+    const database = firestoreAs(userA);
+    const reference = doseEventReference(database, userA);
+
+    await assertFails(updateDoc(reference, { status: 'reportedSkipped', updatedAt: serverTimestamp() }));
+    await assertFails(setDoc(reference, doseEvent(userA, { status: 'reportedSkipped' })));
+    await assertFails(deleteDoc(reference));
+  });
+
   it('denies every deferred health, caregiver, device, and unknown surface to the profile owner', async () => {
     await seed(`users/${userA}`, userProfile(userA));
     const database = firestoreAs(userA);
@@ -686,8 +859,8 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
       [`elderlyProfiles/${userA}/prescriptions/prescription-a`, { elderlyId: userA }],
       [`elderlyProfiles/${userA}/ocrResults/ocr-a`, { elderlyId: userA }],
       [`elderlyProfiles/${userA}/caregiverLinks/${caregiver}`, { elderlyId: userA, status: 'active' }],
-      [`elderlyProfiles/${userA}/doseEvents/dose-a`, { elderlyId: userA, status: 'pending' }],
       [`elderlyProfiles/${userA}/notifications/notification-a`, { elderlyId: userA, deliveryState: 'pending' }],
+      [`elderlyProfiles/${userA}/auditLogs/audit-a`, { elderlyId: userA, action: 'synthetic-only' }],
       [`caregiverProfiles/${userA}`, { displayName: 'Dữ liệu tổng hợp' }],
       ['caregiverInvites/invite-a', { status: 'pending' }],
       [`users/${userA}/devices/device-a`, { token: 'synthetic-only' }],
@@ -706,8 +879,8 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
       `elderlyProfiles/${userA}/prescriptions/prescription-a`,
       `elderlyProfiles/${userA}/ocrResults/ocr-a`,
       `elderlyProfiles/${userA}/caregiverLinks/${caregiver}`,
-      `elderlyProfiles/${userA}/doseEvents/dose-a`,
       `elderlyProfiles/${userA}/notifications/notification-a`,
+      `elderlyProfiles/${userA}/auditLogs/audit-a`,
       `caregiverProfiles/${userA}`,
       'caregiverInvites/invite-a',
       `users/${userA}/devices/device-a`,

@@ -8,12 +8,25 @@ import {
   medicareSpacing,
   medicareTypography,
 } from '@/constants/medicare-theme';
+import type { DoseStatus } from '@/types/domain';
+
+import { PrimaryButton } from './PrimaryButton';
+import { SecondaryButton } from './SecondaryButton';
+import { StatusBadge } from './StatusBadge';
 
 export type MedicationScheduleCardProps = {
   localTime: string;
   medicationName: string;
   strengthText: string;
   recurrenceText: string;
+  /** Present only when M3.4 dose tracking is explicitly enabled. */
+  doseStatus?: DoseStatus;
+  responseActions?: Readonly<{
+    canRespond: boolean;
+    onReportTaken: () => void;
+    onReportSkipped: () => void;
+    isSubmitting?: boolean;
+  }>;
   style?: StyleProp<ViewStyle>;
   testID?: string;
 };
@@ -27,12 +40,24 @@ export function MedicationScheduleCard({
   medicationName,
   strengthText,
   recurrenceText,
+  doseStatus,
+  responseActions,
   style,
   testID,
 }: MedicationScheduleCardProps) {
+  const isTrackedSchedule = doseStatus !== undefined;
+  const isPendingResponse = doseStatus === 'pending' || doseStatus === 'unanswered';
+  const responseNotice = isTrackedSchedule
+    ? isPendingResponse
+      ? responseActions?.canRespond
+        ? 'Chưa ghi nhận phản hồi tự báo'
+        : 'Chưa ghi nhận phản hồi – chờ đến giờ dự kiến'
+      : 'Phản hồi do bạn tự báo, không phải xác nhận y tế'
+    : 'Lịch dự kiến – Chưa ghi nhận uống';
+
   return (
     <View
-      accessibilityLabel={`Lịch dự kiến lúc ${localTime}: ${medicationName}, ${strengthText}, ${recurrenceText}. Chưa ghi nhận uống.`}
+      accessibilityLabel={`Lịch dự kiến lúc ${localTime}: ${medicationName}, ${strengthText}, ${recurrenceText}. ${responseNotice}.`}
       style={[styles.card, style]}
       testID={testID}>
       <View style={styles.header}>
@@ -47,13 +72,31 @@ export function MedicationScheduleCard({
             {strengthText}
           </Text>
         </View>
+        {isTrackedSchedule ? <StatusBadge status={doseStatus} /> : null}
       </View>
       <Text maxFontSizeMultiplier={1.5} style={styles.recurrence}>
         {recurrenceText}
       </Text>
       <Text maxFontSizeMultiplier={1.5} style={styles.notice}>
-        Lịch dự kiến – Chưa ghi nhận uống
+        {responseNotice}
       </Text>
+      {isTrackedSchedule && isPendingResponse && responseActions ? (
+        <View style={styles.actions}>
+          <PrimaryButton
+            accessibilityHint="Ghi nhận đây là phản hồi do bạn tự báo, không phải xác nhận y tế"
+            disabled={!responseActions.canRespond}
+            label="Đã uống"
+            loading={responseActions.isSubmitting}
+            onPress={responseActions.onReportTaken}
+          />
+          <SecondaryButton
+            accessibilityHint="Ghi nhận bỏ qua là phản hồi do bạn tự báo, không phải xác nhận y tế"
+            disabled={!responseActions.canRespond || responseActions.isSubmitting}
+            label="Bỏ qua"
+            onPress={responseActions.onReportSkipped}
+          />
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -105,5 +148,8 @@ const styles = StyleSheet.create({
     color: medicareColors.textMuted,
     fontSize: medicareTypography.bodySmall,
     lineHeight: 22,
+  },
+  actions: {
+    gap: medicareSpacing.sm,
   },
 });

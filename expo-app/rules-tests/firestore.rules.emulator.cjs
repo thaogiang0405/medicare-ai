@@ -78,6 +78,32 @@ function medicationsCollection(database, ownerUid) {
   return collection(database, 'elderlyProfiles', ownerUid, 'medications');
 }
 
+function medicationSchedule(ownerUid, overrides = {}) {
+  return {
+    ownerUid,
+    medicationId: 'medication-a',
+    recurrence: 'daily',
+    localTime: '08:00',
+    weekdays: [1, 2, 3, 4, 5, 6, 7],
+    startDate: '2026-11-19',
+    endDate: null,
+    timeZone: 'Asia/Ho_Chi_Minh',
+    active: true,
+    revision: 1,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    ...overrides,
+  };
+}
+
+function medicationScheduleReference(database, ownerUid, scheduleId = 'schedule-a') {
+  return doc(database, 'elderlyProfiles', ownerUid, 'medicationSchedules', scheduleId);
+}
+
+function medicationSchedulesCollection(database, ownerUid) {
+  return collection(database, 'elderlyProfiles', ownerUid, 'medicationSchedules');
+}
+
 async function seed(documentPath, data) {
   await testEnvironment.withSecurityRulesDisabled(async (context) => {
     await setDoc(doc(context.firestore(), documentPath), data);
@@ -473,6 +499,186 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
     await assertFails(deleteDoc(medicationReference(database, userA)));
   });
 
+  it('allows an elderly owner to create, get, list, and query schedules for an active own medication', async () => {
+    await seed(`users/${userA}`, userProfile(userA));
+    await seed(`elderlyProfiles/${userA}/medications/medication-a`, medication(userA));
+    const database = firestoreAs(userA);
+    const reference = medicationScheduleReference(database, userA);
+
+    await assertSucceeds(setDoc(reference, medicationSchedule(userA)));
+    await assertSucceeds(getDoc(reference));
+    await assertSucceeds(
+      getDocs(query(medicationSchedulesCollection(database, userA), orderBy('updatedAt', 'desc'))),
+    );
+  });
+
+  it('allows transaction-backed schedule edits and a safe pause for an owner', async () => {
+    await seed(`users/${userA}`, userProfile(userA));
+    await seed(`elderlyProfiles/${userA}/medications/medication-a`, medication(userA));
+    await seed(`elderlyProfiles/${userA}/medicationSchedules/schedule-a`, medicationSchedule(userA));
+    const database = firestoreAs(userA);
+    const reference = medicationScheduleReference(database, userA);
+
+    await assertSucceeds(
+      runTransaction(database, async (transaction) => {
+        await transaction.get(reference);
+        transaction.update(reference, {
+          recurrence: 'weekly',
+          weekdays: [1, 3, 5],
+          localTime: '09:30',
+          revision: 2,
+          updatedAt: serverTimestamp(),
+        });
+      }),
+    );
+    await assertSucceeds(
+      runTransaction(database, async (transaction) => {
+        await transaction.get(reference);
+        transaction.update(reference, {
+          active: false,
+          revision: 3,
+          updatedAt: serverTimestamp(),
+        });
+      }),
+    );
+  });
+
+  it('denies unauthenticated schedule get, list, create, update, and delete', async () => {
+    await seed(`users/${userA}`, userProfile(userA));
+    await seed(`elderlyProfiles/${userA}/medications/medication-a`, medication(userA));
+    await seed(`elderlyProfiles/${userA}/medicationSchedules/schedule-a`, medicationSchedule(userA));
+    const database = testEnvironment.unauthenticatedContext().firestore();
+    const reference = medicationScheduleReference(database, userA);
+
+    await assertFails(getDoc(reference));
+    await assertFails(getDocs(medicationSchedulesCollection(database, userA)));
+    await assertFails(setDoc(medicationScheduleReference(database, userA, 'new-schedule'), medicationSchedule(userA)));
+    await assertFails(updateDoc(reference, { localTime: '09:00', revision: 2, updatedAt: serverTimestamp() }));
+    await assertFails(deleteDoc(reference));
+  });
+
+  it('denies every cross-user schedule operation even with two elderly profiles', async () => {
+    await seed(`users/${userA}`, userProfile(userA));
+    await seed(`users/${userB}`, userProfile(userB));
+    await seed(`elderlyProfiles/${userA}/medications/medication-a`, medication(userA));
+    await seed(`elderlyProfiles/${userA}/medicationSchedules/schedule-a`, medicationSchedule(userA));
+    const database = firestoreAs(userB);
+    const reference = medicationScheduleReference(database, userA);
+
+    await assertFails(getDoc(reference));
+    await assertFails(getDocs(medicationSchedulesCollection(database, userA)));
+    await assertFails(setDoc(medicationScheduleReference(database, userA, 'new-schedule'), medicationSchedule(userA)));
+    await assertFails(updateDoc(reference, { localTime: '09:00', revision: 2, updatedAt: serverTimestamp() }));
+    await assertFails(deleteDoc(reference));
+  });
+
+  it('denies caregiver schedule access even on a path matching the caregiver UID', async () => {
+    await seed(`users/${caregiver}`, userProfile(caregiver, 'caregiver'));
+    await seed(`elderlyProfiles/${caregiver}/medications/medication-a`, medication(caregiver));
+    await seed(`elderlyProfiles/${caregiver}/medicationSchedules/schedule-a`, medicationSchedule(caregiver));
+    const database = firestoreAs(caregiver);
+    const reference = medicationScheduleReference(database, caregiver);
+
+    await assertFails(getDoc(reference));
+    await assertFails(getDocs(medicationSchedulesCollection(database, caregiver)));
+    await assertFails(setDoc(medicationScheduleReference(database, caregiver, 'new-schedule'), medicationSchedule(caregiver)));
+    await assertFails(updateDoc(reference, { localTime: '09:00', revision: 2, updatedAt: serverTimestamp() }));
+    await assertFails(deleteDoc(reference));
+  });
+
+  it('denies schedule creation for missing, inactive, and foreign medication references', async () => {
+    await seed(`users/${userA}`, userProfile(userA));
+    await seed(`elderlyProfiles/${userA}/medications/medication-inactive`, medication(userA, { status: 'inactive' }));
+    await seed(`elderlyProfiles/${userB}/medications/medication-foreign`, medication(userB));
+    const database = firestoreAs(userA);
+
+    await assertFails(
+      setDoc(
+        medicationScheduleReference(database, userA, 'missing-medication'),
+        medicationSchedule(userA),
+      ),
+    );
+    await assertFails(
+      setDoc(
+        medicationScheduleReference(database, userA, 'inactive-medication'),
+        medicationSchedule(userA, { medicationId: 'medication-inactive' }),
+      ),
+    );
+    await assertFails(
+      setDoc(
+        medicationScheduleReference(database, userA, 'foreign-medication'),
+        medicationSchedule(userA, { medicationId: 'medication-foreign' }),
+      ),
+    );
+  });
+
+  it('denies malformed schedule schema, invalid actual dates, local times, weekdays, and forged timestamps', async () => {
+    await seed(`users/${userA}`, userProfile(userA));
+    await seed(`elderlyProfiles/${userA}/medications/medication-a`, medication(userA));
+    const database = firestoreAs(userA);
+    const invalidSchedules = [
+      medicationSchedule(userA, { extraPrivilegedField: true }),
+      medicationSchedule(userA, { ownerUid: userB }),
+      medicationSchedule(userA, { medicationId: 'other/medication' }),
+      medicationSchedule(userA, { recurrence: 'monthly' }),
+      medicationSchedule(userA, { localTime: '24:00' }),
+      medicationSchedule(userA, { localTime: '8:00' }),
+      medicationSchedule(userA, { weekdays: [1, 1] }),
+      medicationSchedule(userA, { weekdays: [0, 8] }),
+      medicationSchedule(userA, { recurrence: 'daily', weekdays: [1, 2] }),
+      medicationSchedule(userA, { recurrence: 'weekly', weekdays: [] }),
+      medicationSchedule(userA, { startDate: '2026-02-30' }),
+      medicationSchedule(userA, { startDate: '1999-12-31' }),
+      medicationSchedule(userA, { endDate: '2026-02-30' }),
+      medicationSchedule(userA, { endDate: '2026-11-18' }),
+      medicationSchedule(userA, { timeZone: 'UTC' }),
+      medicationSchedule(userA, { active: false }),
+      medicationSchedule(userA, { revision: 2 }),
+      medicationSchedule(userA, { createdAt: new Date('2000-01-01T00:00:00.000Z') }),
+      medicationSchedule(userA, { updatedAt: new Date('2000-01-01T00:00:00.000Z') }),
+    ];
+
+    for (const [index, data] of invalidSchedules.entries()) {
+      await assertFails(setDoc(medicationScheduleReference(database, userA, `invalid-schedule-${index}`), data));
+    }
+  });
+
+  it('denies owner or medication spoofing, immutable-field updates, bad revisions, reactivation, and delete', async () => {
+    await seed(`users/${userA}`, userProfile(userA));
+    await seed(`elderlyProfiles/${userA}/medications/medication-a`, medication(userA));
+    await seed(`elderlyProfiles/${userA}/medicationSchedules/schedule-a`, medicationSchedule(userA));
+    await seed(
+      `elderlyProfiles/${userA}/medicationSchedules/schedule-inactive`,
+      medicationSchedule(userA, { active: false }),
+    );
+    const database = firestoreAs(userA);
+    const reference = medicationScheduleReference(database, userA);
+    const inactiveReference = medicationScheduleReference(database, userA, 'schedule-inactive');
+
+    await assertFails(updateDoc(reference, { ownerUid: userB, revision: 2, updatedAt: serverTimestamp() }));
+    await assertFails(updateDoc(reference, { medicationId: 'other-medication', revision: 2, updatedAt: serverTimestamp() }));
+    await assertFails(updateDoc(reference, { createdAt: serverTimestamp(), revision: 2, updatedAt: serverTimestamp() }));
+    await assertFails(updateDoc(reference, { localTime: '09:00', updatedAt: serverTimestamp() }));
+    await assertFails(updateDoc(reference, { localTime: '09:00', revision: 3, updatedAt: serverTimestamp() }));
+    await assertFails(updateDoc(inactiveReference, { active: true, revision: 2, updatedAt: serverTimestamp() }));
+    await assertFails(deleteDoc(reference));
+  });
+
+  it('allows an owner to pause an existing schedule after its medication becomes inactive', async () => {
+    await seed(`users/${userA}`, userProfile(userA));
+    await seed(`elderlyProfiles/${userA}/medications/medication-a`, medication(userA, { status: 'inactive' }));
+    await seed(`elderlyProfiles/${userA}/medicationSchedules/schedule-a`, medicationSchedule(userA));
+    const database = firestoreAs(userA);
+
+    await assertSucceeds(
+      updateDoc(medicationScheduleReference(database, userA), {
+        active: false,
+        revision: 2,
+        updatedAt: serverTimestamp(),
+      }),
+    );
+  });
+
   it('denies every deferred health, caregiver, device, and unknown surface to the profile owner', async () => {
     await seed(`users/${userA}`, userProfile(userA));
     const database = firestoreAs(userA);
@@ -480,6 +686,8 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
       [`elderlyProfiles/${userA}/prescriptions/prescription-a`, { elderlyId: userA }],
       [`elderlyProfiles/${userA}/ocrResults/ocr-a`, { elderlyId: userA }],
       [`elderlyProfiles/${userA}/caregiverLinks/${caregiver}`, { elderlyId: userA, status: 'active' }],
+      [`elderlyProfiles/${userA}/doseEvents/dose-a`, { elderlyId: userA, status: 'pending' }],
+      [`elderlyProfiles/${userA}/notifications/notification-a`, { elderlyId: userA, deliveryState: 'pending' }],
       [`caregiverProfiles/${userA}`, { displayName: 'Dữ liệu tổng hợp' }],
       ['caregiverInvites/invite-a', { status: 'pending' }],
       [`users/${userA}/devices/device-a`, { token: 'synthetic-only' }],
@@ -498,6 +706,8 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
       `elderlyProfiles/${userA}/prescriptions/prescription-a`,
       `elderlyProfiles/${userA}/ocrResults/ocr-a`,
       `elderlyProfiles/${userA}/caregiverLinks/${caregiver}`,
+      `elderlyProfiles/${userA}/doseEvents/dose-a`,
+      `elderlyProfiles/${userA}/notifications/notification-a`,
       `caregiverProfiles/${userA}`,
       'caregiverInvites/invite-a',
       `users/${userA}/devices/device-a`,

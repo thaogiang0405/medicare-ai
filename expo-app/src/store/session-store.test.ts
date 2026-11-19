@@ -5,12 +5,16 @@ jest.mock('@/features/profile', () => ({ getFirestoreUserProfileRepository: jest
 
 const mockResetDoseEvents = jest.fn();
 const mockResetMedications = jest.fn();
+const mockResetSchedules = jest.fn();
 
 jest.mock('./dose-event-store', () => ({
   useDoseEventStore: { getState: () => ({ reset: mockResetDoseEvents }) },
 }));
 jest.mock('./medication-store', () => ({
   useMedicationStore: { getState: () => ({ reset: mockResetMedications }) },
+}));
+jest.mock('./medication-schedule-store', () => ({
+  useMedicationScheduleStore: { getState: () => ({ reset: mockResetSchedules }) },
 }));
 
 import type {
@@ -92,11 +96,12 @@ async function flushProfileLoad(): Promise<void> {
 }
 
 describe('session store', () => {
-  it('clears both medication and dose presentation state on logout or account switching', () => {
+  it('clears medication, schedule, and dose presentation state on logout or account switching', () => {
     resetDemoSessionData();
 
     expect(mockResetDoseEvents).toHaveBeenCalledTimes(1);
     expect(mockResetMedications).toHaveBeenCalledTimes(1);
+    expect(mockResetSchedules).toHaveBeenCalledTimes(1);
   });
 
   it('waits for Firebase observer state instead of auto-signing in with mock data', () => {

@@ -9,6 +9,10 @@ export {
   isFirestoreMedicationsFeatureEnabled,
 } from './firestore-medication-feature';
 export {
+  firestoreSchedulesUnavailableMessage,
+  isFirestoreSchedulesFeatureEnabled,
+} from './firestore-schedule-feature';
+export {
   createFirebaseConfig,
   FirebaseConfigurationError,
   getFirebaseConfig,

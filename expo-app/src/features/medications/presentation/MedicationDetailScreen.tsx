@@ -1,5 +1,5 @@
 import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, type Href, useLocalSearchParams } from 'expo-router';
 
 import {
   AppHeader,
@@ -90,13 +90,23 @@ export default function MedicationDetailScreen() {
       />
       <DemoModeBanner
         description={medicationsUseFirestore
-          ? 'Đây là dữ liệu thuốc của hồ sơ hiện tại. Không có lịch nhắc mới được tạo hoặc cập nhật từ màn hình này.'
-          : 'Đây là dữ liệu minh họa theo tài khoản hiện tại. Không có lịch nhắc mới được tạo hoặc cập nhật từ màn hình này.'}
+          ? 'Đây là dữ liệu thuốc của hồ sơ hiện tại. Bạn có thể mở phần lịch uống; DoseEvent và nhắc uống vẫn chưa được tạo từ lịch.'
+          : 'Đây là dữ liệu minh họa theo tài khoản hiện tại. Bạn có thể mở phần lịch uống; DoseEvent và nhắc uống vẫn là dữ liệu demo.'}
         title={medicationsUseFirestore ? 'Thuốc trên Firebase' : 'Chế độ trình diễn'}
       />
       {errorMessage ? <SafetyNotice message={errorMessage} title="Không thể hoàn tất thao tác" tone="error" /> : null}
       <MedicationInformation medication={medication} />
       <View style={styles.actions}>
+        <PrimaryButton
+          accessibilityHint="Mở danh sách lịch uống được ghi nhận cho thuốc này"
+          label="Quản lý lịch uống"
+          onPress={() =>
+            router.push({
+              pathname: '/elderly/medications/[medicationId]/schedules',
+              params: { medicationId: medication.id },
+            } as unknown as Href)
+          }
+        />
         <PrimaryButton
           accessibilityHint="Mở biểu mẫu chỉnh sửa nội dung thuốc đã ghi nhận"
           disabled={isUpdating}

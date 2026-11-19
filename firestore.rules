@@ -183,6 +183,147 @@ service cloud.firestore {
         );
     }
 
+    function hasExactMedicationScheduleFields(data) {
+      return data.keys().hasAll([
+          'ownerUid',
+          'medicationId',
+          'recurrence',
+          'localTime',
+          'weekdays',
+          'startDate',
+          'endDate',
+          'timeZone',
+          'active',
+          'revision',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerUid',
+          'medicationId',
+          'recurrence',
+          'localTime',
+          'weekdays',
+          'startDate',
+          'endDate',
+          'timeZone',
+          'active',
+          'revision',
+          'createdAt',
+          'updatedAt'
+        ]);
+    }
+
+    function hasValidMedicationScheduleDate(value) {
+      // ISO calendar date in the reviewed M3.3 range, including leap days.
+      return value is string
+        && (
+          value.matches('^20[0-9]{2}-(?:(?:01|03|05|07|08|10|12)-(?:0[1-9]|[12][0-9]|3[01])|(?:04|06|09|11)-(?:0[1-9]|[12][0-9]|30)|02-(?:0[1-9]|1[0-9]|2[0-8]))$')
+          || value.matches('^20(?:00|0[48]|[2468][048]|[13579][26])-02-29$')
+        );
+    }
+
+    function hasValidMedicationScheduleWeekdays(recurrence, weekdays) {
+      return weekdays is list
+        && hasValidMedicationScheduleWeekdaySet(recurrence, weekdays.toSet(), weekdays.size());
+    }
+
+    function hasValidMedicationScheduleWeekdaySet(recurrence, weekdaySet, weekdayCount) {
+      return weekdayCount >= 1
+        && weekdayCount <= 7
+        && weekdaySet.size() == weekdayCount
+        && weekdaySet.hasOnly([1, 2, 3, 4, 5, 6, 7])
+        && (
+          (recurrence == 'daily'
+            && weekdayCount == 7
+            && weekdaySet.hasAll([1, 2, 3, 4, 5, 6, 7]))
+          || (recurrence == 'weekly' && weekdayCount >= 1)
+        );
+    }
+
+    function hasValidMedicationScheduleSchema(data) {
+      return hasExactMedicationScheduleFields(data)
+        && data.ownerUid is string
+        && data.medicationId is string
+        && data.medicationId.size() >= 1
+        && data.medicationId.size() <= 150
+        && data.medicationId.matches('^[^/]+$')
+        && data.recurrence is string
+        && data.recurrence in ['daily', 'weekly']
+        && data.localTime is string
+        && data.localTime.matches('^(?:[01][0-9]|2[0-3]):[0-5][0-9]$')
+        && hasValidMedicationScheduleWeekdays(data.recurrence, data.weekdays)
+        && hasValidMedicationScheduleDate(data.startDate)
+        && (
+          data.endDate == null
+          || (hasValidMedicationScheduleDate(data.endDate) && data.endDate >= data.startDate)
+        )
+        && data.timeZone == 'Asia/Ho_Chi_Minh'
+        && data.active is bool
+        && data.revision is int
+        && data.revision >= 1
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function hasActiveOwnedMedication(uid, medicationId) {
+      return medicationId is string
+        && exists(/databases/$(database)/documents/elderlyProfiles/$(uid)/medications/$(medicationId))
+        && isActiveOwnedMedicationData(
+          uid,
+          get(/databases/$(database)/documents/elderlyProfiles/$(uid)/medications/$(medicationId)).data
+        );
+    }
+
+    function isActiveOwnedMedicationData(uid, data) {
+      return hasValidMedicationSchema(data)
+        && data.ownerUid == uid
+        && data.status == 'active';
+    }
+
+    function isValidMedicationScheduleCreate(uid) {
+      return hasValidElderlyProfile(uid)
+        && hasValidMedicationScheduleSchema(request.resource.data)
+        && request.resource.data.ownerUid == uid
+        && request.resource.data.active == true
+        && request.resource.data.revision == 1
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && hasActiveOwnedMedication(uid, request.resource.data.medicationId);
+    }
+
+    function isValidMedicationScheduleUpdate(uid) {
+      return hasValidElderlyProfile(uid)
+        && hasValidMedicationScheduleSchema(request.resource.data)
+        && resource.data.ownerUid == uid
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.ownerUid == uid
+        && request.resource.data.medicationId == resource.data.medicationId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.revision == resource.data.revision + 1
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'recurrence',
+          'localTime',
+          'weekdays',
+          'startDate',
+          'endDate',
+          'active',
+          'updatedAt',
+          'revision'
+        ])
+        && (
+          (resource.data.active == false && request.resource.data.active == false)
+          || (
+            resource.data.active == true
+            && (
+              request.resource.data.active == false
+              || hasActiveOwnedMedication(uid, resource.data.medicationId)
+            )
+          )
+        );
+    }
+
     // Migration 2.3 profile surface. `get` deliberately
     // excludes collection queries so users cannot enumerate other profiles.
     match /users/{uid} {
@@ -216,6 +357,15 @@ service cloud.firestore {
       allow get, list: if hasValidElderlyProfile(uid);
       allow create: if isValidMedicationCreate(uid);
       allow update: if isValidMedicationUpdate(uid);
+      allow delete: if false;
+    }
+
+    // M3.3: schedules use the same elderly-owner boundary as medications.
+    // They never grant notification, DoseEvent, or caregiver access.
+    match /elderlyProfiles/{uid}/medicationSchedules/{scheduleId} {
+      allow get, list: if hasValidElderlyProfile(uid);
+      allow create: if isValidMedicationScheduleCreate(uid);
+      allow update: if isValidMedicationScheduleUpdate(uid);
       allow delete: if false;
     }
 

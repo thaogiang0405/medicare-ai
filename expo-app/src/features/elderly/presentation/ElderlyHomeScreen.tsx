@@ -12,6 +12,7 @@ import {
 } from '@/components/medicare';
 import { medicareColors, medicareSpacing, medicareTypography } from '@/constants/medicare-theme';
 import { isFirestoreMedicationsFeatureEnabled } from '@/services/firebase/firestore-medication-feature';
+import { isFirestoreSchedulesFeatureEnabled } from '@/services/firebase/firestore-schedule-feature';
 import { useSessionStore } from '@/store';
 import { formatVietnameseTime } from '@/utils/formatters';
 
@@ -28,6 +29,7 @@ export default function ElderlyHomeScreen() {
   const authErrorMessage = useSessionStore((state) => state.errorMessage);
   const isSigningOut = operationStatus === 'loading';
   const medicationsUseFirestore = isFirestoreMedicationsFeatureEnabled();
+  const schedulesUseFirestore = isFirestoreSchedulesFeatureEnabled();
 
   const handleSignOut = async () => {
     try {
@@ -45,10 +47,16 @@ export default function ElderlyHomeScreen() {
         title={`Chào ${user?.displayName ?? 'bạn'}`}
       />
       <DemoModeBanner
-        description={medicationsUseFirestore
-          ? 'Thuốc của bạn được lưu trong Firestore theo hồ sơ đã xác thực. Lịch và phản hồi bên dưới vẫn là dữ liệu demo; không phải hồ sơ y tế.'
+        description={medicationsUseFirestore && schedulesUseFirestore
+          ? 'Thuốc và lịch của bạn được lưu theo hồ sơ đã xác thực. DoseEvent và phản hồi bên dưới vẫn là dữ liệu demo; không phải hồ sơ y tế.'
+          : medicationsUseFirestore
+            ? 'Thuốc của bạn được lưu trong Firestore theo hồ sơ đã xác thực. Lịch uống chưa được bật và DoseEvent/phản hồi bên dưới vẫn là dữ liệu demo.'
           : 'Vai trò đã được kiểm tra từ hồ sơ của chính bạn. Lịch, thuốc và phản hồi dưới đây vẫn chỉ dùng để thử giao diện; không phải hồ sơ y tế.'}
-        title={medicationsUseFirestore ? 'Thuốc trên Firebase · lịch demo' : 'Chế độ trình diễn'}
+        title={medicationsUseFirestore && schedulesUseFirestore
+          ? 'Thuốc và lịch trên Firebase · DoseEvent demo'
+          : medicationsUseFirestore
+            ? 'Thuốc trên Firebase · DoseEvent demo'
+            : 'Chế độ trình diễn'}
       />
       {errorMessage ? (
         <SafetyNotice message={errorMessage} title={medicationsUseFirestore ? 'Không thể tải thuốc' : 'Không thể tải dữ liệu demo'} tone="error" />

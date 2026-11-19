@@ -17,6 +17,7 @@ import {
 import type { AppUser, UserProfile, UserRole } from '@/types/domain';
 
 import { useDoseEventStore } from './dose-event-store';
+import { useMedicationScheduleStore } from './medication-schedule-store';
 import { useMedicationStore } from './medication-store';
 
 export type AuthStatus = 'initializing' | 'authenticated' | 'unauthenticated';
@@ -46,10 +47,11 @@ type ProfileRepositoryFactory = () => UserProfileRepository;
 type ResetSessionData = () => void;
 type ProfileFeatureEnabled = () => boolean;
 
-/** Clears account-bound demo presentation state without deleting repository data. */
+/** Clears account-bound presentation state without deleting repository data. */
 export function resetDemoSessionData(): void {
   useDoseEventStore.getState().reset();
   useMedicationStore.getState().reset();
+  useMedicationScheduleStore.getState().reset();
 }
 
 function toSafeErrorMessage(error: unknown): string {

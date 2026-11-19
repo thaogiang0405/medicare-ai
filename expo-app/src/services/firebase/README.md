@@ -20,6 +20,10 @@ thức trong project `medicare-ai-cf804`. Cấu hình client nằm trong `.env` 
   `EXPO_PUBLIC_FIRESTORE_USER_PROFILES_ENABLED`. Template mặc định tắt; owner
   chỉ bật cờ trong `.env` local đã được phê duyệt để kiểm thử profile. Cờ không
   phải authorization.
+- `firestore-medication-feature.ts` và `firestore-schedule-feature.ts`: giữ
+  Medication M3.2 và Schedule M3.3 ở mock mode mặc định. Cả hai chỉ chọn
+  repository khi cờ public trong `.env` local là `true`; Rules vẫn là lớp
+  authorization duy nhất.
 - `features/profile/data/firestore-user-profile-repository.ts`: ranh giới duy
   nhất dùng Firestore cho `/users/{auth.uid}`. UID luôn lấy từ Auth,
   `runTransaction` chỉ tạo profile khi chưa có, và client không có API đổi role.
@@ -36,14 +40,15 @@ thức trong project `medicare-ai-cf804`. Cấu hình client nằm trong `.env` 
   password hoặc token vào đó.
 - `FirebaseAuthRepository` gọi Firebase Auth ở data layer; UI và Zustand chỉ
   phụ thuộc AuthRepository/AppUser, không gọi Firebase SDK trực tiếp.
-- Firebase Auth Email/Password đã có trong Migration 2.2. M2.3 bổ sung User
-  Profile feature-gated và deploy Rules owner-profile; profile role không cấp
-  quyền đọc health data. Firestore CRUD cho medication/schedule, Analytics,
-  Admin SDK và Cloud Functions vẫn chưa có.
-- Cloud Firestore production `(default)` tại `asia-east1` đang dùng Rules M2.3.
-  Storage Rules không được deploy. Chạy Rules Emulator bằng `npm run test:rules`
-  trong `expo-app/`; tài liệu schema/deployment/rollback là
-  [`docs/firestore-user-profiles.md`](../../../../docs/firestore-user-profiles.md).
+- Firebase Auth Email/Password (M2.2), owner Profile (M2.3) và owner Medication
+  CRUD (M3.2) đã có. M3.3 thêm Schedule repository feature-gated; nó không tạo
+  DoseEvent, notification, trusted `nextOccurrenceAt`, Analytics, Admin SDK hay
+  Cloud Functions.
+- Cloud Firestore production `(default)` tại `asia-east1` đang dùng Rules M3.2.
+  Rules Schedule M3.3 vẫn là source local, chưa được deploy. Storage Rules không
+  được deploy. Chạy Rules Emulator bằng `npm run test:rules` trong `expo-app/`;
+  schema M3.3 ở
+  [`docs/medication-schedules-m3.3.md`](../../../../docs/medication-schedules-m3.3.md).
 
 Hướng dẫn cấu hình và kiểm thử chi tiết ở
 [`docs/firebase-js-sdk-integration.md`](../../../../docs/firebase-js-sdk-integration.md)

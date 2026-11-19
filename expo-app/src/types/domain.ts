@@ -54,6 +54,34 @@ export interface Medication {
   updatedAt: string;
 }
 
+/** Week starts on Monday (1) and ends on Sunday (7) for Vietnamese UI copy. */
+export type MedicationScheduleWeekday = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+
+export type MedicationScheduleRecurrence = 'daily' | 'weekly';
+
+export const medicationScheduleTimeZone = 'Asia/Ho_Chi_Minh' as const;
+
+/**
+ * A local administration plan entered by the profile owner. It is not a dose
+ * event, notification, prescription, or clinical dosage recommendation.
+ */
+export interface MedicationSchedule {
+  id: string;
+  medicationId: string;
+  recurrence: MedicationScheduleRecurrence;
+  /** Local wall-clock time in the schedule's IANA timezone, formatted HH:mm. */
+  localTime: string;
+  /** Canonical sorted weekday selection. Daily schedules contain all seven days. */
+  weekdays: MedicationScheduleWeekday[];
+  /** Calendar dates remain ISO date-only values to avoid an accidental UTC shift. */
+  startDate: string;
+  endDate: string | null;
+  timeZone: typeof medicationScheduleTimeZone;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type DoseStatus =
   | 'pending'
   | 'reportedTaken'

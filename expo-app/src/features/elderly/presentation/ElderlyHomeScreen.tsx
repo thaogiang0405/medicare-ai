@@ -6,13 +6,13 @@ import {
   AppHeader,
   DemoModeBanner,
   DoseEventCard,
+  MedicationScheduleCard,
   SafetyNotice,
   Screen,
   SecondaryButton,
 } from '@/components/medicare';
 import { medicareColors, medicareSpacing, medicareTypography } from '@/constants/medicare-theme';
-import { isFirestoreMedicationsFeatureEnabled } from '@/services/firebase/firestore-medication-feature';
-import { isFirestoreSchedulesFeatureEnabled } from '@/services/firebase/firestore-schedule-feature';
+import { medicationScheduleRecurrenceLabel } from '@/features/schedules/presentation/medication-schedule-utils';
 import { useSessionStore } from '@/store';
 import { formatVietnameseTime } from '@/utils/formatters';
 
@@ -23,13 +23,23 @@ function showDeferredFeature(feature: string) {
 }
 
 export default function ElderlyHomeScreen() {
-  const { user, doses, isLoading, errorMessage, recordResponse } = useElderlyDashboard();
+  const {
+    user,
+    dashboardMode,
+    medicationsFeatureEnabled,
+    schedulesFeatureEnabled,
+    doses,
+    medicationSchedules,
+    isLoading,
+    errorMessage,
+    retryDashboard,
+    recordResponse,
+  } = useElderlyDashboard();
   const signOut = useSessionStore((state) => state.signOut);
   const operationStatus = useSessionStore((state) => state.operationStatus);
   const authErrorMessage = useSessionStore((state) => state.errorMessage);
   const isSigningOut = operationStatus === 'loading';
-  const medicationsUseFirestore = isFirestoreMedicationsFeatureEnabled();
-  const schedulesUseFirestore = isFirestoreSchedulesFeatureEnabled();
+  const usesFirestoreSchedules = dashboardMode === 'firestore-schedules';
 
   const handleSignOut = async () => {
     try {
@@ -40,26 +50,46 @@ export default function ElderlyHomeScreen() {
     }
   };
 
+  const dashboardBanner = usesFirestoreSchedules
+    ? {
+      title: 'Lịch thuốc trên Firebase',
+      description: 'Lịch hôm nay là kế hoạch từ hồ sơ đã xác thực. DoseEvent, phản hồi uống thuốc và nhắc lại chưa được tạo từ lịch này.',
+    }
+    : medicationsFeatureEnabled
+      ? {
+        title: 'Thuốc trên Firebase · Lịch demo',
+        description: 'Thuốc của bạn được lưu trong Firestore theo hồ sơ đã xác thực. Lịch hôm nay và phản hồi uống thuốc bên dưới vẫn là dữ liệu demo.',
+      }
+      : schedulesFeatureEnabled
+        ? {
+          title: 'Chế độ trình diễn',
+          description: 'Lịch Firebase chỉ được dùng khi cả Thuốc và Lịch thuốc đều được bật. Nội dung bên dưới hiện là dữ liệu demo.',
+        }
+        : {
+          title: 'Chế độ trình diễn',
+          description: 'Vai trò đã được kiểm tra từ hồ sơ của chính bạn. Lịch, thuốc và phản hồi dưới đây chỉ dùng để thử giao diện; không phải hồ sơ y tế.',
+        };
+
   return (
     <Screen contentStyle={styles.content}>
       <AppHeader
         right={<Text style={styles.roleLabel}>Người cao tuổi</Text>}
         title={`Chào ${user?.displayName ?? 'bạn'}`}
       />
-      <DemoModeBanner
-        description={medicationsUseFirestore && schedulesUseFirestore
-          ? 'Thuốc và lịch của bạn được lưu theo hồ sơ đã xác thực. DoseEvent và phản hồi bên dưới vẫn là dữ liệu demo; không phải hồ sơ y tế.'
-          : medicationsUseFirestore
-            ? 'Thuốc của bạn được lưu trong Firestore theo hồ sơ đã xác thực. Lịch uống chưa được bật và DoseEvent/phản hồi bên dưới vẫn là dữ liệu demo.'
-          : 'Vai trò đã được kiểm tra từ hồ sơ của chính bạn. Lịch, thuốc và phản hồi dưới đây vẫn chỉ dùng để thử giao diện; không phải hồ sơ y tế.'}
-        title={medicationsUseFirestore && schedulesUseFirestore
-          ? 'Thuốc và lịch trên Firebase · DoseEvent demo'
-          : medicationsUseFirestore
-            ? 'Thuốc trên Firebase · DoseEvent demo'
-            : 'Chế độ trình diễn'}
-      />
+      <DemoModeBanner description={dashboardBanner.description} title={dashboardBanner.title} />
       {errorMessage ? (
-        <SafetyNotice message={errorMessage} title={medicationsUseFirestore ? 'Không thể tải thuốc' : 'Không thể tải dữ liệu demo'} tone="error" />
+        <View style={styles.errorGroup}>
+          <SafetyNotice
+            message={errorMessage}
+            title={usesFirestoreSchedules ? 'Không thể tải lịch thuốc' : 'Không thể tải dữ liệu demo'}
+            tone="error"
+          />
+          <SecondaryButton
+            accessibilityHint="Tải lại dữ liệu lịch thuốc của tài khoản hiện tại"
+            label={usesFirestoreSchedules ? 'Thử tải lại lịch thuốc' : 'Thử tải lại dữ liệu demo'}
+            onPress={retryDashboard}
+          />
+        </View>
       ) : null}
       {authErrorMessage ? (
         <SafetyNotice message={authErrorMessage} title="Không thể hoàn tất phiên đăng nhập" tone="error" />
@@ -68,8 +98,32 @@ export default function ElderlyHomeScreen() {
         <Text accessibilityRole="header" style={styles.sectionTitle}>
           Lịch thuốc hôm nay
         </Text>
-        {isLoading && doses.length === 0 ? <ActivityIndicator color={medicareColors.primary} size="large" /> : null}
-        {doses.map(({ event, medication: resolvedMedication }) => {
+        {isLoading ? <ActivityIndicator color={medicareColors.primary} size="large" /> : null}
+        {!isLoading && !errorMessage && usesFirestoreSchedules && medicationSchedules.length === 0 ? (
+          <SafetyNotice
+            message="Hôm nay chưa có lịch thuốc đang hoạt động. Bạn có thể tạo lịch trong mục Thuốc của tôi."
+            title="Chưa có lịch thuốc hôm nay"
+            tone="information"
+          />
+        ) : null}
+        {!isLoading && !errorMessage && usesFirestoreSchedules ? medicationSchedules.map(({ schedule, medication }) => (
+          <MedicationScheduleCard
+            key={schedule.id}
+            localTime={schedule.localTime}
+            medicationName={medication.name}
+            recurrenceText={medicationScheduleRecurrenceLabel(schedule)}
+            strengthText={medication.strengthText}
+            testID={`medication-schedule-${schedule.id}`}
+          />
+        )) : null}
+        {!isLoading && !errorMessage && !usesFirestoreSchedules && doses.length === 0 ? (
+          <SafetyNotice
+            message="Hôm nay chưa có lịch demo để hiển thị."
+            title="Chưa có lịch demo hôm nay"
+            tone="information"
+          />
+        ) : null}
+        {!isLoading && !errorMessage && !usesFirestoreSchedules ? doses.map(({ event, medication: resolvedMedication }) => {
           const medication = resolvedMedication ?? {
             name: 'Thuốc demo',
             strengthText: 'Thông tin đang cập nhật',
@@ -81,26 +135,28 @@ export default function ElderlyHomeScreen() {
               medicationName={medication.name}
               reportedSkippedAction={{
                 label: 'Bỏ qua',
-                onPress: () => void recordResponse(event.id, 'reportedSkipped'),
+                onPress: () => void recordResponse?.(event.id, 'reportedSkipped'),
               }}
               reportedTakenAction={{
                 label: 'Đã uống',
-                onPress: () => void recordResponse(event.id, 'reportedTaken'),
+                onPress: () => void recordResponse?.(event.id, 'reportedTaken'),
               }}
               scheduledText={`Lúc ${formatVietnameseTime(event.scheduledAt)} hôm nay`}
               snoozeAction={{
                 label: 'Nhắc lại sau',
-                onPress: () => void recordResponse(event.id, 'snoozed'),
+                onPress: () => void recordResponse?.(event.id, 'snoozed'),
               }}
               status={event.status}
               strengthText={medication.strengthText}
             />
           );
-        })}
+        }) : null}
       </View>
       <SafetyNotice
-        message="“Đã uống” là phản hồi do bạn tự báo. Nếu quên liều hoặc có dấu hiệu bất thường, hãy liên hệ bác sĩ hoặc dược sĩ."
-        title="Ghi nhận an toàn"
+        message={usesFirestoreSchedules
+          ? 'Đây là lịch dự kiến. Ứng dụng chưa ghi nhận bạn đã uống thuốc, chưa tự tạo DoseEvent và chưa gửi thông báo.'
+          : '“Đã uống” là phản hồi do bạn tự báo. Nếu quên liều hoặc có dấu hiệu bất thường, hãy liên hệ bác sĩ hoặc dược sĩ.'}
+        title={usesFirestoreSchedules ? 'Giới hạn hiện tại' : 'Ghi nhận an toàn'}
         tone="information"
       />
       <View style={styles.section}>
@@ -114,12 +170,14 @@ export default function ElderlyHomeScreen() {
           title="Quét đơn thuốc"
         />
         <ActionCard
-          accessibilityHint={medicationsUseFirestore
+          accessibilityHint={medicationsFeatureEnabled
             ? 'Mở danh sách thuốc được lưu trong hồ sơ Firebase của tài khoản này'
             : 'Mở danh sách thuốc được lưu trong chế độ trình diễn của tài khoản này'}
-          description={medicationsUseFirestore
-            ? 'Xem, thêm, chỉnh sửa hoặc đánh dấu ngừng sử dụng thuốc của chính bạn. Lịch thuốc vẫn là demo.'
-            : 'Xem, thêm, chỉnh sửa hoặc đánh dấu ngừng sử dụng thuốc demo.'}
+          description={usesFirestoreSchedules
+            ? 'Xem thuốc và tạo, chỉnh sửa hoặc tạm dừng lịch uống của chính bạn.'
+            : medicationsFeatureEnabled
+              ? 'Xem, thêm, chỉnh sửa hoặc đánh dấu ngừng sử dụng thuốc của chính bạn. Lịch hôm nay vẫn là demo.'
+              : 'Xem, thêm, chỉnh sửa hoặc đánh dấu ngừng sử dụng thuốc demo.'}
           icon={<Text style={styles.icon}>☰</Text>}
           onPress={() => router.push('/elderly/medications')}
           title="Thuốc của tôi"
@@ -152,6 +210,9 @@ const styles = StyleSheet.create({
   },
   section: {
     gap: medicareSpacing.md,
+  },
+  errorGroup: {
+    gap: medicareSpacing.sm,
   },
   sectionTitle: {
     color: medicareColors.text,

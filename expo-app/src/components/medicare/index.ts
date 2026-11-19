@@ -2,6 +2,7 @@ export * from './ActionCard';
 export * from './AppHeader';
 export * from './DemoModeBanner';
 export * from './DoseEventCard';
+export * from './MedicationScheduleCard';
 export * from './PrimaryButton';
 export * from './SafetyNotice';
 export * from './Screen';

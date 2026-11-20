@@ -229,4 +229,12 @@ describe('ElderlyHomeScreen', () => {
     expect(router.push).toHaveBeenCalledWith('/elderly/dose-history');
     expect(router.push).toHaveBeenCalledWith('/elderly/reminder-settings');
   });
+
+  it('offers the protected prescription review route from the elderly home', async () => {
+    const view = await render(<ElderlyHomeScreen />);
+
+    await fireEvent.press(view.getByLabelText('Quét đơn thuốc'));
+
+    expect(router.push).toHaveBeenCalledWith('./prescription-ocr');
+  });
 });

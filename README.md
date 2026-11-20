@@ -65,6 +65,15 @@ không có FCM/server scheduler, OCR hay suy luận liều. Lịch sử và remi
 an toàn để bật trên Firebase sau khi Rules M3.4 và index history đã được review
 và deploy riêng. Xem [mô hình Firestore](docs/firestore-data-model.md).
 
+AI Phase 1 bổ sung luồng **Quét đơn thuốc** review-first cho người cao tuổi:
+quét/chọn tối đa ba ảnh, đồng ý rõ ràng trước khi gửi Google Cloud OCR, xem và
+chỉnh sửa từng ứng viên thuốc, rồi xác nhận lưu qua `MedicationRepository` M3.2.
+`EXPO_PUBLIC_PRESCRIPTION_OCR_ENABLED` vẫn mặc định `false`; source Cloud
+Functions v2/Google Vision được thêm nhưng **chưa deploy**, không có Storage,
+Firestore OCR record, raw OCR log hay mock fallback âm thầm. Xem
+[AI Phase 1 — Prescription OCR](docs/prescription-ocr-ai-phase-1.md) để biết
+điều kiện Cloud Vision/App Check/IAM trước khi thử live OCR.
+
 Xem [kế hoạch Migration](docs/migration-to-expo.md), [hướng dẫn chạy Expo](expo-app/README.md), [Firebase JavaScript SDK Integration](docs/firebase-js-sdk-integration.md), [Firebase Authentication — Migration 2.2](docs/firebase-authentication.md), [Firestore User Profiles — Migration 2.3](docs/firestore-user-profiles.md) và [Medication CRUD — Migration 3.2](docs/medication-management-m3.2.md). Flutter vẫn là mã tham chiếu cho đến khi migration được kiểm thử thiết bị và được phê duyệt riêng.
 
 ## Flutter baseline — Phase 2.1 (giữ nguyên)
@@ -139,6 +148,7 @@ Mỗi feature sẽ phát triển theo hướng `data → domain → presentation
 - [Firestore Medication CRUD — Migration 3.2](docs/medication-management-m3.2.md)
 - [Medication Schedules — Migration 3.3](docs/medication-schedules-m3.3.md)
 - [Medication tracking & local reminders](docs/medication-workflow-finalization.md)
+- [AI Phase 1 — Prescription OCR](docs/prescription-ocr-ai-phase-1.md)
 
 ## Firebase Setup — Phase 2.1
 

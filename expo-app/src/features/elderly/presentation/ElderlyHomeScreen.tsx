@@ -14,6 +14,7 @@ import {
 } from '@/components/medicare';
 import { medicareColors, medicareSpacing, medicareTypography } from '@/constants/medicare-theme';
 import { medicationScheduleRecurrenceLabel } from '@/features/schedules/presentation/medication-schedule-utils';
+import { isPrescriptionOcrFeatureEnabled } from '@/features/prescriptions';
 import { useSessionStore } from '@/store';
 import type { PersistedDoseResponseStatus } from '@/types/domain';
 import { formatVietnameseTime } from '@/utils/formatters';
@@ -49,6 +50,7 @@ export default function ElderlyHomeScreen() {
   const authErrorMessage = useSessionStore((state) => state.errorMessage);
   const isSigningOut = operationStatus === 'loading';
   const usesFirestoreSchedules = dashboardMode === 'firestore-schedules';
+  const prescriptionOcrFeatureEnabled = isPrescriptionOcrFeatureEnabled();
   const [pendingDoseResponseId, setPendingDoseResponseId] = useState<string | null>(null);
   const pendingDoseResponseRef = useRef<string | null>(null);
 
@@ -281,9 +283,14 @@ export default function ElderlyHomeScreen() {
           Thao tác nhanh
         </Text>
         <ActionCard
-          description="Tính năng OCR chưa được tích hợp trong lộ trình hiện tại."
+          accessibilityHint={prescriptionOcrFeatureEnabled
+            ? 'Mở màn hình quét đơn thuốc để chụp, kiểm tra và xác nhận trước khi lưu thuốc'
+            : 'Mở thông tin về quét đơn thuốc đang tắt và cách thêm thuốc thủ công'}
+          description={prescriptionOcrFeatureEnabled
+            ? 'Chụp hoặc chọn tối đa 3 trang đơn thuốc, kiểm tra kết quả rồi xác nhận từng thuốc.'
+            : 'Quét đơn thuốc chưa được bật trong môi trường này; bạn vẫn có thể thêm thuốc thủ công.'}
           icon={<Text style={styles.icon}>⌁</Text>}
-          onPress={() => showDeferredFeature('Quét đơn thuốc')}
+          onPress={() => router.push('./prescription-ocr')}
           title="Quét đơn thuốc"
         />
         <ActionCard

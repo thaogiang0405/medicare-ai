@@ -14,11 +14,11 @@ Toàn bộ dữ liệu sức khỏe thuộc một người cao tuổi nằm dư�
 
 /elderlyProfiles/{elderlyId}
   /caregiverLinks/{caregiverUid}
-  /prescriptions/{prescriptionId}
+  /prescriptions/{prescriptionId}        # reserved; not used by AI Phase 1
   /medications/{medicationId}
   /medicationSchedules/{scheduleId}
   /doseEvents/{doseEventId}
-  /ocrResults/{ocrResultId}
+  /ocrResults/{ocrResultId}              # reserved; not used by AI Phase 1
   /auditLogs/{auditLogId}
 
 /caregiverInvites/{inviteId}             # Callable Function/Admin SDK only
@@ -85,39 +85,27 @@ Không lưu mật khẩu, token, raw OCR hay thuốc trong `/users`.
 
 Status lifecycle: `pending → active | rejected | expired`; `active → revoked`. Caregiver can never set `active` from client. A Callable Function hashes invite codes, validates expiry and creates pending link; elderly approval and revocation run through server-trusted code/transaction.
 
-### Prescription and OCR
+### Prescription and OCR — AI Phase 1
 
-```json
-// prescriptions/{prescriptionId}
-{
-  "elderlyId": "elderlyUid",
-  "source": "ocr",
-  "status": "draft",
-  "imagePath": "prescriptions/{elderlyId}/{id}/source.jpg",
-  "ocrResultId": "ocr-id",
-  "reviewedBy": null,
-  "reviewedAt": null,
-  "createdBy": "uid",
-  "createdAt": "Timestamp",
-  "updatedAt": "Timestamp"
-}
+AI Phase 1 deliberately creates **no** client-writable `prescriptions`,
+`ocrResults`, `auditLogs`, or Firebase Storage records. The reviewed local
+source for those collections is not an active schema or permission surface.
 
-// ocrResults/{ocrResultId}
-{
-  "elderlyId": "elderlyUid",
-  "imagePath": "ocr/{elderlyId}/{ocrId}/source.jpg",
-  "rawText": "sensitive OCR text",
-  "candidates": [],
-  "fieldConfidence": {},
-  "status": "reviewRequired",
-  "reviewedBy": null,
-  "reviewedAt": null,
-  "expiresAt": "Timestamp",
-  "createdAt": "Timestamp"
-}
-```
+The app keeps source images, raw OCR text, candidates, and confidence warnings
+only in an in-memory review session. After explicit consent, an authenticated
+callable Function processes bounded image bytes in memory and returns text to
+the same active session; it does not persist source bytes or text. The only
+server-side operational record is a default-deny rate-limit counter in
+`_serverOcrRateLimits/{uid}`, containing no prescription data.
 
-Allowed OCR statuses: `processing`, `reviewRequired`, `confirmed`, `rejected`, `expired`. `rawText` and images have retention/cleanup policy and never go to client logs. A schedule creation use case must reject an OCR-derived request whose prescription/result is not confirmed.
+When the user explicitly confirms an edited candidate, the existing M3.2
+MedicationRepository independently creates an ordinary medication document.
+No prescription metadata, image path, raw OCR text, dosage recommendation, or
+automatic schedule is added to that medication document.
+
+Any future retained prescription/OCR schema requires a separate privacy,
+retention, Rules, Storage, and migration review. It must not be inferred from
+AI Phase 1 or opened through client Rules without that approval.
 
 ### Medication M3.2 and schedules M3.3
 

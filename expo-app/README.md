@@ -33,7 +33,9 @@ chỉ nằm trong `expo-app/` để đội ngũ có thể đối chiếu và chu
   đã có source M3.4, nhưng flag mặc định `false`; Rules DoseEvent M3.4 và index
   history chưa được deploy trong đợt hoàn thiện này.
 - Không có dữ liệu sức khỏe thật, quyền caregiver với thuốc/lịch/dose event,
-  OCR, TTS/STT, push notification, Cloud Functions hay đồng bộ gia đình.
+  TTS/STT, push notification hay đồng bộ gia đình. Prescription OCR có source
+  review-first nhưng callable/Google Vision chưa deploy và cờ public mặc định
+  vẫn tắt.
 
 ## Cấu trúc
 
@@ -180,6 +182,26 @@ server scheduler. History index trong `../firestore.indexes.json` cũng cần
 deploy riêng. Tất cả đây là phản hồi tự báo, không phải bằng chứng y tế.
 Quy trình safety, checklist iPhone và điều kiện deploy được ghi tại
 [Medication tracking & local reminders](../docs/medication-workflow-finalization.md).
+
+### Prescription OCR — AI Phase 1
+
+Route `/elderly/prescription-ocr` chỉ nằm trong elderly route guard. Khi
+`EXPO_PUBLIC_PRESCRIPTION_OCR_ENABLED=false`, UI hiển thị trạng thái tắt rõ ràng
+và đưa người dùng tới thêm thuốc thủ công — không hiển thị kết quả OCR giả.
+
+Khi chủ dự án đã deploy callable được review và bật cờ trong `.env` local, người
+dùng có thể quét/chọn tối đa ba ảnh, xem trước, sắp xếp/thay/xóa/quét lại, đồng
+ý rõ ràng trước khi gửi tới Google Cloud, rồi kiểm tra/chỉnh sửa/chọn từng ứng
+viên thuốc trước nút xác nhận. Ảnh, raw text và ứng viên chỉ ở bộ nhớ/cache tạm
+thời; không có client Firestore/Storage OCR write hoặc automatic schedule.
+
+`functions/` là Firebase Callable Function v2 `recognizePrescription` tại
+`asia-east1`, không phải endpoint công khai. Nó kiểm tra Auth/canonical elderly
+profile, giới hạn request/rate, dùng Vision ADC/service identity và không ghi
+raw image/text vào log hoặc storage. Không commit credential Functions hay bật
+App Check enforcement cho tới khi native builds đã được kiểm chứng. Xem
+[AI Phase 1 — Prescription OCR](../docs/prescription-ocr-ai-phase-1.md) trước
+khi bật cờ hoặc xin phê duyệt deploy.
 
 Expo Go dùng native container riêng. Trước EAS/development build, nhóm cần
 quyết định Android/iOS identifiers và Firebase client apps của Expo một cách có

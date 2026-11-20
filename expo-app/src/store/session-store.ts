@@ -10,6 +10,7 @@ import {
   getFirestoreUserProfileRepository,
   type UserProfileRepository,
 } from '@/features/profile';
+import { resetPrescriptionOcrSessionData } from '@/features/prescriptions';
 import {
   firestoreUserProfilesUnavailableMessage,
   isFirestoreUserProfilesFeatureEnabled,
@@ -57,6 +58,7 @@ export function resetDemoSessionData(previousUserId?: string): void {
   useDoseTrackingStore.getState().reset();
   useMedicationStore.getState().reset();
   useMedicationScheduleStore.getState().reset();
+  resetPrescriptionOcrSessionData();
 
   if (previousUserId?.trim()) {
     // Never let a local notification cleanup failure block auth state reset.

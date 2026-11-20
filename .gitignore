@@ -64,7 +64,10 @@ app.*.map.json
 *.pem
 *.key
 service-account*.json
+**/serviceAccountKey.json
 firebase-adminsdk*.json
+.runtimeconfig.json
+**/.firebase/
 
 # Firebase client configuration such as android/app/google-services.json and
 # lib/firebase_options.dart is intentionally versioned. It contains public

@@ -26,6 +26,22 @@
     "plugins": [
       "expo-router",
       [
+        "expo-camera",
+        {
+          "cameraPermission": "Cho phép MediCare AI dùng camera để quét đơn thuốc.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Cho phép MediCare AI dùng camera để chụp đơn thuốc.",
+          "photosPermission": "Cho phép MediCare AI truy cập ảnh để chọn đơn thuốc.",
+          "microphonePermission": false
+        }
+      ],
+      [
         "expo-notifications",
         {
           "enableRemoteNotifications": false

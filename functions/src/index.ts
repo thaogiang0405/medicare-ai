@@ -40,10 +40,10 @@ export const recognizePrescription = onCall(
     memory: '512MiB',
     concurrency: 5,
     maxInstances: 10,
-    // HttpsOptions currently accepts a concrete boolean (rather than a
-    // parameter expression), so resolve the declared deploy parameter here.
-    // It remains false by default until native App Check has been verified.
-    enforceAppCheck: enforceOcrAppCheck.value(),
+    // Pass the declared parameter through to the v2 callable runtime option.
+    // It remains false by default until native App Check has been verified,
+    // while Firebase resolves the selected value safely at deployment/runtime.
+    enforceAppCheck: enforceOcrAppCheck,
   },
   async (request) =>
     processPrescriptionOcrRequest(

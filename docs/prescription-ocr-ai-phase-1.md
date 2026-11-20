@@ -71,7 +71,7 @@ Do **not** enable the flag for real users until the project owner has separately
 reviewed and approved all of the following for Firebase project
 `medicare-ai-cf804`:
 
-1. Use Node.js 20 for the Functions deployment environment; install packages
+1. Use Node.js 22 for the Functions deployment environment; install packages
    under `functions/` and run `npm run build` and `npm test`.
 2. Enable billing required by Cloud Functions v2 and Google Cloud Vision, then
    enable the Vision API for the existing project.
@@ -80,11 +80,16 @@ reviewed and approved all of the following for Firebase project
    processing any real prescription.
 4. Review rate-limit retention and, if needed, configure server-side Firestore
    TTL operationally for `_serverOcrRateLimits`. No health data belongs there.
-5. Validate Firebase App Check from approved native iOS/Android builds. Expo Go
+5. Review Vision quota and budget-alert response before broader release. The
+   current server-side limit is five valid requests per UID every ten minutes;
+   it is not a global cost cap. No test UID allowlist is hard-coded, so do not
+   expose a broader cohort while App Check is disabled without a separately
+   reviewed server-enforced access control.
+6. Validate Firebase App Check from approved native iOS/Android builds. Expo Go
    is not proof of production App Check assurance. Only then set the Functions
    parameter `OCR_ENFORCE_APP_CHECK=true`; it defaults to `false` so a pending
    native App Check rollout does not silently lock out the current app.
-6. Obtain a dedicated deployment approval, then use the exact scoped command:
+7. Obtain a dedicated deployment approval, then use the exact scoped command:
 
    ```powershell
    firebase deploy --only functions:ocr --project medicare-ai-cf804

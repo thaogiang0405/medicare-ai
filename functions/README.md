@@ -5,6 +5,9 @@
 deploy a Function, enable Cloud Vision, or change any production Firebase
 resource.
 
+The deployed runtime is selected by `functions/package.json` and is pinned to
+Node.js 22. `firebase.json` does not override that setting.
+
 ## Security boundary
 
 - The callable rejects unauthenticated requests.
@@ -42,11 +45,21 @@ is visibly marked synthetic and production wiring never falls back to it.
 
 1. Use the existing Firebase project `medicare-ai-cf804`; do not create a new
    project.
-2. Enable billing and the Google Cloud Vision API for that project.
-3. Confirm the deployed Cloud Functions runtime service identity can use the
+2. Confirm the project is on Blaze billing, then confirm that the Google Cloud
+   Vision API is already enabled. Do not enable billing or APIs from a release
+   terminal without explicit project-owner approval.
+3. Confirm the deployed Cloud Functions v2 runtime service identity can use the
    enabled Vision API with least-privilege IAM. Test this with a non-production,
    synthetic image before real-world use.
-4. Install dependencies in `functions/`, build successfully, and deploy only
+4. Review Vision quotas, create cost-budget alerts, and approve the response
+   procedure before opening the callable beyond a small test cohort. Budget
+   alerts are not a hard spending cap.
+5. `OCR_ENFORCE_APP_CHECK` remains `false` for Expo Go QA. No UID allowlist is
+   hard-coded in source, so a controlled test release requires project-owner
+   approved synthetic test accounts and, if stricter access is required, a
+   separately reviewed server-enforced allowlist. Never put test UIDs in Expo
+   variables or client code.
+6. Install dependencies in `functions/`, build successfully, and deploy only
    after explicit approval, for example:
 
    ```powershell
@@ -57,7 +70,7 @@ is visibly marked synthetic and production wiring never falls back to it.
    predeploy hook; generated `lib/` output is intentionally uploaded but never
    committed.
 
-5. Verify App Check on a real native build before setting the deploy parameter
+7. Verify App Check on a real native build before setting the deploy parameter
    `OCR_ENFORCE_APP_CHECK=true`. It deliberately defaults to `false` because
    Expo Go does not provide a production-ready App Check assurance for this
    workflow. Do not enforce until valid tokens are observed from the approved

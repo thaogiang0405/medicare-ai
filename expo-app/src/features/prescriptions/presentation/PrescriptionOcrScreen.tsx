@@ -81,6 +81,7 @@ export default function PrescriptionOcrScreen() {
   const setPages = usePrescriptionOcrStore((state) => state.setPages);
   const setConsentAccepted = usePrescriptionOcrStore((state) => state.setConsentAccepted);
   const process = usePrescriptionOcrStore((state) => state.process);
+  const reviewPastedText = usePrescriptionOcrStore((state) => state.reviewPastedText);
   const updateCandidate = usePrescriptionOcrStore((state) => state.updateCandidate);
   const setCandidateSelected = usePrescriptionOcrStore((state) => state.setCandidateSelected);
   const addManualCandidate = usePrescriptionOcrStore((state) => state.addManualCandidate);
@@ -90,6 +91,7 @@ export default function PrescriptionOcrScreen() {
   const cancel = usePrescriptionOcrStore((state) => state.cancel);
 
   const [captureError, setCaptureError] = useState<string | null>(null);
+  const [pastedText, setPastedText] = useState('');
   const [isCapturing, setIsCapturing] = useState(false);
   const pagesRef = useRef<readonly PrescriptionOcrImagePage[]>(pages);
   const captureInProgressRef = useRef(false);
@@ -110,6 +112,7 @@ export default function PrescriptionOcrScreen() {
     if (boundUserRef.current && boundUserRef.current !== nextUserId) {
       deleteTemporaryPrescriptionImages(pagesRef.current);
     }
+    if (boundUserRef.current !== nextUserId) setPastedText('');
     boundUserRef.current = nextUserId;
     bindAuthenticatedUser(nextUserId);
   }, [bindAuthenticatedUser, sessionUserId]);
@@ -256,12 +259,17 @@ export default function PrescriptionOcrScreen() {
     }
   };
 
+  const handleReviewPastedText = () => {
+    reviewPastedText(pastedText);
+    if (usePrescriptionOcrStore.getState().status === 'review') setPastedText('');
+  };
+
   const banner = useMemo(() => featureEnabled ? {
     title: 'Kiểm tra đơn thuốc trước khi lưu',
     description: 'Ảnh chỉ được gửi tới Google Cloud sau khi bạn đồng ý. Kết quả OCR chỉ tồn tại trong phiên xem lại này.',
   } : {
-    title: 'OCR đang tắt',
-    description: 'Quét đơn thuốc chưa được bật trong môi trường này. Bạn vẫn có thể thêm thuốc thủ công.',
+    title: 'Nhập đơn thuốc không mất phí',
+    description: 'Có thể dán chữ sao chép từ Live Text trên iPhone, xem lại và lưu thuốc. Không gửi ảnh lên dịch vụ OCR trả phí.',
   }, [featureEnabled]);
 
   return (
@@ -270,6 +278,12 @@ export default function PrescriptionOcrScreen() {
         <AppHeader backAccessibilityLabel="Quay lại trang chủ người cao tuổi" onBack={cancelAndLeave} subtitle="Chụp hoặc chọn ảnh, rồi kiểm tra kỹ trước khi lưu" title="Quét đơn thuốc" />
         <DemoModeBanner description={banner.description} title={banner.title} />
         <SafetyNotice message="AI có thể nhận dạng sai thông tin đơn thuốc. Vui lòng kiểm tra lại đơn gốc và xác nhận với nhân viên y tế nếu chưa chắc chắn." title="Kiểm tra trước khi lưu" tone="warning" />
+        <ManualTextImportSection
+          errorMessage={!featureEnabled ? errorMessage : null}
+          onChangeText={setPastedText}
+          onReview={handleReviewPastedText}
+          text={pastedText}
+        />
         {!featureEnabled ? <DisabledOcrState onBack={cancelAndLeave} /> : <>
           <ImageCollectionSection
             captureError={captureError}
@@ -295,8 +309,9 @@ export default function PrescriptionOcrScreen() {
             onProcess={() => void process()}
             onToggleConsent={() => setConsentAccepted(!consentAccepted)}
           />
-          {ocrResult ? <OcrTextSection pages={ocrResult.pages} provider={ocrResult.provider} /> : null}
-          {status === 'review' ? <ReviewSection
+        </>}
+        {ocrResult ? <OcrTextSection pages={ocrResult.pages} provider={ocrResult.provider} /> : null}
+        {status === 'review' ? <ReviewSection
             candidates={candidates}
             importResult={importResult}
             isSaving={isSaving}
@@ -307,9 +322,45 @@ export default function PrescriptionOcrScreen() {
             onToggle={(id, selected) => setCandidateSelected(id, selected)}
             selectedCount={selectedCount}
           /> : null}
-        </>}
       </Screen>
     </KeyboardAvoidingView>
+  );
+}
+
+function ManualTextImportSection({ text, onChangeText, onReview, errorMessage }: Readonly<{
+  text: string;
+  onChangeText: (value: string) => void;
+  onReview: () => void;
+  errorMessage: string | null;
+}>) {
+  return (
+    <View style={styles.section}>
+      <Text accessibilityRole="header" style={styles.sectionTitle}>Dán văn bản bằng Live Text (miễn phí)</Text>
+      <Text style={styles.sectionDescription}>
+        Trên iPhone, mở ảnh trong ứng dụng Ảnh, chọn chữ bằng Live Text và nhấn Sao chép. Quay lại đây để dán. Không có dữ liệu nào được gửi đến Cloud Vision.
+      </Text>
+      <TextField
+        accessibilityHint="Dán văn bản sao chép từ ảnh đơn thuốc hoặc nhập thủ công; tối đa 12.000 ký tự."
+        label="Nội dung đơn thuốc"
+        maxLength={12_000}
+        multiline
+        numberOfLines={5}
+        onChangeText={onChangeText}
+        placeholder="Ví dụ: 1. Paracetamol 500 mg – theo hướng dẫn trên đơn..."
+        style={styles.multilineInput}
+        testID="paste-prescription-text-input"
+        textAlignVertical="top"
+        value={text}
+      />
+      <PrimaryButton
+        accessibilityHint="Phân tích văn bản đã dán trên điện thoại, không gọi OCR cloud"
+        disabled={!text.trim()}
+        label="Kiểm tra và tách thông tin thuốc"
+        onPress={onReview}
+        testID="review-pasted-prescription-button"
+      />
+      {errorMessage ? <SafetyNotice message={errorMessage} title="Không thể nhập văn bản" tone="error" /> : null}
+    </View>
   );
 }
 
@@ -317,8 +368,8 @@ function DisabledOcrState({ onBack }: Readonly<{ onBack: () => void }>) {
   return (
     <View style={styles.actions}>
       <SafetyNotice
-        message="Tính năng gửi ảnh đến dịch vụ OCR không hoạt động khi cờ môi trường đang tắt. Ứng dụng không dùng kết quả giả để thay thế OCR thật."
-        title="Chưa thể quét đơn thuốc"
+        message="Nhận dạng ảnh tự động trong ứng dụng chưa có bản miễn phí được xác minh trên iPhone. Bạn có thể dùng Live Text để sao chép chữ và dán ở trên, hoặc thêm từng thuốc thủ công."
+        title="Quét ảnh tự động chưa khả dụng"
         tone="information"
       />
       <PrimaryButton accessibilityHint="Mở biểu mẫu thêm thuốc thủ công" label="Thêm thuốc thủ công" onPress={() => router.push('/elderly/medications/new')} />
@@ -480,12 +531,12 @@ function Checkbox({ checked }: Readonly<{ checked: boolean }>) {
 
 function OcrTextSection({ pages, provider }: Readonly<{
   pages: readonly { pageIndex: number; text: string; qualityWarnings: readonly string[] }[];
-  provider: 'google-cloud-vision' | 'demo';
+  provider: 'google-cloud-vision' | 'demo' | 'manual-import';
 }>) {
   return (
     <View style={styles.section}>
       <Text accessibilityRole="header" style={styles.sectionTitle}>Nội dung nhận dạng</Text>
-      <SafetyNotice message="Nội dung này chỉ hiển thị trong phiên hiện tại để bạn đối chiếu. Nó không được lưu vào Firestore hoặc bộ nhớ lâu dài của ứng dụng." title={provider === 'demo' ? 'Kết quả mô phỏng' : 'Kết quả từ Google Cloud OCR'} tone={provider === 'demo' ? 'warning' : 'information'} />
+      <SafetyNotice message="Nội dung này chỉ hiển thị trong phiên hiện tại để bạn đối chiếu. Nó không được lưu vào Firestore hoặc bộ nhớ lâu dài của ứng dụng." title={provider === 'demo' ? 'Kết quả mô phỏng' : provider === 'manual-import' ? 'Văn bản bạn đã dán – không dùng OCR cloud' : 'Kết quả từ Google Cloud OCR'} tone={provider === 'demo' ? 'warning' : 'information'} />
       {pages.map((page) => <View key={page.pageIndex} style={styles.ocrTextCard}>
         <Text style={styles.cardTitle}>Trang {page.pageIndex + 1}</Text>
         {page.qualityWarnings.map((warning, index) => <Text key={`${warning}-${index}`} style={styles.warningText}>• {warningLabel(warning)}</Text>)}

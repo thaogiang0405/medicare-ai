@@ -52,6 +52,8 @@ export type PrescriptionOcrState = {
   setConsentAccepted(accepted: boolean): void;
   process(): Promise<void>;
   requestOcr(): Promise<void>;
+  /** Free OCR bridge: paste text recognized in Photos/Live Text; no network or paid API. */
+  reviewPastedText(text: string): void;
   updateCandidate(candidateId: string, input: Partial<MedicationInput>): void;
   setCandidateSelected(candidateId: string, selected: boolean): void;
   toggleCandidate(candidateId: string): void;
@@ -284,6 +286,49 @@ export function createPrescriptionOcrStore(
         }
       },
       requestOcr: async () => get().process(),
+      reviewPastedText: (rawText) => {
+        const { activeUserId, status } = get();
+        if (!activeUserId) {
+          set({ status: 'error', errorMessage: 'Vui lòng đăng nhập trước khi nhập đơn thuốc.' });
+          return;
+        }
+        if (status === 'processing' || status === 'saving') {
+          set({ errorMessage: 'Đang xử lý yêu cầu trước đó. Vui lòng thử lại.' });
+          return;
+        }
+        const text = rawText.trim();
+        if (!text) {
+          set({ errorMessage: 'Vui lòng dán nội dung chữ từ ảnh đơn thuốc trước khi tiếp tục.' });
+          return;
+        }
+        if (text.length > 12_000) {
+          set({ errorMessage: 'Văn bản dài quá 12.000 ký tự. Vui lòng chọn phần thông tin thuốc cần nhập.' });
+          return;
+        }
+
+        // Manual import does not invoke the cloud gateway, even when the cloud
+        // feature flag is disabled. The draft remains memory-only and bound to
+        // the current authenticated UID.
+        invalidateRequest();
+        const result: PrescriptionOcrResult = {
+          provider: 'manual-import',
+          pages: [{
+            pageIndex: 0,
+            text,
+            confidence: null,
+            qualityWarnings: [
+              'Văn bản được dán từ bên ngoài ứng dụng. Vui lòng đối chiếu với đơn gốc trước khi lưu.',
+            ],
+          }],
+        };
+        set({
+          status: 'review',
+          ocrResult: result,
+          candidates: parsePrescriptionOcrPages(result.pages).map(toReviewCandidate),
+          importResult: null,
+          errorMessage: null,
+        });
+      },
       updateCandidate: (candidateId, input) => {
         const id = normalizeCandidateId(candidateId);
         set((state) => ({

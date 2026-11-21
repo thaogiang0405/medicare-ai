@@ -55,7 +55,7 @@ export type PrescriptionOcrRequest = Readonly<{
 
 export type PrescriptionOcrResult = Readonly<{
   pages: readonly PrescriptionOcrPage[];
-  provider: 'google-cloud-vision' | 'demo';
+  provider: 'google-cloud-vision' | 'demo' | 'manual-import';
 }>;
 
 /**

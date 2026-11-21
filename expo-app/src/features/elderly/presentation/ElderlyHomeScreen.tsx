@@ -285,10 +285,10 @@ export default function ElderlyHomeScreen() {
         <ActionCard
           accessibilityHint={prescriptionOcrFeatureEnabled
             ? 'Mở màn hình quét đơn thuốc để chụp, kiểm tra và xác nhận trước khi lưu thuốc'
-            : 'Mở thông tin về quét đơn thuốc đang tắt và cách thêm thuốc thủ công'}
+            : 'Mở chức năng dán chữ từ Live Text miễn phí, kiểm tra và lưu thông tin thuốc'}
           description={prescriptionOcrFeatureEnabled
             ? 'Chụp hoặc chọn tối đa 3 trang đơn thuốc, kiểm tra kết quả rồi xác nhận từng thuốc.'
-            : 'Quét đơn thuốc chưa được bật trong môi trường này; bạn vẫn có thể thêm thuốc thủ công.'}
+            : 'Dán văn bản nhận dạng từ ảnh bằng Live Text trên iPhone và kiểm tra trước khi lưu. Không dùng API trả phí.'}
           icon={<Text style={styles.icon}>⌁</Text>}
           onPress={() => router.push('./prescription-ocr')}
           title="Quét đơn thuốc"

@@ -100,4 +100,35 @@ describe('prescription OCR store', () => {
     store.getState().reset();
     expect(store.getState()).toMatchObject({ activeUserId: null, pages: [], ocrResult: null, candidates: [] });
   });
+
+  it('reviews free pasted prescription text without calling cloud OCR', () => {
+    const gateway: PrescriptionOcrGateway = { recognizePrescription: jest.fn(async () => ocrResult) };
+    const store = createPrescriptionOcrStore(gateway, repository, () => false);
+
+    store.getState().bindAuthenticatedUser('elderly-a');
+    store.getState().reviewPastedText('1. Paracetamol 500 mg - Uống khi cần theo đơn');
+
+    expect(gateway.recognizePrescription).not.toHaveBeenCalled();
+    expect(store.getState().ocrResult?.provider).toBe('manual-import');
+    expect(store.getState().status).toBe('review');
+    expect(store.getState().candidates[0].input.name).toBe('Paracetamol');
+
+    store.getState().bindAuthenticatedUser('elderly-b');
+    expect(store.getState()).toMatchObject({ ocrResult: null, candidates: [], pages: [] });
+  });
+
+  it('rejects empty and overlong pasted text without calling the OCR gateway', () => {
+    const gateway: PrescriptionOcrGateway = { recognizePrescription: jest.fn(async () => ocrResult) };
+    const store = createPrescriptionOcrStore(gateway, repository, () => false);
+    store.getState().bindAuthenticatedUser('elderly-a');
+
+    store.getState().reviewPastedText('  ');
+    expect(store.getState().ocrResult).toBeNull();
+    expect(store.getState().errorMessage).toContain('Vui lòng dán');
+
+    store.getState().reviewPastedText('x'.repeat(12_001));
+    expect(store.getState().ocrResult).toBeNull();
+    expect(store.getState().errorMessage).toContain('12.000');
+    expect(gateway.recognizePrescription).not.toHaveBeenCalled();
+  });
 });

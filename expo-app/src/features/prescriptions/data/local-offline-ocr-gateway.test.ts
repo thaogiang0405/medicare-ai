@@ -80,6 +80,24 @@ describe('LocalOfflineOcrGateway', () => {
     expect(progress).toContain('1:preparing');
   });
 
+
+  it('forwards packaging mode and image dimensions to the local worker without image URI', async () => {
+    const recognizePage = jest.fn(async () => recognizedPage('Paracetamol 500 mg'));
+    const gateway = new LocalOfflineOcrGateway(() => port({ recognizePage }), () => 'elderly-a');
+    const result = await gateway.recognizePrescription(
+      'elderly-a', { ...request, pages: [request.pages[0]!] },
+      { sourceMode: 'packaging' },
+    );
+
+    expect(result.provider).toBe('local-offline');
+    expect(recognizePage).toHaveBeenCalledTimes(1);
+    expect(recognizePage.mock.calls[0]?.[0]).toEqual({
+      id: 'page-a', pageIndex: 0, mimeType: 'image/jpeg',
+      base64: 'YWJj', width: 100, height: 100, sourceMode: 'packaging',
+    });
+    expect(recognizePage.mock.calls[0]?.[0]).not.toHaveProperty('uri');
+  });
+
   it('does not process with a stale Firebase Auth UID', async () => {
     let currentUserId = 'elderly-a';
     const gateway = new LocalOfflineOcrGateway(

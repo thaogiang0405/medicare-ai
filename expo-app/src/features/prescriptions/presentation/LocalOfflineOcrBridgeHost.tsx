@@ -154,7 +154,7 @@ export function LocalOfflineOcrBridgeHost({ onEngineStatusChange }: LocalOffline
       style={styles.hiddenHost}
     >
       <LocalOfflineOcrDom
-        dom={{ matchContents: false }}
+        dom={{ matchContents: false, useExpoDOMWebView: false }}
         job={job}
         onCancelled={onCancelled}
         onEngineError={onEngineError}

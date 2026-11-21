@@ -10,6 +10,15 @@ describe('conservative package-lettering parser', () => {
     expect(items[0].input).toEqual({ name: 'Paracetamol', strengthText: '500 mg', directionsText: '' });
     expect(items[0].warnings.join(' ')).toContain('KHÔNG xác minh');
   });
+  it('never interprets SOO or a missing strength unit as 500 mg', () => {
+    expect(parseMedicationPackageOcrPage({
+      pageIndex: 0, text: 'Paracetamol SOO', confidence: 0.4, qualityWarnings: [],
+    })).toEqual([]);
+    expect(parseMedicationPackageOcrPage({
+      pageIndex: 0, text: 'Paracetamol 500', confidence: 0.4, qualityWarnings: [],
+    })).toEqual([]);
+  });
+
   it('accepts a brand-strength line', () => {
     const items = parseMedicationPackageOcrPage({
       pageIndex: 0, text: 'HSD: 2028\nVitamin C 500 mg\nCách dùng: 2 viên',

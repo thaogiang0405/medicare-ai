@@ -20,3 +20,12 @@ Trong màn **Quét vỏ hộp thuốc**, chọn ảnh bao bì, **chạm chính g
 Bắt buộc kiểm tra: OCR của chữ tên lớn, chữ có dấu, ảnh nghiêng/nhòe, chữ lớn có phông đậm, ảnh chỉ có nhãn phụ; không được tự tạo tên/liều/giờ uống khi OCR không nhận ra. Người dùng phải chủ động tích chọn gợi ý.
 
 Có thêm unit test cho giới hạn vùng cắt và vị trí chạm. Cần chạy toàn bộ Jest, TypeScript/lint trên máy phát triển và kiểm thử tương tác chạm/cắt thực tế trong Expo Go iPhone. Nếu thông báo Expo `Uncaught (in promise...)` còn xuất hiện, lấy stack trace đầy đủ từ Metro; toast bị cắt không đủ để xác định chính xác nguồn lỗi.
+
+## Bản sửa theo QA iPhone (lỗi DomWebView và "Paracetamol SOO")
+
+- Đã nhận log Expo Go `Unable to find the 'DomWebView' view with tag ...`. Sử dụng `react-native-webview` đã cài và `dom={{ useExpoDOMWebView: false }}` theo hướng dẫn chính thức Expo SDK 56+, tránh phụ thuộc vào native DomWebView mặc định. Cleanup không setState khi WebView unmount, nhằm giảm race với bridge.
+- Phần quét bao bì có lượt tăng tương phản `canvas` ở DOM, hoàn toàn trên thiết bị, chỉ áp dụng khi ảnh được cắt thành dải tên/hàm lượng. Lượt OCR gốc vẫn giữ để dự phòng nếu thao tác preprocessing thất bại.
+- Chỉ ưu tiên kết quả đã tăng tương phản khi nó **thật sự nhận được** dòng tên cùng một hàm lượng có đơn vị. Tuyệt đối không chuyển chuỗi OCR `SOO` thành `500 mg` bằng quy tắc suy đoán.
+- Khung chọn trong ảnh giờ hẹp hơn với ảnh hộp đầy đủ để giảm nhiễu dòng phụ; dải ngang đã cắt sẵn vẫn giữ chiều cao đủ cho chữ nghiêng. Ảnh dải ngang đủ rộng sẽ không bị cảnh báo độ phân giải thấp chỉ vì chiều cao ít.
+- Nếu nút **Chỉ quét vùng tên đã chọn** bị xám: **chạm vào chính giữa chữ** trong ảnh trước để hiện khung chọn, rồi nhấn nút đó, cuối cùng mới bấm **Nhận dạng chữ trên thiết bị**.
+- Phần code này **chưa chạy lại Jest/TypeScript trên máy Windows**, chưa xác nhận iPhone hết lỗi. Khi thử lại, chạy `npm run typecheck`, `npm run lint`, `npm test` rồi `npx expo start --clear --lan`. Ghi lại log Metro nếu còn lỗi.

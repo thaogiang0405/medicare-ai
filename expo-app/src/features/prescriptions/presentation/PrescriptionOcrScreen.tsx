@@ -35,6 +35,7 @@ import {
   prescriptionOcrMaximumPages,
   usePrescriptionOcrStore,
   type PrescriptionOcrImagePage,
+  type PrescriptionOcrProgress,
   type PrescriptionOcrReviewCandidate,
 } from '@/features/prescriptions';
 import { useSessionStore } from '@/store';
@@ -45,6 +46,10 @@ import {
   preparePrescriptionImage,
   type PickedPrescriptionImage,
 } from './prescription-image-preparation';
+import {
+  LocalOfflineOcrBridgeHost,
+  type LocalOfflineOcrEngineStatus,
+} from './LocalOfflineOcrBridgeHost';
 
 function toSafeCaptureError(error: unknown): string {
   return error instanceof Error && error.message
@@ -62,6 +67,20 @@ function warningLabel(warning: string): string {
   return labels[warning] ?? warning;
 }
 
+function localOcrProgressLabel(progress: PrescriptionOcrProgress | null): string {
+  if (!progress) return 'Đang chuẩn bị nhận dạng cục bộ…';
+  const page = `Trang ${progress.pageIndex + 1}/${progress.totalPages}`;
+  const phase = {
+    preparing: 'đang chuẩn bị ảnh',
+    'loading-engine': 'đang nạp bộ nhận dạng',
+    'loading-language': 'đang nạp ngôn ngữ Việt/Anh',
+    recognizing: 'đang nhận dạng chữ',
+    finalizing: 'đang hoàn tất',
+  }[progress.phase];
+  const percentage = progress.progress === null ? '' : ` ${Math.round(progress.progress * 100)}%`;
+  return `${page} – ${phase}${percentage}.`;
+}
+
 /** Elderly-only screen; the parent layout protects the route and this screen binds each draft to its authenticated owner. */
 export default function PrescriptionOcrScreen() {
   const sessionUserId = useSessionStore((state) => state.user?.id ?? null);
@@ -70,6 +89,7 @@ export default function PrescriptionOcrScreen() {
   const status = usePrescriptionOcrStore((state) => state.status);
   const consentAccepted = usePrescriptionOcrStore((state) => state.consentAccepted);
   const errorMessage = usePrescriptionOcrStore((state) => state.errorMessage);
+  const ocrProgress = usePrescriptionOcrStore((state) => state.ocrProgress);
   const ocrResult = usePrescriptionOcrStore((state) => state.ocrResult);
   const candidates = usePrescriptionOcrStore((state) => state.candidates);
   const importResult = usePrescriptionOcrStore((state) => state.importResult);
@@ -93,15 +113,23 @@ export default function PrescriptionOcrScreen() {
   const [captureError, setCaptureError] = useState<string | null>(null);
   const [pastedText, setPastedText] = useState('');
   const [isCapturing, setIsCapturing] = useState(false);
+  const featureEnabled = isPrescriptionOcrFeatureEnabled();
+  const [engineStatus, setEngineStatus] = useState<LocalOfflineOcrEngineStatus>(featureEnabled ? 'loading' : 'error');
+  const [engineAttempt, setEngineAttempt] = useState(0);
   const pagesRef = useRef<readonly PrescriptionOcrImagePage[]>(pages);
   const captureInProgressRef = useRef(false);
   const boundUserRef = useRef<string | null>(null);
-  const featureEnabled = isPrescriptionOcrFeatureEnabled();
   const isProcessing = status === 'processing';
   const isSaving = status === 'saving';
   const selectedCount = candidates.filter((candidate) => candidate.selected).length;
-  const canProcess = featureEnabled && Boolean(activeUserId) && pages.length > 0 && consentAccepted
+  const canProcess = featureEnabled && engineStatus === 'ready' && Boolean(activeUserId) && pages.length > 0 && consentAccepted
     && !isCapturing && !isProcessing && !isSaving;
+
+  const retryEngine = () => {
+    if (isProcessing || isSaving) return;
+    setEngineStatus('loading');
+    setEngineAttempt((attempt) => attempt + 1);
+  };
 
   useEffect(() => {
     pagesRef.current = pages;
@@ -265,8 +293,8 @@ export default function PrescriptionOcrScreen() {
   };
 
   const banner = useMemo(() => featureEnabled ? {
-    title: 'Kiểm tra đơn thuốc trước khi lưu',
-    description: 'Ảnh chỉ được gửi tới Google Cloud sau khi bạn đồng ý. Kết quả OCR chỉ tồn tại trong phiên xem lại này.',
+    title: 'Nhận dạng đơn thuốc trên thiết bị',
+    description: 'Ảnh và văn bản được xử lý cục bộ trên thiết bị. Không gửi ảnh đến dịch vụ OCR hoặc máy chủ bên thứ ba.',
   } : {
     title: 'Nhập đơn thuốc không mất phí',
     description: 'Có thể dán chữ sao chép từ Live Text trên iPhone, xem lại và lưu thuốc. Không gửi ảnh lên dịch vụ OCR trả phí.',
@@ -275,6 +303,7 @@ export default function PrescriptionOcrScreen() {
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.keyboardAvoidingView}>
       <Screen contentStyle={styles.content} testID="prescription-ocr-screen">
+        {featureEnabled ? <LocalOfflineOcrBridgeHost key={engineAttempt} onEngineStatusChange={setEngineStatus} /> : null}
         <AppHeader backAccessibilityLabel="Quay lại trang chủ người cao tuổi" onBack={cancelAndLeave} subtitle="Chụp hoặc chọn ảnh, rồi kiểm tra kỹ trước khi lưu" title="Quét đơn thuốc" />
         <DemoModeBanner description={banner.description} title={banner.title} />
         <SafetyNotice message="AI có thể nhận dạng sai thông tin đơn thuốc. Vui lòng kiểm tra lại đơn gốc và xác nhận với nhân viên y tế nếu chưa chắc chắn." title="Kiểm tra trước khi lưu" tone="warning" />
@@ -302,11 +331,15 @@ export default function PrescriptionOcrScreen() {
           <ConsentAndProcessSection
             canProcess={canProcess}
             consentAccepted={consentAccepted}
+            engineStatus={engineStatus}
             errorMessage={errorMessage}
             isProcessing={isProcessing}
             isSaving={isSaving}
+            ocrProgress={ocrProgress}
+            onCancel={cancel}
             onManualEntry={() => router.push('/elderly/medications/new')}
             onProcess={() => void process()}
+            onRetryEngine={retryEngine}
             onToggleConsent={() => setConsentAccepted(!consentAccepted)}
           />
         </>}
@@ -337,7 +370,7 @@ function ManualTextImportSection({ text, onChangeText, onReview, errorMessage }:
     <View style={styles.section}>
       <Text accessibilityRole="header" style={styles.sectionTitle}>Dán văn bản bằng Live Text (miễn phí)</Text>
       <Text style={styles.sectionDescription}>
-        Trên iPhone, mở ảnh trong ứng dụng Ảnh, chọn chữ bằng Live Text và nhấn Sao chép. Quay lại đây để dán. Không có dữ liệu nào được gửi đến Cloud Vision.
+        Trên iPhone, mở ảnh trong ứng dụng Ảnh, chọn chữ bằng Live Text và nhấn Sao chép. Quay lại đây để dán. Không có dữ liệu nào được gửi đến dịch vụ OCR đám mây.
       </Text>
       <TextField
         accessibilityHint="Dán văn bản sao chép từ ảnh đơn thuốc hoặc nhập thủ công; tối đa 12.000 ký tự."
@@ -353,7 +386,7 @@ function ManualTextImportSection({ text, onChangeText, onReview, errorMessage }:
         value={text}
       />
       <PrimaryButton
-        accessibilityHint="Phân tích văn bản đã dán trên điện thoại, không gọi OCR cloud"
+        accessibilityHint="Phân tích văn bản đã dán trong phiên hiện tại, không gọi OCR đám mây"
         disabled={!text.trim()}
         label="Kiểm tra và tách thông tin thuốc"
         onPress={onReview}
@@ -368,8 +401,8 @@ function DisabledOcrState({ onBack }: Readonly<{ onBack: () => void }>) {
   return (
     <View style={styles.actions}>
       <SafetyNotice
-        message="Nhận dạng ảnh tự động trong ứng dụng chưa có bản miễn phí được xác minh trên iPhone. Bạn có thể dùng Live Text để sao chép chữ và dán ở trên, hoặc thêm từng thuốc thủ công."
-        title="Quét ảnh tự động chưa khả dụng"
+        message="Nhận dạng ảnh cục bộ chưa được bật trong môi trường này. Bạn có thể dùng Live Text để sao chép chữ và dán ở trên, hoặc thêm từng thuốc thủ công."
+        title="Quét ảnh cục bộ chưa được bật"
         tone="information"
       />
       <PrimaryButton accessibilityHint="Mở biểu mẫu thêm thuốc thủ công" label="Thêm thuốc thủ công" onPress={() => router.push('/elderly/medications/new')} />
@@ -492,33 +525,46 @@ function SmallAction({ label, disabled, destructive = false, onPress }: Readonly
 function ConsentAndProcessSection({
   consentAccepted,
   canProcess,
+  engineStatus,
   isProcessing,
   isSaving,
   errorMessage,
+  ocrProgress,
   onToggleConsent,
   onProcess,
+  onCancel,
+  onRetryEngine,
   onManualEntry,
 }: Readonly<{
   consentAccepted: boolean;
   canProcess: boolean;
+  engineStatus: LocalOfflineOcrEngineStatus;
   isProcessing: boolean;
   isSaving: boolean;
   errorMessage: string | null;
+  ocrProgress: PrescriptionOcrProgress | null;
   onToggleConsent: () => void;
   onProcess: () => void;
+  onCancel: () => void;
+  onRetryEngine: () => void;
   onManualEntry: () => void;
 }>) {
   return (
     <View style={styles.section}>
-      <Text accessibilityRole="header" style={styles.sectionTitle}>Đồng ý xử lý OCR</Text>
-      <Pressable accessibilityHint="Bắt buộc trước khi gửi ảnh tới Google Cloud để nhận dạng chữ" accessibilityLabel="Đồng ý gửi ảnh đơn thuốc tới Google Cloud để xử lý OCR" accessibilityRole="checkbox" accessibilityState={{ checked: consentAccepted, disabled: isProcessing || isSaving }} disabled={isProcessing || isSaving} onPress={onToggleConsent} style={({ pressed }) => [styles.consentRow, consentAccepted && styles.consentRowChecked, pressed && !isProcessing && !isSaving && styles.pressed]}>
+      <Text accessibilityRole="header" style={styles.sectionTitle}>Xử lý OCR cục bộ</Text>
+      <Pressable accessibilityHint="Bắt buộc trước khi xử lý ảnh đơn thuốc hoàn toàn trên thiết bị" accessibilityLabel="Đồng ý xử lý ảnh đơn thuốc trên thiết bị để nhận dạng chữ" accessibilityRole="checkbox" accessibilityState={{ checked: consentAccepted, disabled: isProcessing || isSaving }} disabled={isProcessing || isSaving} onPress={onToggleConsent} style={({ pressed }) => [styles.consentRow, consentAccepted && styles.consentRowChecked, pressed && !isProcessing && !isSaving && styles.pressed]}>
         <Checkbox checked={consentAccepted} />
-        <Text style={styles.consentText}>Tôi đồng ý gửi ảnh đơn thuốc tới Google Cloud để nhận dạng chữ. Tôi hiểu kết quả cần được kiểm tra lại trước khi lưu.</Text>
+        <Text style={styles.consentText}>Tôi đồng ý xử lý ảnh đơn thuốc trên thiết bị này để nhận dạng chữ. Tôi hiểu kết quả cần được kiểm tra lại trước khi lưu.</Text>
       </Pressable>
-      <PrimaryButton accessibilityHint="Gửi các ảnh đã chọn để nhận dạng chữ sau khi bạn đã đồng ý" disabled={!canProcess} label={isProcessing ? 'Đang quét đơn thuốc…' : 'Nhận dạng chữ từ đơn thuốc'} loading={isProcessing} onPress={onProcess} testID="process-prescription-ocr-button" />
+      {engineStatus === 'loading' ? <SafetyNotice message="Đang kiểm tra bộ nhận dạng tiếng Việt/Anh cục bộ. Ảnh chưa được xử lý hoặc gửi đi." title="Đang chuẩn bị OCR cục bộ" tone="information" /> : null}
+      {engineStatus === 'error' ? <SafetyNotice message="Không thể khởi tạo OCR cục bộ trên thiết bị này. Bạn vẫn có thể dùng Live Text hoặc thêm thuốc thủ công." title="OCR cục bộ chưa sẵn sàng" tone="warning" /> : null}
+      {isProcessing ? <SafetyNotice message={localOcrProgressLabel(ocrProgress)} title="Đang nhận dạng trên thiết bị" tone="information" /> : null}
+      <PrimaryButton accessibilityHint="Xử lý các ảnh đã chọn ngay trên thiết bị sau khi bạn đã đồng ý" disabled={!canProcess} label={isProcessing ? 'Đang quét đơn thuốc…' : 'Nhận dạng chữ trên thiết bị'} loading={isProcessing} onPress={onProcess} testID="process-prescription-ocr-button" />
+      {isProcessing ? <SecondaryButton label="Dừng quét" onPress={onCancel} /> : null}
+      {engineStatus === 'error' ? <SecondaryButton label="Thử khởi tạo lại OCR cục bộ" onPress={onRetryEngine} /> : null}
       {errorMessage ? <View style={styles.actions}>
         <SafetyNotice message={errorMessage} title="Không thể quét hoặc lưu" tone="error" />
-        <SecondaryButton disabled={!canProcess} label="Thử quét lại" onPress={onProcess} />
+        {engineStatus === 'ready' ? <SecondaryButton disabled={!canProcess} label="Thử quét lại" onPress={onProcess} /> : null}
         <SecondaryButton label="Thêm thuốc thủ công" onPress={onManualEntry} />
       </View> : null}
     </View>
@@ -531,12 +577,12 @@ function Checkbox({ checked }: Readonly<{ checked: boolean }>) {
 
 function OcrTextSection({ pages, provider }: Readonly<{
   pages: readonly { pageIndex: number; text: string; qualityWarnings: readonly string[] }[];
-  provider: 'google-cloud-vision' | 'demo' | 'manual-import';
+  provider: 'google-cloud-vision' | 'local-offline' | 'demo' | 'manual-import';
 }>) {
   return (
     <View style={styles.section}>
       <Text accessibilityRole="header" style={styles.sectionTitle}>Nội dung nhận dạng</Text>
-      <SafetyNotice message="Nội dung này chỉ hiển thị trong phiên hiện tại để bạn đối chiếu. Nó không được lưu vào Firestore hoặc bộ nhớ lâu dài của ứng dụng." title={provider === 'demo' ? 'Kết quả mô phỏng' : provider === 'manual-import' ? 'Văn bản bạn đã dán – không dùng OCR cloud' : 'Kết quả từ Google Cloud OCR'} tone={provider === 'demo' ? 'warning' : 'information'} />
+      <SafetyNotice message="Nội dung này chỉ hiển thị trong phiên hiện tại để bạn đối chiếu. Nó không được lưu vào Firestore hoặc bộ nhớ lâu dài của ứng dụng." title={provider === 'demo' ? 'Kết quả mô phỏng' : provider === 'manual-import' ? 'Văn bản bạn đã dán – không dùng OCR đám mây' : provider === 'local-offline' ? 'Kết quả OCR cục bộ trên thiết bị' : 'Kết quả OCR cũ từ Cloud'} tone={provider === 'demo' ? 'warning' : 'information'} />
       {pages.map((page) => <View key={page.pageIndex} style={styles.ocrTextCard}>
         <Text style={styles.cardTitle}>Trang {page.pageIndex + 1}</Text>
         {page.qualityWarnings.map((warning, index) => <Text key={`${warning}-${index}`} style={styles.warningText}>• {warningLabel(warning)}</Text>)}

@@ -6,6 +6,7 @@ export type PrescriptionOcrErrorCode =
   | 'invalid-argument'
   | 'resource-exhausted'
   | 'unavailable'
+  | 'cancelled'
   | 'deadline-exceeded'
   | 'failed-precondition'
   | 'internal';
@@ -45,7 +46,9 @@ export function toPrescriptionOcrError(error: unknown): PrescriptionOcrError {
     case 'resource-exhausted':
       return new PrescriptionOcrError('resource-exhausted', 'Bạn đã quét quá nhiều lần trong thời gian ngắn. Vui lòng thử lại sau.');
     case 'unavailable':
-      return new PrescriptionOcrError('unavailable', 'Không thể kết nối dịch vụ quét đơn thuốc. Vui lòng kiểm tra mạng và thử lại.');
+      return new PrescriptionOcrError('unavailable', 'Bộ nhận dạng chữ trên thiết bị chưa sẵn sàng. Vui lòng thử lại hoặc thêm thuốc thủ công.');
+    case 'cancelled':
+      return new PrescriptionOcrError('cancelled', 'Đã dừng nhận dạng ảnh đơn thuốc.');
     case 'deadline-exceeded':
       return new PrescriptionOcrError('deadline-exceeded', 'Quét đơn thuốc mất quá lâu. Vui lòng thử lại với ảnh rõ hơn.');
     default:

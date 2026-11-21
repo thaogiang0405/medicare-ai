@@ -1,126 +1,112 @@
-# AI Phase 1 — Prescription OCR
+# AI Phase 1 — OCR đơn thuốc cục bộ, miễn phí
 
-AI Phase 1 adds a review-first prescription OCR flow for an authenticated,
-onboarded `elderly` user. It is intentionally **not** a prescription store,
-diagnosis feature, dosage adviser, automatic schedule creator, or caregiver
-data-sharing feature.
+MediCare AI xử lý ảnh đơn thuốc theo nguyên tắc **xem lại trước khi lưu**.
+OCR chỉ gợi ý văn bản và các mục thuốc để người dùng chỉnh sửa, chọn và xác
+nhận. Ứng dụng không suy luận liều dùng, không tạo lịch uống và không thay thế
+chỉ định của bác sĩ.
 
-## Current delivery status
+## Trạng thái hiện tại
 
-- Expo client code, the callable Function v2 source, unit tests, and feature
-  flag are present in this repository.
-- `EXPO_PUBLIC_PRESCRIPTION_OCR_ENABLED=false` remains the safe default in
-  `.env.example`.
-- The real Cloud Function and Vision API are **not deployed by this milestone**.
-  Until a separately approved deployment succeeds, local feature enablement
-  will show an honest unavailable state and offers manual medication entry.
-- The test-only synthetic provider is only injectable in automated tests. It is
-  labeled as demo and is never selected by the production client composition.
+- OCR ảnh tự động dùng **Tesseract.js 6.0.1** trong Expo DOM/WebView, không
+  import Tesseract vào React Native/Hermes.
+- Worker, WASM core và mô hình `vie` + `eng` được vendor trong
+  `expo-app/public/ocr/`; runtime không dùng Cloud Vision, Firebase Functions,
+  Firebase Storage, OpenAI, hay một API OCR thương mại.
+- `EXPO_PUBLIC_PRESCRIPTION_OCR_ENABLED=false` vẫn là mặc định an toàn. Đây là
+  cờ public, không phải cơ chế phân quyền hay secret.
+- Firebase Callable/Cloud Vision source cũ còn trong repository để tham chiếu
+  lịch sử, nhưng không nằm trong composition runtime OCR, không được export từ
+  feature barrel và **không được deploy** trong hướng đi này.
+- Live Text của iOS và nhập tay vẫn là fallback miễn phí khi engine cục bộ
+  chưa sẵn sàng hoặc người dùng muốn tự đối chiếu văn bản.
 
-## User flow and privacy boundary
+## Quy trình dữ liệu và quyền riêng tư
 
-1. The elderly-only route `/elderly/prescription-ocr` is protected by the
-   existing role route guard.
-2. The user scans a document or chooses up to three images. The app presents a
-   preview and supports reorder, replacement, removal, and a full rescan.
-3. Each page is re-encoded as a bounded JPEG in the app cache, correcting
-   orientation and avoiding exposed picker EXIF metadata. It is never copied to
-   Photos, Firebase Storage, AsyncStorage, analytics, or application logs.
-4. Before any cloud call, the user must explicitly consent to processing the
-   image by Google Cloud.
-5. The callable returns text only. A conservative Vietnamese parser creates
-   separate, editable candidates and preserves source lines only in memory for
-   this review session.
-6. The user chooses/edit candidates and explicitly confirms saving. The
-   existing M3.2 `MedicationRepository` creates independent medication records;
-   no existing record is changed and no schedule is automatically created.
-7. Cancel, logout, account switch, route exit, and successful completion clear
-   the in-memory draft. App-created cache images are removed on a best-effort
-   basis. The user can still need to close the system picker/scanner itself.
+1. Route `/elderly/prescription-ocr` vẫn được route guard của `elderly` bảo vệ.
+2. Người dùng chụp/chọn tối đa ba ảnh. Ảnh được xoay/thu nhỏ thành JPEG cache
+   tạm thời, bỏ EXIF và giữ giới hạn 5 MiB/trang, 10 MiB/yêu cầu.
+3. Người dùng xác nhận việc xử lý **trên thiết bị**. Base64 chỉ đi qua bridge
+   native → DOM cho đúng một trang tại một thời điểm.
+4. DOM runtime nạp script, worker, WASM và `vie`/`eng` từ các đường dẫn public
+   cục bộ. `cacheMethod: 'none'`, worker bị `terminate()` khi hoàn tất, lỗi,
+   hủy, logout hoặc đổi tài khoản.
+5. OCR raw text, base64 và preview không được ghi vào AsyncStorage, Firestore,
+   analytics hoặc log. Cache ảnh được xóa best-effort khi hủy/rời màn hình/đổi
+   tài khoản.
+6. Parser chỉ tạo candidate trong RAM. Chỉ candidate do người dùng chọn và
+   xác nhận mới được chuyển tới Medication Repository hiện có.
 
-The UI warns that OCR can be wrong and asks the user to verify the original
-prescription and consult a health professional when unsure. It never infers a
-drug name, strength, frequency, diagnosis, substitution, or dose that does not
-appear clearly in the OCR result.
+Store gắn công việc với UID Firebase Auth hiện tại, dùng `AbortController` để
+hủy worker khi session thay đổi, và bỏ mọi callback trễ bằng job ID + request
+version. UID từ UI không phải nguồn ủy quyền.
 
-## Callable backend
+## Tài nguyên OCR được vendor
 
-`functions/src/index.ts` exports the authenticated callable v2
-`recognizePrescription` in `asia-east1`.
+`expo-app/public/ocr/NOTICE.md` ghi phiên bản, license, checksum và nguồn của
+các asset. Bốn biến thể Tesseract core được giữ để runtime chọn WASM phù hợp
+với thiết bị. Không thay các asset bằng CDN URL.
 
-- It requires Firebase Auth and reads the canonical `users/{uid}` profile using
-  the Admin SDK. The profile must be complete and exclusively `elderly`; no
-  UID/role supplied by the UI grants access.
-- The request requires consent, accepts at most three JPEG/PNG/WebP pages,
-  verifies MIME signatures and decoded byte counts, limits a page to 5 MiB and
-  a request to 10 MiB, and processes Vision calls sequentially.
-- A server-only Firestore transaction rate-limits each UID. It stores only a
-  counter/timing record in `_serverOcrRateLimits`, never image bytes or OCR
-  text. Existing default-deny Rules keep this collection inaccessible to the
-  mobile client.
-- The provider calls Google Cloud Vision `DOCUMENT_TEXT_DETECTION` with a
-  Vietnamese language hint using Application Default Credentials/the deployed
-  Function service identity. It does not use an Expo variable, service account
-  JSON, public HTTP endpoint, Firebase Storage, or client-provided credential.
-- Raw image data, OCR text, and provider error details are not logged or
-  persisted. Returned text has an additional bounded response limit.
+Khi chạy trong Expo Go development, bundle/public asset có thể được cung cấp
+bởi Metro trên mạng LAN của máy phát triển; đó không phải dịch vụ OCR bên thứ
+ba. Build/export đóng gói public assets cùng ứng dụng. OCR không có HTTP call
+đến dịch vụ OCR; tuy vậy Expo Go vẫn cần kết nối Metro để mở project lần đầu.
 
-## Requirements before live OCR testing
+## Bật kiểm thử cục bộ
 
-Do **not** enable the flag for real users until the project owner has separately
-reviewed and approved all of the following for Firebase project
-`medicare-ai-cf804`:
-
-1. Use Node.js 22 for the Functions deployment environment; install packages
-   under `functions/` and run `npm run build` and `npm test`.
-2. Enable billing required by Cloud Functions v2 and Google Cloud Vision, then
-   enable the Vision API for the existing project.
-3. Grant the deployed Functions service identity only the least-privilege
-   access required to call Vision; validate this with a synthetic image before
-   processing any real prescription.
-4. Review rate-limit retention and, if needed, configure server-side Firestore
-   TTL operationally for `_serverOcrRateLimits`. No health data belongs there.
-5. Review Vision quota and budget-alert response before broader release. The
-   current server-side limit is five valid requests per UID every ten minutes;
-   it is not a global cost cap. No test UID allowlist is hard-coded, so do not
-   expose a broader cohort while App Check is disabled without a separately
-   reviewed server-enforced access control.
-6. Validate Firebase App Check from approved native iOS/Android builds. Expo Go
-   is not proof of production App Check assurance. Only then set the Functions
-   parameter `OCR_ENFORCE_APP_CHECK=true`; it defaults to `false` so a pending
-   native App Check rollout does not silently lock out the current app.
-7. Obtain a dedicated deployment approval, then use the exact scoped command:
-
-   ```powershell
-   firebase deploy --only functions:ocr --project medicare-ai-cf804
-   ```
-
-This milestone does not run that command and does not deploy Firestore Rules,
-Storage, indexes, or any client flag change.
-
-## Local flag and iPhone QA
-
-The `.env` file is local and ignored. After the callable is deployed and a test
-environment is approved, set only this non-secret value locally:
+Không đưa `.env` vào Git. Trên máy QA, sao chép `.env.example`, giữ Firebase
+Web App client config hiện có, rồi đặt:
 
 ```dotenv
 EXPO_PUBLIC_PRESCRIPTION_OCR_ENABLED=true
 ```
 
-Then run `npx expo start --clear --lan` in `expo-app/` and open it with an Expo
-Go SDK 58-compatible iPhone. Test only synthetic/non-sensitive prescriptions:
+Chạy:
 
-- denied/allowed camera and Photos permissions; picker/scanner cancellation;
-- one, multiple, replacement, reorder, remove, rescan, oversized and low
-  quality image handling;
-- consent required before the cloud request, offline/backend retry, and a
-  disabled-flag manual-entry fallback;
-- multiple OCR candidates, ambiguity warnings, edit/select/remove/add manual
-  candidate, duplicate candidate prevention, partial save retry;
-- logout/account switch while a request is pending; no content from account A
-  appears for account B;
-- saved medications appear only in the signed-in elderly owner’s M3.2 list;
-  no schedule is created automatically.
+```bash
+cd expo-app
+npx expo start --clear --lan
+```
 
-Do not use real prescriptions or health records for tests. Do not treat an OCR
-result as medical advice or confirmation that a medication was taken.
+Mở bằng Expo Go SDK 58. Chỉ dùng ảnh tổng hợp/không nhạy cảm. Checklist:
+
+1. Chờ thông báo engine `vie`/`eng` cục bộ sẵn sàng.
+2. Chụp hoặc chọn một đến ba ảnh rõ, kiểm tra tiến trình từng trang và nút
+   **Dừng quét**.
+3. Xác nhận mọi candidate, hàm lượng và hướng dẫn trước khi lưu.
+4. Thử ảnh mờ/trống, hủy rồi thử lại, logout/đổi UID trong lúc xử lý.
+5. Tắt mạng Internet sau khi Expo Go/asset local đã nạp để quan sát rằng OCR
+   không gọi một dịch vụ OCR bên ngoài. Không coi đây là thay thế cho kiểm thử
+   release build offline.
+
+## Proof of concept và mức xác minh
+
+Proof-of-concept Node đã tạo worker cục bộ, nạp `vie` + `eng`, dùng core/WASM
+và model vendor, rồi nhận dạng ảnh tổng hợp tiếng Việt. Kết quả có dòng
+`Paracetamol 500 mg` và `Uống sau ăn - cần kiểm tra`, confidence 94; tiêu đề
+viết hoa mất dấu là giới hạn OCR đã quan sát, không phải dữ liệu y tế thật.
+Chạy lại POC Windows bằng `npm run test:ocr:poc` trong `expo-app/`; script chỉ
+tạo ảnh tổng hợp trong thư mục tạm rồi xóa nó trước khi thoát.
+
+`expo-app/public/ocr/poc.html` cùng
+`expo-app/scripts/serve-offline-ocr-poc.mjs` là POC browser dùng hoàn toàn
+asset cục bộ. Có thể chạy bằng `node scripts/serve-offline-ocr-poc.mjs` trong
+`expo-app/` rồi mở `http://127.0.0.1:4173/ocr/poc.html` trên máy phát triển.
+
+**QA DEVICE NOT VERIFIED:** code bridge Expo DOM/WebView tương thích tài liệu
+Expo SDK 58 và `react-native-webview` có trong Expo Go, nhưng lần chạy thực tế
+trên iPhone/Expo Go phải do chủ dự án xác nhận riêng. Không tuyên bố offline
+iPhone đã passed chỉ từ proof-of-concept Node hoặc unit test.
+
+## Giới hạn và việc không triển khai
+
+- Độ chính xác giảm với chữ viết tay, ảnh nghiêng/mờ, bố cục phức tạp hoặc
+  tiếng Việt có dấu. Low confidence/blank result luôn yêu cầu kiểm tra tay.
+- Không dùng OCR để tự tạo medication record, liều, schedule, DoseEvent hoặc
+  reminder.
+- Không có Cloud Function, Cloud Vision, billing/Blaze, Admin SDK, server OCR,
+  FCM hay upload Storage trong feature OCR cục bộ.
+- Không thay đổi Firestore Rules/indexes và không tạo dữ liệu sức khỏe thật.
+
+Để cải thiện AI miễn phí sau này, chỉ cân nhắc engine native/open-source trong
+development build sau khi có benchmark tiếng Việt, giới hạn bộ nhớ và review
+quyền riêng tư; không thay OCR cục bộ bằng API trả phí.

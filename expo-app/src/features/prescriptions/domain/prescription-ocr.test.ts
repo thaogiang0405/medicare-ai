@@ -29,9 +29,9 @@ describe('prescription OCR request validation', () => {
     expect(request.pages.map((item) => item.id)).toEqual(['second', 'first']);
   });
 
-  it('requires explicit consent and enforces page/image limits before upload', () => {
+  it('requires explicit acknowledgement and enforces page/image limits before local processing', () => {
     expect(() => validatePrescriptionOcrRequest({ consentAccepted: false as never, pages: [page('a')] })).toThrow(
-      'Vui lòng đồng ý',
+      'Vui lòng xác nhận xử lý',
     );
     expect(() => validatePrescriptionOcrRequest({
       consentAccepted: true,

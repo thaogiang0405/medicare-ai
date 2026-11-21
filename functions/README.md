@@ -1,82 +1,23 @@
-# Prescription OCR Cloud Function
+# Archived prescription OCR Cloud Function source
 
-`recognizePrescription` is an authenticated Firebase callable Function v2 in
-`asia-east1`. It is source-only in this repository: this milestone does **not**
-deploy a Function, enable Cloud Vision, or change any production Firebase
-resource.
+This directory retains the historical `recognizePrescription` Firebase
+Callable/Google Cloud Vision implementation for migration traceability only.
+It is **not** part of the MediCare AI mobile OCR runtime.
 
-The deployed runtime is selected by `functions/package.json` and is pinned to
-Node.js 22. `firebase.json` does not override that setting.
+Current OCR uses the on-device Tesseract.js DOM/WebView bridge described in
+[`../docs/prescription-ocr-ai-phase-1.md`](../docs/prescription-ocr-ai-phase-1.md).
+The app does not select the Callable gateway, and no Firebase Function, Cloud
+Vision API, Firebase Storage upload, billing/Blaze change, or server OCR is
+needed for local OCR.
 
-## Security boundary
+Do not deploy this codebase for the free-OCR release:
 
-- The callable rejects unauthenticated requests.
-- It reads `users/{uid}` with the Admin SDK and only accepts an onboarded,
-  canonical `elderly` profile. A UI role or UID in the payload is never trusted.
-- The request requires explicit `consentAccepted: true`, accepts at most three
-  JPEG, PNG, or WebP pages, validates decoded bytes, and enforces a 5 MiB
-  per-page / 10 MiB total ceiling.
-- Cloud Vision calls are sequential and bounded. Source image bytes and OCR text
-  remain in process memory only; neither is written to Firestore, Storage,
-  analytics, debug logs, or error responses.
-- The callable caps returned OCR text to 12,000 characters per page and 30,000
-  characters per request, marking any truncation for user review rather than
-  silently treating it as complete text.
-- `_serverOcrRateLimits/{uid}` contains only server-side counter/expiry metadata
-  for a cross-instance rate limit. It is protected by the existing default-deny
-  Rules surface and contains no prescription data.
-- The production provider uses Application Default Credentials from the Cloud
-  Functions service identity. Never add Vision credentials, service-account
-  JSON, or secrets to Expo variables or this repository.
-
-## Local checks
-
-```powershell
-Set-Location functions
-npm install
-npm run build
-npm test
+```bash
+# Intentionally do not run this for the local OCR release.
+firebase deploy --only functions:ocr --project medicare-ai-cf804
 ```
 
-The `SyntheticPrescriptionOcrProvider` exists only for unit tests. Its output
-is visibly marked synthetic and production wiring never falls back to it.
-
-## Requirements before a separately approved deployment
-
-1. Use the existing Firebase project `medicare-ai-cf804`; do not create a new
-   project.
-2. Confirm the project is on Blaze billing, then confirm that the Google Cloud
-   Vision API is already enabled. Do not enable billing or APIs from a release
-   terminal without explicit project-owner approval.
-3. Confirm the deployed Cloud Functions v2 runtime service identity can use the
-   enabled Vision API with least-privilege IAM. Test this with a non-production,
-   synthetic image before real-world use.
-4. Review Vision quotas, create cost-budget alerts, and approve the response
-   procedure before opening the callable beyond a small test cohort. Budget
-   alerts are not a hard spending cap.
-5. `OCR_ENFORCE_APP_CHECK` remains `false` for Expo Go QA. No UID allowlist is
-   hard-coded in source, so a controlled test release requires project-owner
-   approved synthetic test accounts and, if stricter access is required, a
-   separately reviewed server-enforced allowlist. Never put test UIDs in Expo
-   variables or client code.
-6. Install dependencies in `functions/`, build successfully, and deploy only
-   after explicit approval, for example:
-
-   ```powershell
-   firebase deploy --only functions:ocr --project medicare-ai-cf804
-   ```
-
-   The local Firebase configuration runs `npm run build` as the Functions
-   predeploy hook; generated `lib/` output is intentionally uploaded but never
-   committed.
-
-7. Verify App Check on a real native build before setting the deploy parameter
-   `OCR_ENFORCE_APP_CHECK=true`. It deliberately defaults to `false` because
-   Expo Go does not provide a production-ready App Check assurance for this
-   workflow. Do not enforce until valid tokens are observed from the approved
-   iOS and Android builds.
-
-Cloud Vision availability, billing, API enablement, runtime IAM, and App Check
-are deployment prerequisites. Until those conditions are met and the function
-is explicitly deployed, real OCR is deployment-blocked; the mobile app must
-offer its manual medication-entry fallback instead.
+Keep any future decision to revive a server OCR path in a separately reviewed
+milestone, with explicit cost, privacy, IAM, App Check and data-retention
+approval. Never put service-account credentials, Vision keys, images, raw OCR
+text or health records in this directory, client source, logs or analytics.

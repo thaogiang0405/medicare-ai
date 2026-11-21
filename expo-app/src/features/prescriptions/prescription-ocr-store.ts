@@ -16,6 +16,7 @@ import {
   type PrescriptionOcrCandidate,
   type PrescriptionOcrGateway,
   type PrescriptionOcrImagePage,
+  type PrescriptionOcrProgress,
   type PrescriptionOcrResult,
   validatePrescriptionOcrRequest,
 } from './domain/prescription-ocr';
@@ -40,6 +41,8 @@ export type PrescriptionOcrState = {
   ocrResult: PrescriptionOcrResult | null;
   candidates: readonly PrescriptionOcrReviewCandidate[];
   consentAccepted: boolean;
+  /** Transient local-worker progress; no image/text payload is retained here. */
+  ocrProgress: PrescriptionOcrProgress | null;
   errorMessage: string | null;
   importResult: PrescriptionMedicationImportResult | null;
   bindAuthenticatedUser(userId: string | null): void;
@@ -129,9 +132,12 @@ export function createPrescriptionOcrStore(
 ) {
   let requestVersion = 0;
   let manualCandidateNumber = 0;
+  let activeAbortController: AbortController | null = null;
 
   return create<PrescriptionOcrState>((set, get) => {
     const invalidateRequest = () => {
+      activeAbortController?.abort();
+      activeAbortController = null;
       requestVersion += 1;
       return requestVersion;
     };
@@ -148,6 +154,7 @@ export function createPrescriptionOcrStore(
         ocrResult: null,
         candidates: [],
         consentAccepted: false,
+        ocrProgress: null,
         errorMessage: null,
         importResult: null,
       });
@@ -160,6 +167,7 @@ export function createPrescriptionOcrStore(
       ocrResult: null,
       candidates: [],
       consentAccepted: false,
+      ocrProgress: null,
       errorMessage: null,
       importResult: null,
       bindAuthenticatedUser: (userId) => {
@@ -183,6 +191,7 @@ export function createPrescriptionOcrStore(
           ocrResult: null,
           candidates: [],
           importResult: null,
+          ocrProgress: null,
           status: get().activeUserId ? 'ready' : 'idle',
           errorMessage: null,
         });
@@ -213,6 +222,7 @@ export function createPrescriptionOcrStore(
           ocrResult: null,
           candidates: [],
           importResult: null,
+          ocrProgress: null,
           status: state.activeUserId ? 'ready' : 'idle',
           errorMessage: null,
         }));
@@ -238,6 +248,7 @@ export function createPrescriptionOcrStore(
           ocrResult: null,
           candidates: [],
           importResult: null,
+          ocrProgress: null,
           status: get().activeUserId ? 'ready' : 'idle',
           errorMessage: null,
         });
@@ -258,16 +269,32 @@ export function createPrescriptionOcrStore(
           return;
         }
         if (!consentAccepted) {
-          set({ status: 'error', errorMessage: 'Vui lòng đồng ý gửi ảnh đơn thuốc tới Google Cloud trước khi quét.' });
+          set({ status: 'error', errorMessage: 'Vui lòng xác nhận xử lý ảnh đơn thuốc trên thiết bị trước khi quét.' });
           return;
         }
 
         const currentVersion = invalidateRequest();
-        set({ status: 'processing', errorMessage: null, ocrResult: null, candidates: [], importResult: null });
+        const abortController = new AbortController();
+        activeAbortController = abortController;
+        set({
+          status: 'processing',
+          errorMessage: null,
+          ocrResult: null,
+          candidates: [],
+          importResult: null,
+          ocrProgress: null,
+        });
 
         try {
           const request = validatePrescriptionOcrRequest({ consentAccepted: true, pages });
-          const result = await gateway.recognizePrescription(activeUserId, request);
+          const result = await gateway.recognizePrescription(activeUserId, request, {
+            signal: abortController.signal,
+            onProgress: (ocrProgress) => {
+              if (isCurrentRequest(currentVersion, activeUserId) && !abortController.signal.aborted) {
+                set({ ocrProgress });
+              }
+            },
+          });
 
           if (!isCurrentRequest(currentVersion, activeUserId)) {
             return;
@@ -277,11 +304,16 @@ export function createPrescriptionOcrStore(
             status: 'review',
             ocrResult: result,
             candidates: parsePrescriptionOcrPages(result.pages).map(toReviewCandidate),
+            ocrProgress: null,
             errorMessage: null,
           });
         } catch (error) {
           if (isCurrentRequest(currentVersion, activeUserId)) {
-            set({ status: 'error', errorMessage: toSafeErrorMessage(error) });
+            set({ status: 'error', errorMessage: toSafeErrorMessage(error), ocrProgress: null });
+          }
+        } finally {
+          if (activeAbortController === abortController) {
+            activeAbortController = null;
           }
         }
       },
@@ -306,9 +338,8 @@ export function createPrescriptionOcrStore(
           return;
         }
 
-        // Manual import does not invoke the cloud gateway, even when the cloud
-        // feature flag is disabled. The draft remains memory-only and bound to
-        // the current authenticated UID.
+        // Manual import does not invoke any OCR gateway. The draft remains
+        // memory-only and bound to the current authenticated UID.
         invalidateRequest();
         const result: PrescriptionOcrResult = {
           provider: 'manual-import',
@@ -326,6 +357,7 @@ export function createPrescriptionOcrStore(
           ocrResult: result,
           candidates: parsePrescriptionOcrPages(result.pages).map(toReviewCandidate),
           importResult: null,
+          ocrProgress: null,
           errorMessage: null,
         });
       },

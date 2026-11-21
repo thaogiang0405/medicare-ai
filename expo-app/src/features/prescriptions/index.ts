@@ -10,6 +10,9 @@ export {
   type PrescriptionOcrGateway,
   type PrescriptionOcrImagePage,
   type PrescriptionOcrPage,
+  type PrescriptionOcrProgress,
+  type PrescriptionOcrProgressPhase,
+  type PrescriptionOcrExecutionOptions,
   type PrescriptionOcrRequest,
   type PrescriptionOcrResult,
 } from './domain/prescription-ocr';
@@ -27,18 +30,18 @@ export {
   type PrescriptionOcrErrorCode,
 } from './data/prescription-ocr-errors';
 export {
-  DemoPrescriptionOcrGateway,
-  FirebasePrescriptionOcrGateway,
-  getFirebasePrescriptionOcrGateway,
-  mapPrescriptionOcrCallableResponse,
-  prescriptionOcrCallableName,
-  prescriptionOcrCallableRegion,
-  type FirebasePrescriptionOcrPort,
-} from './data/firebase-prescription-ocr-gateway';
-export {
   getPrescriptionOcrGateway,
   selectPrescriptionOcrGateway,
 } from './data/prescription-ocr-gateway-selector';
+export {
+  LocalOfflineOcrGateway,
+  getLocalOfflineOcrGateway,
+} from './data/local-offline-ocr-gateway';
+export {
+  getLocalOfflineOcrAssetUrls,
+  hasOnlyRelativeLocalOfflineOcrAssetPaths,
+  localOfflineOcrAssetPaths,
+} from './data/local-offline-ocr-assets';
 export {
   PrescriptionMedicationImportService,
   type PrescriptionMedicationImportCandidate,

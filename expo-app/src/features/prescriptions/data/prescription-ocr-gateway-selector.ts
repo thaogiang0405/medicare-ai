@@ -1,6 +1,6 @@
 import type { PrescriptionOcrGateway } from '../domain/prescription-ocr';
-import { getFirebasePrescriptionOcrGateway } from './firebase-prescription-ocr-gateway';
 import { isPrescriptionOcrFeatureEnabled, prescriptionOcrUnavailableMessage } from './prescription-ocr-feature';
+import { getLocalOfflineOcrGateway } from './local-offline-ocr-gateway';
 import { PrescriptionOcrError } from './prescription-ocr-errors';
 
 /** The disabled path has no synthetic result and keeps manual entry available. */
@@ -14,9 +14,9 @@ const disabledPrescriptionOcrGateway = new DisabledPrescriptionOcrGateway();
 
 export function selectPrescriptionOcrGateway(
   enabled: boolean,
-  getFirebaseGateway: () => PrescriptionOcrGateway = getFirebasePrescriptionOcrGateway,
+  getLocalGateway: () => PrescriptionOcrGateway = getLocalOfflineOcrGateway,
 ): PrescriptionOcrGateway {
-  return enabled ? getFirebaseGateway() : disabledPrescriptionOcrGateway;
+  return enabled ? getLocalGateway() : disabledPrescriptionOcrGateway;
 }
 
 export function getPrescriptionOcrGateway(): PrescriptionOcrGateway {

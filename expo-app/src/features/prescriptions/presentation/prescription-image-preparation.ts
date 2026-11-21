@@ -9,7 +9,7 @@ import {
 /**
  * Images are re-encoded into the app cache before OCR. This corrects display
  * orientation and deliberately omits picker EXIF metadata from the OCR payload.
- * The output stays local until the user gives explicit cloud-processing consent.
+ * The output stays local while the user reviews on-device OCR.
  */
 export const prescriptionImageMaximumDimension = 2_000;
 export const prescriptionImageCompression = 0.78;

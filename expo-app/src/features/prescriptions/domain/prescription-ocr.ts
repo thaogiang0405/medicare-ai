@@ -1,6 +1,6 @@
 import type { MedicationInput } from '@/features/medications/domain/medication-repository';
 
-/** Conservative client-side ceilings. The callable repeats these checks server-side. */
+/** Conservative client-side ceilings that protect local device memory. */
 export const prescriptionOcrMaximumPages = 3;
 export const prescriptionOcrMaximumPageBytes = 5 * 1024 * 1024;
 export const prescriptionOcrMaximumRequestBytes = 10 * 1024 * 1024;
@@ -15,7 +15,7 @@ export type PrescriptionImageMimeType = (typeof supportedPrescriptionImageMimeTy
 
 export type PrescriptionOcrPage = Readonly<{
   pageIndex: number;
-  /** Raw text returned by Vision. It remains in memory only. */
+  /** Raw recognized text. It remains in memory only. */
   text: string;
   confidence: number | null;
   qualityWarnings: readonly string[];
@@ -49,21 +49,47 @@ export type PrescriptionOcrCandidate = Readonly<{
 }>;
 
 export type PrescriptionOcrRequest = Readonly<{
+  /** User acknowledgement before transient, on-device image processing begins. */
   consentAccepted: true;
   pages: readonly PrescriptionOcrImagePage[];
 }>;
 
 export type PrescriptionOcrResult = Readonly<{
   pages: readonly PrescriptionOcrPage[];
-  provider: 'google-cloud-vision' | 'demo' | 'manual-import';
+  provider: 'google-cloud-vision' | 'local-offline' | 'demo' | 'manual-import';
+}>;
+
+export type PrescriptionOcrProgressPhase =
+  | 'preparing'
+  | 'loading-engine'
+  | 'loading-language'
+  | 'recognizing'
+  | 'finalizing';
+
+/** Progress is ephemeral and deliberately excludes raw image/text data. */
+export type PrescriptionOcrProgress = Readonly<{
+  pageIndex: number;
+  totalPages: number;
+  phase: PrescriptionOcrProgressPhase;
+  progress: number | null;
+}>;
+
+export type PrescriptionOcrExecutionOptions = Readonly<{
+  /** Cancels the active local worker without retaining its image/text payload. */
+  signal?: AbortSignal;
+  onProgress?: (progress: PrescriptionOcrProgress) => void;
 }>;
 
 /**
- * Boundary for cloud OCR. Implementations must obtain the owner from Firebase
- * Auth, never route a UI supplied UID to the server.
+ * Boundary for transient prescription OCR. Implementations must verify the
+ * authenticated owner independently; a UI-supplied UID is never authority.
  */
 export interface PrescriptionOcrGateway {
-  recognizePrescription(userId: string, request: PrescriptionOcrRequest): Promise<PrescriptionOcrResult>;
+  recognizePrescription(
+    userId: string,
+    request: PrescriptionOcrRequest,
+    options?: PrescriptionOcrExecutionOptions,
+  ): Promise<PrescriptionOcrResult>;
 }
 
 function isSupportedMimeType(value: string): value is PrescriptionImageMimeType {
@@ -93,7 +119,7 @@ function normalizeBase64(value: string): string {
 /** Validates the input before any image bytes leave the device. */
 export function validatePrescriptionOcrRequest(request: PrescriptionOcrRequest): PrescriptionOcrRequest {
   if (request.consentAccepted !== true) {
-    throw new Error('Vui lòng đồng ý gửi ảnh đơn thuốc tới Google Cloud trước khi quét.');
+    throw new Error('Vui lòng xác nhận xử lý ảnh đơn thuốc trên thiết bị trước khi quét.');
   }
 
   if (!Array.isArray(request.pages) || request.pages.length < 1 || request.pages.length > prescriptionOcrMaximumPages) {

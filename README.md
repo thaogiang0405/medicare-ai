@@ -61,18 +61,20 @@ Hoàn thiện luồng phi-AI bổ sung self-reported DoseEvent bất biến, l�
 event có phân trang, và local reminder cục bộ theo UID/thiết bị với horizon 14
 ngày và tối đa 48 ID của MediCare AI. Tất cả các cờ Firestore/DoseEvent/local
 reminder vẫn mặc định `false` trong `.env.example`; không có mock bypass Auth,
-không có FCM/server scheduler, OCR hay suy luận liều. Lịch sử và reminder chỉ
+không có FCM/server scheduler, OCR máy chủ hay suy luận liều. Lịch sử và reminder chỉ
 an toàn để bật trên Firebase sau khi Rules M3.4 và index history đã được review
 và deploy riêng. Xem [mô hình Firestore](docs/firestore-data-model.md).
 
 AI Phase 1 bổ sung luồng **Quét đơn thuốc** review-first cho người cao tuổi:
-quét/chọn tối đa ba ảnh, đồng ý rõ ràng trước khi gửi Google Cloud OCR, xem và
-chỉnh sửa từng ứng viên thuốc, rồi xác nhận lưu qua `MedicationRepository` M3.2.
-`EXPO_PUBLIC_PRESCRIPTION_OCR_ENABLED` vẫn mặc định `false`; source Cloud
-Functions v2/Google Vision được thêm nhưng **chưa deploy**, không có Storage,
-Firestore OCR record, raw OCR log hay mock fallback âm thầm. Xem
-[AI Phase 1 — Prescription OCR](docs/prescription-ocr-ai-phase-1.md) để biết
-điều kiện Cloud Vision/App Check/IAM trước khi thử live OCR.
+quét/chọn tối đa ba ảnh, xác nhận xử lý **trên thiết bị**, xem và chỉnh sửa từng
+ứng viên thuốc, rồi xác nhận lưu qua `MedicationRepository` M3.2. OCR ảnh tự
+động dùng Tesseract.js `vie` + `eng` trong Expo DOM/WebView với worker/WASM/model
+được vendor cục bộ; không gọi Cloud Vision, Cloud Functions, Storage hoặc API
+OCR trả phí. `EXPO_PUBLIC_PRESCRIPTION_OCR_ENABLED` vẫn mặc định `false`, không
+có Firestore OCR record, raw OCR log hay mock fallback âm thầm. Live Text iOS
+và nhập tay là fallback miễn phí. QA iPhone/Expo Go cho engine DOM vẫn phải
+được chủ dự án xác nhận riêng. Xem
+[AI Phase 1 — Prescription OCR](docs/prescription-ocr-ai-phase-1.md).
 
 Xem [kế hoạch Migration](docs/migration-to-expo.md), [hướng dẫn chạy Expo](expo-app/README.md), [Firebase JavaScript SDK Integration](docs/firebase-js-sdk-integration.md), [Firebase Authentication — Migration 2.2](docs/firebase-authentication.md), [Firestore User Profiles — Migration 2.3](docs/firestore-user-profiles.md) và [Medication CRUD — Migration 3.2](docs/medication-management-m3.2.md). Flutter vẫn là mã tham chiếu cho đến khi migration được kiểm thử thiết bị và được phê duyệt riêng.
 

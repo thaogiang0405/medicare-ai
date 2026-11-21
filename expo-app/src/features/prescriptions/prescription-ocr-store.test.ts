@@ -67,7 +67,7 @@ describe('prescription OCR store', () => {
     });
   });
 
-  it('keeps cloud OCR disabled until an explicit feature flag opt-in', async () => {
+  it('keeps on-device OCR disabled until an explicit feature flag opt-in', async () => {
     const gateway: PrescriptionOcrGateway = { recognizePrescription: jest.fn(async () => ocrResult) };
     const store = createPrescriptionOcrStore(gateway, repository, () => false);
 
@@ -101,7 +101,7 @@ describe('prescription OCR store', () => {
     expect(store.getState()).toMatchObject({ activeUserId: null, pages: [], ocrResult: null, candidates: [] });
   });
 
-  it('reviews free pasted prescription text without calling cloud OCR', () => {
+  it('reviews free pasted prescription text without calling any OCR gateway', () => {
     const gateway: PrescriptionOcrGateway = { recognizePrescription: jest.fn(async () => ocrResult) };
     const store = createPrescriptionOcrStore(gateway, repository, () => false);
 
@@ -130,5 +130,36 @@ describe('prescription OCR store', () => {
     expect(store.getState().ocrResult).toBeNull();
     expect(store.getState().errorMessage).toContain('12.000');
     expect(gateway.recognizePrescription).not.toHaveBeenCalled();
+  });
+
+  it('aborts the local worker request and clears transient progress on cancellation', async () => {
+    let resolveOcr: ((value: PrescriptionOcrResult) => void) | undefined;
+    let receivedSignal: AbortSignal | undefined;
+    const pendingOcr = new Promise<PrescriptionOcrResult>((resolve) => {
+      resolveOcr = resolve;
+    });
+    const gateway: PrescriptionOcrGateway = {
+      recognizePrescription: jest.fn(async (_userId, _request, options) => {
+        receivedSignal = options?.signal;
+        options?.onProgress?.({ pageIndex: 0, totalPages: 1, phase: 'recognizing', progress: 0.5 });
+        return pendingOcr;
+      }),
+    };
+    const store = createPrescriptionOcrStore(gateway, repository, () => true);
+
+    store.getState().bindAuthenticatedUser('elderly-a');
+    store.getState().setPages([imagePage]);
+    store.getState().setConsentAccepted(true);
+    const processing = store.getState().process();
+    await Promise.resolve();
+
+    expect(store.getState().ocrProgress).toMatchObject({ pageIndex: 0, phase: 'recognizing', progress: 0.5 });
+    store.getState().cancel();
+    expect(receivedSignal?.aborted).toBe(true);
+    expect(store.getState()).toMatchObject({ status: 'ready', ocrProgress: null, pages: [], ocrResult: null });
+
+    resolveOcr?.(ocrResult);
+    await processing;
+    expect(store.getState()).toMatchObject({ status: 'ready', ocrResult: null, candidates: [] });
   });
 });

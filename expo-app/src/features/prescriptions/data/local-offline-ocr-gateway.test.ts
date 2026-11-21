@@ -73,6 +73,7 @@ describe('LocalOfflineOcrGateway', () => {
     expect(recognizePage).toHaveBeenCalledTimes(2);
     expect(recognizePage.mock.calls[0]?.[0]).toEqual({
       id: 'page-a', pageIndex: 0, mimeType: 'image/jpeg', base64: 'YWJj',
+      width: 100, height: 100, sourceMode: 'prescription',
     });
     expect(recognizePage.mock.calls[0]?.[0]).not.toHaveProperty('uri');
     expect(progress).toContain('0:preparing');

@@ -10,6 +10,7 @@ import {
   type PrescriptionMedicationImportResult,
 } from './data/prescription-medication-import-service';
 import { parsePrescriptionOcrPages } from './data/prescription-ocr-parser';
+import { parseMedicationPackageOcrPages } from './data/medication-package-ocr-parser';
 import { toPrescriptionOcrError } from './data/prescription-ocr-errors';
 import {
   prescriptionOcrMaximumPages,
@@ -21,6 +22,7 @@ import {
   validatePrescriptionOcrRequest,
 } from './domain/prescription-ocr';
 
+export type OcrSourceMode = 'prescription' | 'packaging';
 export type PrescriptionOcrStoreStatus = 'idle' | 'ready' | 'processing' | 'review' | 'saving' | 'error';
 export type PrescriptionCandidateSaveStatus = 'idle' | 'saved' | 'skippedDuplicate' | 'failed';
 
@@ -36,6 +38,8 @@ type OcrFeatureEnabled = () => boolean;
 export type PrescriptionOcrState = {
   /** Account identity is only set by the authenticated session integration. */
   activeUserId: string | null;
+  sourceMode: OcrSourceMode;
+  setSourceMode(mode: OcrSourceMode): void;
   status: PrescriptionOcrStoreStatus;
   pages: readonly PrescriptionOcrImagePage[];
   ocrResult: PrescriptionOcrResult | null;
@@ -85,12 +89,12 @@ function clonePages(pages: readonly PrescriptionOcrImagePage[]): PrescriptionOcr
   return pages.map((page) => ({ ...page, qualityWarnings: [...page.qualityWarnings] }));
 }
 
-function toReviewCandidate(candidate: PrescriptionOcrCandidate): PrescriptionOcrReviewCandidate {
+function toReviewCandidate(candidate: PrescriptionOcrCandidate, selected = true): PrescriptionOcrReviewCandidate {
   return {
     ...candidate,
     input: { ...candidate.input },
     warnings: [...candidate.warnings],
-    selected: true,
+    selected,
     saveStatus: 'idle',
     saveMessage: null,
   };
@@ -162,6 +166,13 @@ export function createPrescriptionOcrStore(
 
     return {
       activeUserId: null,
+      sourceMode: 'prescription',
+      setSourceMode: (mode) => {
+        if (get().sourceMode !== mode) {
+          clearDraft(get().activeUserId, get().activeUserId ? 'ready' : 'idle');
+          set({ sourceMode: mode });
+        }
+      },
       status: 'idle',
       pages: [],
       ocrResult: null,
@@ -256,7 +267,7 @@ export function createPrescriptionOcrStore(
       reorderPages: (fromIndex, toIndex) => get().movePage(fromIndex, toIndex),
       setConsentAccepted: (accepted) => set({ consentAccepted: accepted, errorMessage: null }),
       process: async () => {
-        const { activeUserId, pages, consentAccepted, status } = get();
+        const { activeUserId, pages, consentAccepted, status, sourceMode } = get();
         if (status === 'processing' || status === 'saving') {
           return;
         }
@@ -289,6 +300,7 @@ export function createPrescriptionOcrStore(
           const request = validatePrescriptionOcrRequest({ consentAccepted: true, pages });
           const result = await gateway.recognizePrescription(activeUserId, request, {
             signal: abortController.signal,
+            sourceMode,
             onProgress: (ocrProgress) => {
               if (isCurrentRequest(currentVersion, activeUserId) && !abortController.signal.aborted) {
                 set({ ocrProgress });
@@ -303,7 +315,8 @@ export function createPrescriptionOcrStore(
           set({
             status: 'review',
             ocrResult: result,
-            candidates: parsePrescriptionOcrPages(result.pages).map(toReviewCandidate),
+            candidates: (sourceMode === 'packaging' ? parseMedicationPackageOcrPages(result.pages) : parsePrescriptionOcrPages(result.pages))
+              .map((candidate) => toReviewCandidate(candidate, sourceMode !== 'packaging')),
             ocrProgress: null,
             errorMessage: null,
           });
@@ -319,7 +332,7 @@ export function createPrescriptionOcrStore(
       },
       requestOcr: async () => get().process(),
       reviewPastedText: (rawText) => {
-        const { activeUserId, status } = get();
+        const { activeUserId, status, sourceMode } = get();
         if (!activeUserId) {
           set({ status: 'error', errorMessage: 'Vui lòng đăng nhập trước khi nhập đơn thuốc.' });
           return;
@@ -355,7 +368,8 @@ export function createPrescriptionOcrStore(
         set({
           status: 'review',
           ocrResult: result,
-          candidates: parsePrescriptionOcrPages(result.pages).map(toReviewCandidate),
+          candidates: (sourceMode === 'packaging' ? parseMedicationPackageOcrPages(result.pages) : parsePrescriptionOcrPages(result.pages))
+            .map((candidate) => toReviewCandidate(candidate, sourceMode !== 'packaging')),
           importResult: null,
           ocrProgress: null,
           errorMessage: null,

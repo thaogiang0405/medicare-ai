@@ -19,6 +19,7 @@ export default function ElderlyLayout() {
         <Stack.Screen name="index" />
         <Stack.Screen name="medications" />
         <Stack.Screen name="prescription-ocr" />
+        <Stack.Screen name="medication-package" />
         <Stack.Screen name="dose-history" />
         <Stack.Screen name="reminder-settings" />
       </Stack.Protected>

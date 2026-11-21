@@ -61,12 +61,15 @@ function validatePageResult(value: LocalOfflineOcrPageResult): LocalOfflineOcrPa
   };
 }
 
-function toBridgePage(page: PrescriptionOcrImagePage, pageIndex: number) {
+function toBridgePage(page: PrescriptionOcrImagePage, pageIndex: number, sourceMode: 'prescription' | 'packaging') {
   return {
     id: page.id,
     pageIndex,
     mimeType: page.mimeType,
     base64: page.base64,
+    width: page.width,
+    height: page.height,
+    sourceMode,
   } as const;
 }
 
@@ -118,7 +121,7 @@ export class LocalOfflineOcrGateway implements PrescriptionOcrGateway {
           progress: 0,
         });
 
-        const result = validatePageResult(await port.recognizePage(toBridgePage(page, pageIndex), {
+        const result = validatePageResult(await port.recognizePage(toBridgePage(page, pageIndex, options.sourceMode === 'packaging' ? 'packaging' : 'prescription'), {
           signal: options.signal,
           onProgress: (progress) => options.onProgress?.({
             pageIndex,

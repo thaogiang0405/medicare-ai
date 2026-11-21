@@ -20,6 +20,7 @@ export {
   parsePrescriptionOcrPage,
   parsePrescriptionOcrPages,
 } from './data/prescription-ocr-parser';
+export { parseMedicationPackageOcrPage, parseMedicationPackageOcrPages } from './data/medication-package-ocr-parser';
 export {
   isPrescriptionOcrFeatureEnabled,
   prescriptionOcrUnavailableMessage,
@@ -56,5 +57,6 @@ export {
   type PrescriptionCandidateSaveStatus,
   type PrescriptionOcrReviewCandidate,
   type PrescriptionOcrState,
+  type OcrSourceMode,
   type PrescriptionOcrStoreStatus,
 } from './prescription-ocr-store';

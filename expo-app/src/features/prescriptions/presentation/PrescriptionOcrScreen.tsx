@@ -37,12 +37,14 @@ import {
   type PrescriptionOcrImagePage,
   type PrescriptionOcrProgress,
   type PrescriptionOcrReviewCandidate,
+  type OcrSourceMode,
 } from '@/features/prescriptions';
 import { useSessionStore } from '@/store';
 
 import {
   deleteTemporaryPrescriptionImages,
   deleteTemporaryPrescriptionUris,
+  cropPrescriptionImageToNameBand,
   preparePrescriptionImage,
   type PickedPrescriptionImage,
 } from './prescription-image-preparation';
@@ -82,7 +84,7 @@ function localOcrProgressLabel(progress: PrescriptionOcrProgress | null): string
 }
 
 /** Elderly-only screen; the parent layout protects the route and this screen binds each draft to its authenticated owner. */
-export default function PrescriptionOcrScreen() {
+export default function PrescriptionOcrScreen({ scanMode = 'prescription' }: Readonly<{ scanMode?: OcrSourceMode }>) {
   const sessionUserId = useSessionStore((state) => state.user?.id ?? null);
   const pages = usePrescriptionOcrStore((state) => state.pages);
   const activeUserId = usePrescriptionOcrStore((state) => state.activeUserId);
@@ -94,6 +96,7 @@ export default function PrescriptionOcrScreen() {
   const candidates = usePrescriptionOcrStore((state) => state.candidates);
   const importResult = usePrescriptionOcrStore((state) => state.importResult);
   const bindAuthenticatedUser = usePrescriptionOcrStore((state) => state.bindAuthenticatedUser);
+  const setSourceMode = usePrescriptionOcrStore((state) => state.setSourceMode);
   const addPages = usePrescriptionOcrStore((state) => state.addPages);
   const replacePage = usePrescriptionOcrStore((state) => state.replacePage);
   const removePage = usePrescriptionOcrStore((state) => state.removePage);
@@ -134,6 +137,11 @@ export default function PrescriptionOcrScreen() {
   useEffect(() => {
     pagesRef.current = pages;
   }, [pages]);
+
+  // Switching between scan modes cancels work and clears the previous draft.
+  useEffect(() => {
+    setSourceMode(scanMode);
+  }, [scanMode, setSourceMode]);
 
   useEffect(() => {
     const nextUserId = sessionUserId?.trim() || null;
@@ -191,6 +199,30 @@ export default function PrescriptionOcrScreen() {
       }
     } catch (error) {
       deleteTemporaryPrescriptionImages(prepared);
+      setCaptureError(toSafeCaptureError(error));
+    } finally {
+      captureInProgressRef.current = false;
+      setIsCapturing(false);
+    }
+  };
+
+  const cropSelectedPackageName = async (page: PrescriptionOcrImagePage, relativeY: number) => {
+    if (scanMode !== 'packaging' || captureInProgressRef.current || isProcessing || isSaving || !sessionUserId) return;
+    const owner = sessionUserId;
+    captureInProgressRef.current = true;
+    setIsCapturing(true);
+    setCaptureError(null);
+    try {
+      const cropped = await cropPrescriptionImageToNameBand(page, relativeY);
+      const store = usePrescriptionOcrStore.getState();
+      const stillPresent = store.pages.some((item) => item.id === page.id);
+      if (useSessionStore.getState().user?.id !== owner || store.activeUserId !== owner || !stillPresent) {
+        deleteTemporaryPrescriptionImages([cropped]);
+        return;
+      }
+      replacePage(page.id, cropped);
+      deleteTemporaryPrescriptionImages([page]);
+    } catch (error) {
       setCaptureError(toSafeCaptureError(error));
     } finally {
       captureInProgressRef.current = false;
@@ -292,22 +324,26 @@ export default function PrescriptionOcrScreen() {
     if (usePrescriptionOcrStore.getState().status === 'review') setPastedText('');
   };
 
-  const banner = useMemo(() => featureEnabled ? {
+  const banner = useMemo(() => scanMode === 'packaging' ? {
+    title: 'Đọc nhãn bao bì thuốc trên thiết bị',
+    description: 'OCR cục bộ đọc chữ in trên hộp/vỉ thuốc, không nhận dạng viên thuốc bằng màu sắc hoặc hình dạng. Không dùng API trả phí.',
+  } : featureEnabled ? {
     title: 'Nhận dạng đơn thuốc trên thiết bị',
     description: 'Ảnh và văn bản được xử lý cục bộ trên thiết bị. Không gửi ảnh đến dịch vụ OCR hoặc máy chủ bên thứ ba.',
   } : {
     title: 'Nhập đơn thuốc không mất phí',
     description: 'Có thể dán chữ sao chép từ Live Text trên iPhone, xem lại và lưu thuốc. Không gửi ảnh lên dịch vụ OCR trả phí.',
-  }, [featureEnabled]);
+  }, [featureEnabled, scanMode]);
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.keyboardAvoidingView}>
       <Screen contentStyle={styles.content} testID="prescription-ocr-screen">
         {featureEnabled ? <LocalOfflineOcrBridgeHost key={engineAttempt} onEngineStatusChange={setEngineStatus} /> : null}
-        <AppHeader backAccessibilityLabel="Quay lại trang chủ người cao tuổi" onBack={cancelAndLeave} subtitle="Chụp hoặc chọn ảnh, rồi kiểm tra kỹ trước khi lưu" title="Quét đơn thuốc" />
+        <AppHeader backAccessibilityLabel="Quay lại trang chủ người cao tuổi" onBack={cancelAndLeave} subtitle={scanMode === 'packaging' ? 'Đọc nhãn hộp/vỉ, xác nhận thông tin trước khi lưu' : 'Chụp hoặc chọn ảnh, rồi kiểm tra kỹ trước khi lưu'} title={scanMode === 'packaging' ? 'Quét vỏ hộp thuốc' : 'Quét đơn thuốc'} />
         <DemoModeBanner description={banner.description} title={banner.title} />
-        <SafetyNotice message="AI có thể nhận dạng sai thông tin đơn thuốc. Vui lòng kiểm tra lại đơn gốc và xác nhận với nhân viên y tế nếu chưa chắc chắn." title="Kiểm tra trước khi lưu" tone="warning" />
+        <SafetyNotice message={scanMode === 'packaging' ? 'Chữ trên bao bì có thể sai. Không thể xác minh thuốc bằng hình ảnh hay suy ra liều dùng. Hãy đối chiếu nhãn thật và hỏi dược sĩ nếu không rõ.' : 'AI có thể nhận dạng sai thông tin đơn thuốc. Vui lòng kiểm tra lại đơn gốc và xác nhận với nhân viên y tế nếu chưa chắc chắn.'} title="Kiểm tra trước khi lưu" tone="warning" />
         <ManualTextImportSection
+          scanMode={scanMode}
           errorMessage={!featureEnabled ? errorMessage : null}
           onChangeText={setPastedText}
           onReview={handleReviewPastedText}
@@ -315,10 +351,12 @@ export default function PrescriptionOcrScreen() {
         />
         {!featureEnabled ? <DisabledOcrState onBack={cancelAndLeave} /> : <>
           <ImageCollectionSection
+            scanMode={scanMode}
             captureError={captureError}
             disabled={isCapturing || isProcessing || isSaving}
             isCapturing={isCapturing}
             onChoose={() => void chooseFromLibrary()}
+            onCropNameBand={(page, y) => void cropSelectedPackageName(page, y)}
             onMoveDown={(index) => movePage(index, index + 1)}
             onMoveUp={(index) => movePage(index, index - 1)}
             onRemove={(page) => { deleteTemporaryPrescriptionImages([page]); removePage(page.id); }}
@@ -345,6 +383,7 @@ export default function PrescriptionOcrScreen() {
         </>}
         {ocrResult ? <OcrTextSection pages={ocrResult.pages} provider={ocrResult.provider} /> : null}
         {status === 'review' ? <ReviewSection
+            scanMode={scanMode}
             candidates={candidates}
             importResult={importResult}
             isSaving={isSaving}
@@ -360,7 +399,8 @@ export default function PrescriptionOcrScreen() {
   );
 }
 
-function ManualTextImportSection({ text, onChangeText, onReview, errorMessage }: Readonly<{
+function ManualTextImportSection({ text, onChangeText, onReview, errorMessage, scanMode }: Readonly<{
+  scanMode: OcrSourceMode;
   text: string;
   onChangeText: (value: string) => void;
   onReview: () => void;
@@ -370,11 +410,11 @@ function ManualTextImportSection({ text, onChangeText, onReview, errorMessage }:
     <View style={styles.section}>
       <Text accessibilityRole="header" style={styles.sectionTitle}>Dán văn bản bằng Live Text (miễn phí)</Text>
       <Text style={styles.sectionDescription}>
-        Trên iPhone, mở ảnh trong ứng dụng Ảnh, chọn chữ bằng Live Text và nhấn Sao chép. Quay lại đây để dán. Không có dữ liệu nào được gửi đến dịch vụ OCR đám mây.
+        {scanMode === 'packaging' ? 'Nếu ảnh bao bì khó quét, sao chép chữ bằng Live Text trong ứng dụng Ảnh và dán vào đây. Hãy đối chiếu với bao bì thật.' : 'Trên iPhone, mở ảnh trong ứng dụng Ảnh, chọn chữ bằng Live Text và nhấn Sao chép. Quay lại đây để dán. Không có dữ liệu nào được gửi đến dịch vụ OCR đám mây.'}
       </Text>
       <TextField
         accessibilityHint="Dán văn bản sao chép từ ảnh đơn thuốc hoặc nhập thủ công; tối đa 12.000 ký tự."
-        label="Nội dung đơn thuốc"
+        label={scanMode === 'packaging' ? 'Chữ trên bao bì' : 'Nội dung đơn thuốc'}
         maxLength={12_000}
         multiline
         numberOfLines={5}
@@ -413,11 +453,13 @@ function DisabledOcrState({ onBack }: Readonly<{ onBack: () => void }>) {
 
 function ImageCollectionSection({
   pages,
+  scanMode,
   captureError,
   disabled,
   isCapturing,
   onScan,
   onChoose,
+  onCropNameBand,
   onRescanAll,
   onRemove,
   onMoveUp,
@@ -426,11 +468,13 @@ function ImageCollectionSection({
   onReplaceWithScanner,
 }: Readonly<{
   pages: readonly PrescriptionOcrImagePage[];
+  scanMode: OcrSourceMode;
   captureError: string | null;
   disabled: boolean;
   isCapturing: boolean;
   onScan: () => void;
   onChoose: () => void;
+  onCropNameBand: (page: PrescriptionOcrImagePage, relativeY: number) => void;
   onRescanAll: () => void;
   onRemove: (page: PrescriptionOcrImagePage) => void;
   onMoveUp: (index: number) => void;
@@ -441,12 +485,14 @@ function ImageCollectionSection({
   const full = pages.length >= prescriptionOcrMaximumPages;
   return (
     <View style={styles.section}>
-      <Text accessibilityRole="header" style={styles.sectionTitle}>Ảnh đơn thuốc</Text>
-      <Text style={styles.sectionDescription}>Chọn tối đa {prescriptionOcrMaximumPages} trang. Ảnh được tối ưu tạm thời trong ứng dụng; không tự lưu vào Ảnh hoặc Firebase Storage.</Text>
+      <Text accessibilityRole="header" style={styles.sectionTitle}>{scanMode === 'packaging' ? 'Ảnh vỏ hộp/vỉ thuốc' : 'Ảnh đơn thuốc'}</Text>
+      <Text style={styles.sectionDescription}>{scanMode === 'packaging' ? 'Chọn tối đa 3 ảnh mặt hộp/vỉ có chữ rõ. Mỗi ảnh gợi ý tối đa một tên thuốc; không tự đưa ra liều dùng.' : `Chọn tối đa ${prescriptionOcrMaximumPages} trang. Ảnh được tối ưu tạm thời trong ứng dụng; không tự lưu vào Ảnh hoặc Firebase Storage.`}</Text>
       {captureError ? <SafetyNotice message={captureError} title="Không thể thêm ảnh" tone="error" /> : null}
       {pages.length === 0 ? <SafetyNotice message="Bạn có thể dùng máy quét tài liệu nếu thiết bị hỗ trợ, hoặc chọn ảnh đơn thuốc có sẵn." title="Chưa có ảnh đơn thuốc" tone="information" /> : null}
       {pages.map((page, index) => <ImagePageCard
         canMoveDown={index < pages.length - 1}
+        scanMode={scanMode}
+        onCropNameBand={(y) => onCropNameBand(page, y)}
         canMoveUp={index > 0}
         disabled={disabled}
         index={index}
@@ -469,6 +515,8 @@ function ImageCollectionSection({
 
 function ImagePageCard({
   page,
+  scanMode,
+  onCropNameBand,
   index,
   disabled,
   canMoveUp,
@@ -480,6 +528,8 @@ function ImagePageCard({
   onReplaceWithScanner,
 }: Readonly<{
   page: PrescriptionOcrImagePage;
+  scanMode: OcrSourceMode;
+  onCropNameBand: (relativeY: number) => void;
   index: number;
   disabled: boolean;
   canMoveUp: boolean;
@@ -490,9 +540,35 @@ function ImagePageCard({
   onReplaceFromLibrary: () => void;
   onReplaceWithScanner: () => void;
 }>) {
+  const [nameY, setNameY] = useState<number | null>(null);
+  const [previewHeight, setPreviewHeight] = useState(0);
+  const bandFraction = page.width / page.height >= 2.3 ? 0.42 : 0.15;
+  const bandTop = nameY === null ? 0 : Math.max(0, Math.min(1 - bandFraction, nameY - bandFraction / 2));
   return (
     <View style={styles.imageCard}>
-      <Image accessibilityLabel={`Ảnh đơn thuốc trang ${index + 1}`} source={{ uri: page.uri }} style={styles.previewImage} />
+      {scanMode === 'packaging' ? <Text style={styles.sectionDescription}>Chạm vào dòng tên thuốc trên ảnh. Khung xanh cho biết phần sẽ quét; nhấn “Chỉ quét vùng tên đã chọn” trước khi nhận dạng.</Text> : null}
+      {scanMode === 'packaging' ? (
+        <Pressable
+          accessibilityLabel="Chạm vào dòng tên thuốc trên ảnh bao bì"
+          accessibilityRole="button"
+          disabled={disabled}
+          onLayout={(event) => setPreviewHeight(event.nativeEvent.layout.height)}
+          onPress={(event) => {
+            if (previewHeight <= 0) return;
+            const y = event.nativeEvent.locationY / previewHeight;
+            setNameY(Math.min(1, Math.max(0, y)));
+          }}
+          style={styles.imageSelectionSurface}
+        >
+          <Image accessibilityLabel={'Ảnh bao bì số ' + (index + 1)} resizeMode="contain" source={{ uri: page.uri }} style={[styles.previewImage, { aspectRatio: page.width / page.height }]} />
+          {nameY !== null ? (
+            <View pointerEvents="none" style={[styles.nameBandOverlay, { top: `${bandTop * 100}%` as `${number}%`, height: `${bandFraction * 100}%` as `${number}%` }]} />
+          ) : null}
+        </Pressable>
+      ) : (
+        <Image accessibilityLabel={'Ảnh đơn thuốc trang ' + (index + 1)} source={{ uri: page.uri }} style={styles.previewImage} />
+      )}
+      {scanMode === 'packaging' ? <SecondaryButton disabled={disabled || nameY === null} label="Chỉ quét vùng tên đã chọn" onPress={() => { if (nameY !== null) onCropNameBand(nameY); }} /> : null}
       <View style={styles.imageCardContent}>
         <Text style={styles.cardTitle}>Trang {index + 1}</Text>
         <Text style={styles.metadataText}>{Math.round(page.byteSize / 1024)} KB · {page.width} × {page.height}</Text>
@@ -593,6 +669,7 @@ function OcrTextSection({ pages, provider }: Readonly<{
 }
 
 function ReviewSection({
+  scanMode,
   candidates,
   importResult,
   isSaving,
@@ -603,6 +680,7 @@ function ReviewSection({
   onAddManual,
   onConfirm,
 }: Readonly<{
+  scanMode: OcrSourceMode;
   candidates: readonly PrescriptionOcrReviewCandidate[];
   importResult: { savedCount: number; duplicateCount: number; failedCount: number } | null;
   isSaving: boolean;
@@ -616,10 +694,11 @@ function ReviewSection({
   return (
     <View style={styles.section}>
       <Text accessibilityRole="header" style={styles.sectionTitle}>Thuốc cần kiểm tra</Text>
-      <Text style={styles.sectionDescription}>Chỉ những mục bạn chọn và xác nhận mới được lưu. Ứng dụng không tạo lịch uống, không thay thuốc và không đưa ra liều dùng.</Text>
+      <Text style={styles.sectionDescription}>{scanMode === 'packaging' ? 'Tên/hàm lượng là gợi ý từ nhãn in. Mục mặc định chưa chọn; hãy đối chiếu hộp thật và tích chọn trước khi lưu. Không có lịch uống tự động.' : 'Chỉ những mục bạn chọn và xác nhận mới được lưu. Ứng dụng không tạo lịch uống, không thay thuốc và không đưa ra liều dùng.'}</Text>
       {candidates.length === 0 ? <SafetyNotice message="Không có tên thuốc nào được nhận dạng một cách đủ rõ. Bạn có thể thêm mục thủ công và đối chiếu với đơn gốc." title="Cần kiểm tra thủ công" tone="warning" /> : null}
       {candidates.map((candidate, index) => <ReviewCandidateCard
         candidate={candidate}
+        scanMode={scanMode}
         index={index}
         key={candidate.id}
         onChange={(field, value) => onChange(candidate.id, field, value)}
@@ -636,6 +715,7 @@ function ReviewSection({
 
 function ReviewCandidateCard({
   candidate,
+  scanMode,
   index,
   saving,
   onChange,
@@ -643,6 +723,7 @@ function ReviewCandidateCard({
   onRemove,
 }: Readonly<{
   candidate: PrescriptionOcrReviewCandidate;
+  scanMode: OcrSourceMode;
   index: number;
   saving: boolean;
   onChange: (field: 'name' | 'strengthText' | 'directionsText', value: string) => void;
@@ -667,9 +748,9 @@ function ReviewCandidateCard({
       {candidate.warnings.map((warning, warningIndex) => <Text key={`${warning}-${warningIndex}`} style={styles.warningText}>• {warningLabel(warning)}</Text>)}
       {saveStatus ? <Text style={candidate.saveStatus === 'failed' ? styles.errorText : styles.statusText}>{saveStatus}</Text> : null}
       <View style={styles.candidateFields}>
-        <TextField accessibilityHint="Bắt buộc. Kiểm tra và chỉnh sửa theo đơn gốc trước khi lưu" editable={!immutable} label="Tên thuốc *" maxLength={medicationFieldLimits.name} onChangeText={(value) => onChange('name', value)} placeholder="Nhập tên thuốc từ đơn gốc" value={candidate.input.name} />
+        <TextField accessibilityHint="Bắt buộc. Kiểm tra và chỉnh sửa theo đơn gốc trước khi lưu" editable={!immutable} label="Tên thuốc *" maxLength={medicationFieldLimits.name} onChangeText={(value) => onChange('name', value)} placeholder={scanMode === 'packaging' ? 'Nhập tên đã kiểm tra trên hộp thật' : 'Nhập tên thuốc từ đơn gốc'} value={candidate.input.name} />
         <TextField accessibilityHint="Không bắt buộc. Chỉ ghi lại hàm lượng hoặc quy cách bạn xác nhận" editable={!immutable} label="Hàm lượng hoặc quy cách" maxLength={medicationFieldLimits.strengthText} onChangeText={(value) => onChange('strengthText', value)} placeholder="Ví dụ: 500 mg" value={candidate.input.strengthText} />
-        <TextField accessibilityHint="Không bắt buộc. Chỉ ghi lại hướng dẫn từ đơn gốc; ứng dụng không tự tạo liều hoặc lịch" editable={!immutable} label="Hướng dẫn sử dụng đã ghi nhận" maxLength={medicationFieldLimits.directionsText} multiline numberOfLines={3} onChangeText={(value) => onChange('directionsText', value)} placeholder="Nhập nội dung đã kiểm tra" style={styles.multilineInput} textAlignVertical="top" value={candidate.input.directionsText} />
+        <TextField accessibilityHint="Không bắt buộc. Chỉ ghi lại hướng dẫn từ đơn gốc; ứng dụng không tự tạo liều hoặc lịch" editable={!immutable} label={scanMode === 'packaging' ? 'Hướng dẫn đã xác minh (không tự suy ra)' : 'Hướng dẫn sử dụng đã ghi nhận'} maxLength={medicationFieldLimits.directionsText} multiline numberOfLines={3} onChangeText={(value) => onChange('directionsText', value)} placeholder="Nhập nội dung đã kiểm tra" style={styles.multilineInput} textAlignVertical="top" value={candidate.input.directionsText} />
       </View>
       {candidate.saveStatus !== 'saved' ? <SecondaryButton disabled={saving} label="Bỏ mục thuốc này" onPress={onRemove} /> : null}
     </View>
@@ -685,6 +766,8 @@ const styles = StyleSheet.create({
   actions: { gap: medicareSpacing.sm },
   imageCard: { borderColor: medicareColors.border, borderRadius: medicareRadius.md, borderWidth: 1, gap: medicareSpacing.md, overflow: 'hidden', padding: medicareSpacing.md },
   previewImage: { aspectRatio: 4 / 3, backgroundColor: medicareColors.primaryContainer, borderRadius: medicareRadius.sm, width: '100%' },
+  imageSelectionSurface: { position: 'relative', width: '100%' },
+  nameBandOverlay: { position: 'absolute', left: 0, right: 0, height: '22%', backgroundColor: 'rgba(0,108,103,0.15)', borderColor: medicareColors.primary, borderWidth: 2, borderRadius: medicareRadius.sm },
   imageCardContent: { gap: medicareSpacing.xxs },
   cardTitle: { color: medicareColors.text, fontSize: medicareTypography.label, fontWeight: '800', lineHeight: 23 },
   metadataText: { color: medicareColors.textMuted, fontSize: medicareTypography.bodySmall, lineHeight: 22 },

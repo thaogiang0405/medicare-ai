@@ -5,6 +5,7 @@ import type { DOMProps } from 'expo/dom';
 
 import { getLocalOfflineOcrAssetUrls } from '../data/local-offline-ocr-assets';
 import { toLocalOfflineOcrPageResult } from '../data/local-offline-ocr-result';
+import { getPackageLabelRegion, prioritizePrintedPackageLabel, selectPackageLabelReading } from '../data/medication-package-ocr-focus';
 import type {
   LocalOfflineOcrPageInput,
   LocalOfflineOcrPageProgress,
@@ -17,7 +18,8 @@ type TesseractLoggerEvent = Readonly<{
 }>;
 
 type TesseractWorker = Readonly<{
-  recognize(image: string): Promise<Readonly<{ data: Readonly<{ text: unknown; confidence: unknown }> }>>;
+  recognize(image: string, options?: Readonly<{ rectangle?: Readonly<{ left: number; top: number; width: number; height: number }> }>): Promise<Readonly<{ data: Readonly<{ text: unknown; confidence: unknown }> }>>;
+  setParameters(params: Readonly<{ tessedit_pageseg_mode: '6' | '7' | '11' }>): Promise<unknown>;
   terminate(): Promise<unknown>;
 }>;
 
@@ -155,6 +157,48 @@ function toImageDataUri(page: LocalOfflineOcrPageInput): string {
   return `data:${page.mimeType};base64,${page.base64}`;
 }
 
+/** Expo DOM callback promises may reject during navigation/unmount. Don't leak
+ * unhandled bridge rejections into Expo Go's error overlay. */
+async function safelyNotify(callback: () => Promise<void>): Promise<boolean> {
+  try {
+    await callback();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Runs only in the embedded DOM/WebView for a user-selected narrow name band.
+ * Improves contrast of dark printed letters without network calls or retaining
+ * images. Best-effort: callers fall back to original when canvas is unavailable.
+ */
+async function enhanceLocalNameBand(imageDataUri: string): Promise<string> {
+  const image = new Image();
+  await new Promise<void>((resolve, reject) => {
+    image.onload = () => resolve();
+    image.onerror = () => reject(new Error('image unavailable'));
+    image.src = imageDataUri;
+  });
+  if (image.naturalWidth < 1 || image.naturalHeight < 1) {
+    throw new Error('invalid image dimensions');
+  }
+  const scale = Math.min(2, Math.max(1, 2600 / image.naturalWidth));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(image.naturalWidth * scale);
+  canvas.height = Math.round(image.naturalHeight * scale);
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('canvas unavailable');
+  context.fillStyle = '#ffffff';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = 'high';
+  context.filter = 'grayscale(1) contrast(2.2)';
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  context.filter = 'none';
+  return canvas.toDataURL('image/png');
+}
+
 async function terminateWorker(worker: TesseractWorker | null): Promise<void> {
   if (!worker) return;
   try {
@@ -203,16 +247,16 @@ export default function LocalOfflineOcrDom({
         worker = null;
         if (disposed) return;
         setEngineState('ready');
-        await onEngineReady();
+        await safelyNotify(onEngineReady);
       } catch {
         await terminateWorker(worker);
         if (disposed) return;
         setEngineState('error');
-        await onEngineError();
+        await safelyNotify(onEngineError);
       }
     };
 
-    void prewarm();
+    void prewarm().catch(() => undefined);
     return () => {
       disposed = true;
       void terminateWorker(activeWorkerRef.current);
@@ -242,27 +286,104 @@ export default function LocalOfflineOcrDom({
           gzip: true,
           logger: (event) => {
             if (!cancelled && activeJobIdRef.current === job.id) {
-              void onProgress({ jobId: job.id, progress: phaseForLoggerEvent(event) });
+              void safelyNotify(() => onProgress({ jobId: job.id, progress: phaseForLoggerEvent(event) }));
             }
           },
         });
         activeWorkerRef.current = worker;
         if (cancelled || activeJobIdRef.current !== job.id) return;
 
-        const result = await worker.recognize(toImageDataUri(job.page));
+        const imageData = toImageDataUri(job.page);
+        // Packaging differs from prescriptions: names can be much larger than
+        // the small printed instructions in the same photograph.
+        // When a user taps the name line and locally crops its narrow band,
+        // Tesseract's single-line segmentation reads the large printed label
+        // instead of attempting to segment the whole package layout.
+        const isolatedNameBand = job.page.sourceMode === 'packaging'
+          && job.page.width >= job.page.height * 2.3;
+        if (job.page.sourceMode === 'packaging') {
+          await worker.setParameters({ tessedit_pageseg_mode: isolatedNameBand ? '7' : '11' });
+        }
+        const result = await worker.recognize(imageData);
         if (cancelled || activeJobIdRef.current !== job.id) {
-          await onCancelled({ jobId: job.id });
+          await safelyNotify(() => onCancelled({ jobId: job.id }));
           return;
         }
 
-        await onProgress({ jobId: job.id, progress: { phase: 'finalizing', progress: 1 } });
-        await onResult({ jobId: job.id, result: toLocalOfflineOcrPageResult(result.data) });
-      } catch {
+        let text = typeof result.data.text === 'string' ? result.data.text : '';
+        let confidence = result.data.confidence;
+        let usedFocusedPass = false;
+        let enhancedNameBand = false;
+
+        if (isolatedNameBand && !cancelled && activeJobIdRef.current === job.id) {
+          // Try a high-contrast rendering after the original reading. Only
+          // prefer it when it visibly contains name + numeric printed strength.
+          // No spelling correction, guesswork or medicine database lookup.
+          try {
+            const enhancedImage = await enhanceLocalNameBand(imageData);
+            if (!cancelled && activeJobIdRef.current === job.id) {
+              const enhanced = await worker.recognize(enhancedImage);
+              const best = selectPackageLabelReading(
+                text,
+                typeof enhanced.data.text === 'string' ? enhanced.data.text : '',
+              );
+              if (best.enhancedSelected) {
+                text = best.text;
+                confidence = enhanced.data.confidence;
+                enhancedNameBand = true;
+              }
+            }
+          } catch {
+            // Keep the unmodified OCR text if the device cannot preprocess.
+          }
+        }
+        if (job.page.sourceMode === 'packaging' && !isolatedNameBand) {
+          const region = getPackageLabelRegion(job.page.width, job.page.height);
+          if (region && !cancelled && activeJobIdRef.current === job.id) {
+            // A single bounded additional pass; if WebView runs out of memory
+            // or segmentation fails, keep the full-frame OCR result.
+            try {
+              await worker.setParameters({ tessedit_pageseg_mode: '6' });
+              const focused = await worker.recognize(imageData, { rectangle: region });
+              const prioritized = prioritizePrintedPackageLabel(
+                text,
+                typeof focused.data.text === 'string' ? focused.data.text : '',
+              );
+              text = prioritized.text;
+              usedFocusedPass = prioritized.usedFocusedPass;
+            } catch {
+              // Best effort only. Do not log private photo/text or invent names.
+            }
+          }
+        }
+
         if (cancelled || activeJobIdRef.current !== job.id) {
-          await onCancelled({ jobId: job.id });
+          await safelyNotify(() => onCancelled({ jobId: job.id }));
           return;
         }
-        await onError({ jobId: job.id });
+
+        const normalized = toLocalOfflineOcrPageResult({ text, confidence });
+        const pageResult = usedFocusedPass || enhancedNameBand ? {
+          ...normalized,
+          qualityWarnings: [
+            ...normalized.qualityWarnings,
+            enhancedNameBand
+              ? 'Đã tăng tương phản chữ trên nhãn. Vui lòng đối chiếu tên và hàm lượng với bao bì thật.'
+              : 'Đã đọc bổ sung vùng nhãn in. Vui lòng đối chiếu tên và hàm lượng với bao bì thật.',
+          ],
+        } : normalized;
+
+        await safelyNotify(() => onProgress({ jobId: job.id, progress: { phase: 'finalizing', progress: 1 } }));
+        const delivered = await safelyNotify(() => onResult({ jobId: job.id, result: pageResult }));
+        if (!delivered) {
+          await safelyNotify(() => onError({ jobId: job.id }));
+        }
+      } catch {
+        if (cancelled || activeJobIdRef.current !== job.id) {
+          await safelyNotify(() => onCancelled({ jobId: job.id }));
+          return;
+        }
+        await safelyNotify(() => onError({ jobId: job.id }));
       } finally {
         await terminateWorker(worker);
         if (activeWorkerRef.current === worker) activeWorkerRef.current = null;
@@ -270,7 +391,7 @@ export default function LocalOfflineOcrDom({
       }
     };
 
-    void recognize();
+    void recognize().catch(() => undefined);
     return () => {
       cancelled = true;
       if (activeJobIdRef.current === job.id) {

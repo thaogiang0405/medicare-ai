@@ -67,7 +67,7 @@ describe('prescription image preparation', () => {
     expect(ImageManipulator.manipulate).toHaveBeenLastCalledWith(original.uri);
     const calls = jest.mocked(ImageManipulator.manipulate).mock.results;
     const imageContext = calls[calls.length - 1]?.value;
-    expect(imageContext.crop).toHaveBeenCalledWith({ originX: 0, originY: 384, width: 1200, height: 352 });
+    expect(imageContext.crop).toHaveBeenCalledWith({ originX: 0, originY: 440, width: 1200, height: 240 });
     expect(cropped).toMatchObject({ mimeType: 'image/jpeg', byteSize: 2048 });
     expect(cropped.qualityWarnings.join(' ')).toContain('đầy đủ tên thuốc');
   });

@@ -294,6 +294,13 @@ export default function ElderlyHomeScreen() {
           title="Quét đơn thuốc"
         />
         <ActionCard
+          accessibilityHint="Quét chữ in trên bao bì thuốc với OCR miễn phí và xác nhận tên, hàm lượng trước khi lưu"
+          description="Đọc chữ trên hộp/vỉ thuốc bằng OCR cục bộ; không xác minh viên thuốc qua màu sắc hoặc hình dạng."
+          icon={<Text style={styles.icon}>▣</Text>}
+          onPress={() => router.push('/elderly/medication-package')}
+          title="Quét vỏ hộp thuốc"
+        />
+        <ActionCard
           accessibilityHint={medicationsFeatureEnabled
             ? 'Mở danh sách thuốc được lưu trong hồ sơ Firebase của tài khoản này'
             : 'Mở danh sách thuốc được lưu trong chế độ trình diễn của tài khoản này'}

@@ -26,6 +26,9 @@ function newPageId(): string {
 }
 
 function pageWarnings(width: number, height: number): string[] {
+  // A deliberately cropped wide label can be short but still contain large,
+  // legible medicine lettering; do not mislabel it as a low-resolution photo.
+  if (width >= lowResolutionThreshold && width / height >= 2.3) return [];
   const shortestEdge = Math.min(width, height);
   return shortestEdge < lowResolutionThreshold
     ? ['Ảnh có độ phân giải thấp, chữ có thể khó đọc. Hãy kiểm tra lại kết quả OCR.']
@@ -108,9 +111,10 @@ export async function cropPrescriptionImageToNameBand(
     throw new Error('Kích thước ảnh không phù hợp để chọn vùng tên thuốc.');
   }
 
-  // One word/line usually spans much less than 1/4 of a package photo. Keep
-  // 22% height for Vietnamese accents and to avoid clipping tall letterforms.
-  const height = Math.min(page.height, Math.max(100, Math.floor(page.height * 0.22)));
+  // A normal package photo needs a narrow band to exclude marketing copy;
+  // an already horizontally cropped label needs enough height for slanted type.
+  const fraction = page.width / page.height >= 2.3 ? 0.42 : 0.15;
+  const height = Math.min(page.height, Math.max(100, Math.floor(page.height * fraction)));
   const centerY = Math.round(relativeCenterY * page.height);
   const originY = Math.max(0, Math.min(page.height - height, centerY - Math.floor(height / 2)));
   let temporaryUri: string | null = null;

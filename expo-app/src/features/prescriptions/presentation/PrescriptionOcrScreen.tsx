@@ -44,6 +44,7 @@ import { useSessionStore } from '@/store';
 import {
   deleteTemporaryPrescriptionImages,
   deleteTemporaryPrescriptionUris,
+  cropPrescriptionImageToNameBand,
   preparePrescriptionImage,
   type PickedPrescriptionImage,
 } from './prescription-image-preparation';
@@ -205,6 +206,30 @@ export default function PrescriptionOcrScreen({ scanMode = 'prescription' }: Rea
     }
   };
 
+  const cropSelectedPackageName = async (page: PrescriptionOcrImagePage, relativeY: number) => {
+    if (scanMode !== 'packaging' || captureInProgressRef.current || isProcessing || isSaving || !sessionUserId) return;
+    const owner = sessionUserId;
+    captureInProgressRef.current = true;
+    setIsCapturing(true);
+    setCaptureError(null);
+    try {
+      const cropped = await cropPrescriptionImageToNameBand(page, relativeY);
+      const store = usePrescriptionOcrStore.getState();
+      const stillPresent = store.pages.some((item) => item.id === page.id);
+      if (useSessionStore.getState().user?.id !== owner || store.activeUserId !== owner || !stillPresent) {
+        deleteTemporaryPrescriptionImages([cropped]);
+        return;
+      }
+      replacePage(page.id, cropped);
+      deleteTemporaryPrescriptionImages([page]);
+    } catch (error) {
+      setCaptureError(toSafeCaptureError(error));
+    } finally {
+      captureInProgressRef.current = false;
+      setIsCapturing(false);
+    }
+  };
+
   const chooseFromLibrary = async (replaceId?: string) => {
     if (captureInProgressRef.current) return;
     setCaptureError(null);
@@ -331,6 +356,7 @@ export default function PrescriptionOcrScreen({ scanMode = 'prescription' }: Rea
             disabled={isCapturing || isProcessing || isSaving}
             isCapturing={isCapturing}
             onChoose={() => void chooseFromLibrary()}
+            onCropNameBand={(page, y) => void cropSelectedPackageName(page, y)}
             onMoveDown={(index) => movePage(index, index + 1)}
             onMoveUp={(index) => movePage(index, index - 1)}
             onRemove={(page) => { deleteTemporaryPrescriptionImages([page]); removePage(page.id); }}
@@ -433,6 +459,7 @@ function ImageCollectionSection({
   isCapturing,
   onScan,
   onChoose,
+  onCropNameBand,
   onRescanAll,
   onRemove,
   onMoveUp,
@@ -447,6 +474,7 @@ function ImageCollectionSection({
   isCapturing: boolean;
   onScan: () => void;
   onChoose: () => void;
+  onCropNameBand: (page: PrescriptionOcrImagePage, relativeY: number) => void;
   onRescanAll: () => void;
   onRemove: (page: PrescriptionOcrImagePage) => void;
   onMoveUp: (index: number) => void;
@@ -463,6 +491,8 @@ function ImageCollectionSection({
       {pages.length === 0 ? <SafetyNotice message="Bạn có thể dùng máy quét tài liệu nếu thiết bị hỗ trợ, hoặc chọn ảnh đơn thuốc có sẵn." title="Chưa có ảnh đơn thuốc" tone="information" /> : null}
       {pages.map((page, index) => <ImagePageCard
         canMoveDown={index < pages.length - 1}
+        scanMode={scanMode}
+        onCropNameBand={(y) => onCropNameBand(page, y)}
         canMoveUp={index > 0}
         disabled={disabled}
         index={index}
@@ -485,6 +515,8 @@ function ImageCollectionSection({
 
 function ImagePageCard({
   page,
+  scanMode,
+  onCropNameBand,
   index,
   disabled,
   canMoveUp,
@@ -496,6 +528,8 @@ function ImagePageCard({
   onReplaceWithScanner,
 }: Readonly<{
   page: PrescriptionOcrImagePage;
+  scanMode: OcrSourceMode;
+  onCropNameBand: (relativeY: number) => void;
   index: number;
   disabled: boolean;
   canMoveUp: boolean;

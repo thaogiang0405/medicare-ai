@@ -58,6 +58,9 @@ describe('LocalOfflineOcrBridgeHost', () => {
         pageIndex: 0,
         mimeType: 'image/jpeg',
         base64: 'YWJj',
+        width: 100,
+        height: 100,
+        sourceMode: 'prescription',
       }, { onProgress: progress });
     });
 

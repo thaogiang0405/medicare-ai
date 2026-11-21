@@ -92,6 +92,64 @@ export async function preparePrescriptionImage(
   }
 }
 
+/**
+ * Crop a narrow horizontal band around the exact label position selected by
+ * the user. This is a guided reading tool, not automatic pill identification.
+ * The band remains local and can be reselected if it misses any letters.
+ */
+export async function cropPrescriptionImageToNameBand(
+  page: PrescriptionOcrImagePage,
+  relativeCenterY: number,
+): Promise<PrescriptionOcrImagePage> {
+  if (!Number.isFinite(relativeCenterY) || relativeCenterY < 0 || relativeCenterY > 1) {
+    throw new Error('Vị trí dòng tên thuốc không hợp lệ. Hãy chạm lại vào ảnh.');
+  }
+  if (!Number.isInteger(page.width) || !Number.isInteger(page.height) || page.width < 200 || page.height < 200) {
+    throw new Error('Kích thước ảnh không phù hợp để chọn vùng tên thuốc.');
+  }
+
+  // One word/line usually spans much less than 1/4 of a package photo. Keep
+  // 22% height for Vietnamese accents and to avoid clipping tall letterforms.
+  const height = Math.min(page.height, Math.max(100, Math.floor(page.height * 0.22)));
+  const centerY = Math.round(relativeCenterY * page.height);
+  const originY = Math.max(0, Math.min(page.height - height, centerY - Math.floor(height / 2)));
+  let temporaryUri: string | null = null;
+  try {
+    const context = ImageManipulator.manipulate(page.uri);
+    context.crop({ originX: 0, originY, width: page.width, height });
+    const rendered = await context.renderAsync();
+    const saved = await rendered.saveAsync({
+      base64: false,
+      compress: 0.93,
+      format: SaveFormat.JPEG,
+    });
+    temporaryUri = saved.uri;
+    const file = new File(saved.uri);
+    const byteSize = file.size;
+    assertFileSize(byteSize);
+    const base64 = await file.base64();
+    if (!base64.trim()) {
+      throw new Error('Không thể đọc ảnh đã cắt. Hãy chọn vùng tên và thử lại.');
+    }
+    return {
+      id: newPageId(),
+      uri: saved.uri,
+      mimeType: 'image/jpeg',
+      byteSize,
+      width: saved.width,
+      height: saved.height,
+      base64,
+      qualityWarnings: [
+        'Chỉ quét dải ảnh bạn vừa chọn. Hãy kiểm tra vùng cắt chứa đầy đủ tên thuốc và hàm lượng.',
+      ],
+    };
+  } catch (error) {
+    if (temporaryUri) deleteTemporaryPrescriptionUris([temporaryUri]);
+    if (error instanceof Error && error.message) throw error;
+    throw new Error('Không thể cắt vùng tên thuốc. Hãy thử lại với ảnh khác.');
+  }
+}
+
 /** Best-effort cleanup for cache files created by `preparePrescriptionImage`. */
 export function deleteTemporaryPrescriptionImages(
   pages: readonly Pick<PrescriptionOcrImagePage, 'uri'>[],

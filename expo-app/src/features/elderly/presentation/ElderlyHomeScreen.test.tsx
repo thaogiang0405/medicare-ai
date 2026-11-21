@@ -58,7 +58,7 @@ jest.mock('./useElderlyDashboard', () => ({
 }));
 
 import { router } from 'expo-router';
-import { fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import { Alert } from 'react-native';
 import type { DoseEvent, Medication, MedicationSchedule } from '@/types/domain';
 import { useSessionStore } from '@/store';
@@ -214,7 +214,12 @@ describe('ElderlyHomeScreen', () => {
     expect(alertSpy).toHaveBeenCalledTimes(1);
 
     const confirmationButtons = alertSpy.mock.calls[0]?.[2];
-    confirmationButtons?.find((button) => button.text === 'Đã uống')?.onPress?.();
+    // The Alert callback is invoked manually by this test rather than by
+    // React Native's event system; flush its asynchronous cleanup inside act.
+    await act(async () => {
+      confirmationButtons?.find((button) => button.text === 'Đã uống')?.onPress?.();
+      await Promise.resolve();
+    });
     expect(recordDoseResponse).toHaveBeenCalledWith(expect.objectContaining({ schedule, medication }), 'reportedTaken');
     expect(view.queryByTestId('demo-dose-event')).toBeNull();
     alertSpy.mockRestore();

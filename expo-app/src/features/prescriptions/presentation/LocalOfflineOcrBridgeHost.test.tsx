@@ -7,16 +7,19 @@ import {
 import { LocalOfflineOcrBridgeHost } from './LocalOfflineOcrBridgeHost';
 
 let mockEngineFails = false;
+const mockWebViewSettings = jest.fn();
 
 jest.mock('./LocalOfflineOcrDom', () => {
   const React = jest.requireActual<typeof import('react')>('react');
-  function MockLocalOfflineOcrDom({ job, onEngineReady, onEngineError, onProgress, onResult }: {
+  function MockLocalOfflineOcrDom({ job, dom, onEngineReady, onEngineError, onProgress, onResult }: {
     job: { id: string; page: { base64: string } } | null;
+    dom?: { useExpoDOMWebView?: boolean; matchContents?: boolean };
     onEngineReady: () => Promise<void>;
     onEngineError: () => Promise<void>;
     onProgress: (value: { jobId: string; progress: { phase: 'recognizing'; progress: number } }) => Promise<void>;
     onResult: (value: { jobId: string; result: { text: string; confidence: number; qualityWarnings: string[] } }) => Promise<void>;
   }) {
+    mockWebViewSettings(dom);
     React.useEffect(() => {
       void (mockEngineFails ? onEngineError() : onEngineReady());
     }, [onEngineError, onEngineReady]);
@@ -47,6 +50,7 @@ describe('LocalOfflineOcrBridgeHost', () => {
     const screen = await render(<LocalOfflineOcrBridgeHost />);
 
     await waitFor(() => expect(getLocalOfflineOcrPort()?.isReady()).toBe(true));
+    expect(mockWebViewSettings).toHaveBeenCalledWith(expect.objectContaining({ useExpoDOMWebView: false }));
     const port = getLocalOfflineOcrPort();
     expect(port).not.toBeNull();
     const progress = jest.fn();

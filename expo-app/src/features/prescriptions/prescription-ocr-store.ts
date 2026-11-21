@@ -300,6 +300,7 @@ export function createPrescriptionOcrStore(
           const request = validatePrescriptionOcrRequest({ consentAccepted: true, pages });
           const result = await gateway.recognizePrescription(activeUserId, request, {
             signal: abortController.signal,
+            sourceMode,
             onProgress: (ocrProgress) => {
               if (isCurrentRequest(currentVersion, activeUserId) && !abortController.signal.aborted) {
                 set({ ocrProgress });

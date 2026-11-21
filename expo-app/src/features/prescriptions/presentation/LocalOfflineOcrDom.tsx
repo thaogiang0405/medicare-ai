@@ -5,7 +5,7 @@ import type { DOMProps } from 'expo/dom';
 
 import { getLocalOfflineOcrAssetUrls } from '../data/local-offline-ocr-assets';
 import { toLocalOfflineOcrPageResult } from '../data/local-offline-ocr-result';
-import { getPackageLabelRegion, prioritizePrintedPackageLabel } from '../data/medication-package-ocr-focus';
+import { getPackageLabelRegion, prioritizePrintedPackageLabel, selectPackageLabelReading } from '../data/medication-package-ocr-focus';
 import type {
   LocalOfflineOcrPageInput,
   LocalOfflineOcrPageProgress,
@@ -168,6 +168,37 @@ async function safelyNotify(callback: () => Promise<void>): Promise<boolean> {
   }
 }
 
+/**
+ * Runs only in the embedded DOM/WebView for a user-selected narrow name band.
+ * Improves contrast of dark printed letters without network calls or retaining
+ * images. Best-effort: callers fall back to original when canvas is unavailable.
+ */
+async function enhanceLocalNameBand(imageDataUri: string): Promise<string> {
+  const image = new Image();
+  await new Promise<void>((resolve, reject) => {
+    image.onload = () => resolve();
+    image.onerror = () => reject(new Error('image unavailable'));
+    image.src = imageDataUri;
+  });
+  if (image.naturalWidth < 1 || image.naturalHeight < 1) {
+    throw new Error('invalid image dimensions');
+  }
+  const scale = Math.min(2, Math.max(1, 2600 / image.naturalWidth));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(image.naturalWidth * scale);
+  canvas.height = Math.round(image.naturalHeight * scale);
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('canvas unavailable');
+  context.fillStyle = '#ffffff';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = 'high';
+  context.filter = 'grayscale(1) contrast(2.2)';
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  context.filter = 'none';
+  return canvas.toDataURL('image/png');
+}
+
 async function terminateWorker(worker: TesseractWorker | null): Promise<void> {
   if (!worker) return;
   try {
@@ -280,7 +311,32 @@ export default function LocalOfflineOcrDom({
         }
 
         let text = typeof result.data.text === 'string' ? result.data.text : '';
+        let confidence = result.data.confidence;
         let usedFocusedPass = false;
+        let enhancedNameBand = false;
+
+        if (isolatedNameBand && !cancelled && activeJobIdRef.current === job.id) {
+          // Try a high-contrast rendering after the original reading. Only
+          // prefer it when it visibly contains name + numeric printed strength.
+          // No spelling correction, guesswork or medicine database lookup.
+          try {
+            const enhancedImage = await enhanceLocalNameBand(imageData);
+            if (!cancelled && activeJobIdRef.current === job.id) {
+              const enhanced = await worker.recognize(enhancedImage);
+              const best = selectPackageLabelReading(
+                text,
+                typeof enhanced.data.text === 'string' ? enhanced.data.text : '',
+              );
+              if (best.enhancedSelected) {
+                text = best.text;
+                confidence = enhanced.data.confidence;
+                enhancedNameBand = true;
+              }
+            }
+          } catch {
+            // Keep the unmodified OCR text if the device cannot preprocess.
+          }
+        }
         if (job.page.sourceMode === 'packaging' && !isolatedNameBand) {
           const region = getPackageLabelRegion(job.page.width, job.page.height);
           if (region && !cancelled && activeJobIdRef.current === job.id) {
@@ -306,12 +362,14 @@ export default function LocalOfflineOcrDom({
           return;
         }
 
-        const normalized = toLocalOfflineOcrPageResult({ text, confidence: result.data.confidence });
-        const pageResult = usedFocusedPass ? {
+        const normalized = toLocalOfflineOcrPageResult({ text, confidence });
+        const pageResult = usedFocusedPass || enhancedNameBand ? {
           ...normalized,
           qualityWarnings: [
             ...normalized.qualityWarnings,
-            'Đã đọc bổ sung vùng nhãn in. Vui lòng đối chiếu tên và hàm lượng với bao bì thật.',
+            enhancedNameBand
+              ? 'Đã tăng tương phản chữ trên nhãn. Vui lòng đối chiếu tên và hàm lượng với bao bì thật.'
+              : 'Đã đọc bổ sung vùng nhãn in. Vui lòng đối chiếu tên và hàm lượng với bao bì thật.',
           ],
         } : normalized;
 

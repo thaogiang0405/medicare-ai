@@ -5,6 +5,7 @@ import type { DOMProps } from 'expo/dom';
 
 import { getLocalOfflineOcrAssetUrls } from '../data/local-offline-ocr-assets';
 import { toLocalOfflineOcrPageResult } from '../data/local-offline-ocr-result';
+import { getPackageLabelRegion, prioritizePrintedPackageLabel } from '../data/medication-package-ocr-focus';
 import type {
   LocalOfflineOcrPageInput,
   LocalOfflineOcrPageProgress,
@@ -17,7 +18,8 @@ type TesseractLoggerEvent = Readonly<{
 }>;
 
 type TesseractWorker = Readonly<{
-  recognize(image: string): Promise<Readonly<{ data: Readonly<{ text: unknown; confidence: unknown }> }>>;
+  recognize(image: string, options?: Readonly<{ rectangle?: Readonly<{ left: number; top: number; width: number; height: number }> }>): Promise<Readonly<{ data: Readonly<{ text: unknown; confidence: unknown }> }>>;
+  setParameters(params: Readonly<{ tessedit_pageseg_mode: '6' | '11' }>): Promise<unknown>;
   terminate(): Promise<unknown>;
 }>;
 
@@ -155,6 +157,17 @@ function toImageDataUri(page: LocalOfflineOcrPageInput): string {
   return `data:${page.mimeType};base64,${page.base64}`;
 }
 
+/** Expo DOM callback promises may reject during navigation/unmount. Don't leak
+ * unhandled bridge rejections into Expo Go's error overlay. */
+async function safelyNotify(callback: () => Promise<void>): Promise<boolean> {
+  try {
+    await callback();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function terminateWorker(worker: TesseractWorker | null): Promise<void> {
   if (!worker) return;
   try {
@@ -203,16 +216,16 @@ export default function LocalOfflineOcrDom({
         worker = null;
         if (disposed) return;
         setEngineState('ready');
-        await onEngineReady();
+        await safelyNotify(onEngineReady);
       } catch {
         await terminateWorker(worker);
         if (disposed) return;
         setEngineState('error');
-        await onEngineError();
+        await safelyNotify(onEngineError);
       }
     };
 
-    void prewarm();
+    void prewarm().catch(() => undefined);
     return () => {
       disposed = true;
       void terminateWorker(activeWorkerRef.current);
@@ -242,27 +255,72 @@ export default function LocalOfflineOcrDom({
           gzip: true,
           logger: (event) => {
             if (!cancelled && activeJobIdRef.current === job.id) {
-              void onProgress({ jobId: job.id, progress: phaseForLoggerEvent(event) });
+              void safelyNotify(() => onProgress({ jobId: job.id, progress: phaseForLoggerEvent(event) }));
             }
           },
         });
         activeWorkerRef.current = worker;
         if (cancelled || activeJobIdRef.current !== job.id) return;
 
-        const result = await worker.recognize(toImageDataUri(job.page));
+        const imageData = toImageDataUri(job.page);
+        // Packaging differs from prescriptions: names can be much larger than
+        // the small printed instructions in the same photograph.
+        if (job.page.sourceMode === 'packaging') {
+          await worker.setParameters({ tessedit_pageseg_mode: '11' });
+        }
+        const result = await worker.recognize(imageData);
         if (cancelled || activeJobIdRef.current !== job.id) {
-          await onCancelled({ jobId: job.id });
+          await safelyNotify(() => onCancelled({ jobId: job.id }));
           return;
         }
 
-        await onProgress({ jobId: job.id, progress: { phase: 'finalizing', progress: 1 } });
-        await onResult({ jobId: job.id, result: toLocalOfflineOcrPageResult(result.data) });
-      } catch {
+        let text = typeof result.data.text === 'string' ? result.data.text : '';
+        let usedFocusedPass = false;
+        if (job.page.sourceMode === 'packaging') {
+          const region = getPackageLabelRegion(job.page.width, job.page.height);
+          if (region && !cancelled && activeJobIdRef.current === job.id) {
+            // A single bounded additional pass; if WebView runs out of memory
+            // or segmentation fails, keep the full-frame OCR result.
+            try {
+              await worker.setParameters({ tessedit_pageseg_mode: '6' });
+              const focused = await worker.recognize(imageData, { rectangle: region });
+              const prioritized = prioritizePrintedPackageLabel(
+                text,
+                typeof focused.data.text === 'string' ? focused.data.text : '',
+              );
+              text = prioritized.text;
+              usedFocusedPass = prioritized.usedFocusedPass;
+            } catch {
+              // Best effort only. Do not log private photo/text or invent names.
+            }
+          }
+        }
+
         if (cancelled || activeJobIdRef.current !== job.id) {
-          await onCancelled({ jobId: job.id });
+          await safelyNotify(() => onCancelled({ jobId: job.id }));
           return;
         }
-        await onError({ jobId: job.id });
+
+        const normalized = toLocalOfflineOcrPageResult({ text, confidence: result.data.confidence });
+        const pageResult = usedFocusedPass ? {
+          ...normalized,
+          qualityWarnings: [
+            ...normalized.qualityWarnings,
+            'Đã đọc bổ sung vùng nhãn in. Vui lòng đối chiếu tên và hàm lượng với bao bì thật.',
+          ],
+        } : normalized;
+
+        await safelyNotify(() => onProgress({ jobId: job.id, progress: { phase: 'finalizing', progress: 1 } }));
+        const delivered = await safelyNotify(() => onResult({ jobId: job.id, result: pageResult }));
+        if (!delivered) {
+          await safelyNotify(() => onError({ jobId: job.id }));
+        }
+      } catch {
+        if (cancelled || activeJobIdRef.current !== job.id) {
+          await safelyNotify(() => onCancelled({ jobId: job.id }));
+          return;
+        }
+        await safelyNotify(() => onError({ jobId: job.id }));
       } finally {
         await terminateWorker(worker);
         if (activeWorkerRef.current === worker) activeWorkerRef.current = null;
@@ -270,7 +328,7 @@ export default function LocalOfflineOcrDom({
       }
     };
 
-    void recognize();
+    void recognize().catch(() => undefined);
     return () => {
       cancelled = true;
       if (activeJobIdRef.current === job.id) {

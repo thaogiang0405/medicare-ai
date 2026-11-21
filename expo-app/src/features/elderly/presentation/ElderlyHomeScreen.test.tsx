@@ -235,6 +235,6 @@ describe('ElderlyHomeScreen', () => {
 
     await fireEvent.press(view.getByLabelText('Quét đơn thuốc'));
 
-    expect(router.push).toHaveBeenCalledWith('./prescription-ocr');
+    expect(router.push).toHaveBeenCalledWith('/elderly/prescription-ocr');
   });
 });

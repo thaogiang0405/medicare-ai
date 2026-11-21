@@ -290,7 +290,7 @@ export default function ElderlyHomeScreen() {
             ? 'Chụp hoặc chọn tối đa 3 trang đơn thuốc, kiểm tra kết quả rồi xác nhận từng thuốc.'
             : 'Dán văn bản nhận dạng từ ảnh bằng Live Text trên iPhone và kiểm tra trước khi lưu. Không dùng API trả phí.'}
           icon={<Text style={styles.icon}>⌁</Text>}
-          onPress={() => router.push('./prescription-ocr')}
+          onPress={() => router.push('/elderly/prescription-ocr')}
           title="Quét đơn thuốc"
         />
         <ActionCard

@@ -237,4 +237,10 @@ describe('ElderlyHomeScreen', () => {
 
     expect(router.push).toHaveBeenCalledWith('/elderly/prescription-ocr');
   });
+
+  it('offers the separate safe package-label OCR route', async () => {
+    const view = await render(<ElderlyHomeScreen />);
+    await fireEvent.press(view.getByLabelText('Quét vỏ hộp thuốc'));
+    expect(router.push).toHaveBeenCalledWith('/elderly/medication-package');
+  });
 });

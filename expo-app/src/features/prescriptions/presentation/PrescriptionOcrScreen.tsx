@@ -540,9 +540,34 @@ function ImagePageCard({
   onReplaceFromLibrary: () => void;
   onReplaceWithScanner: () => void;
 }>) {
+  const [nameY, setNameY] = useState<number | null>(null);
+  const [previewHeight, setPreviewHeight] = useState(0);
+  const bandTop = nameY === null ? 0 : Math.max(0, Math.min(0.78, nameY - 0.11));
   return (
     <View style={styles.imageCard}>
-      <Image accessibilityLabel={`Ảnh đơn thuốc trang ${index + 1}`} source={{ uri: page.uri }} style={styles.previewImage} />
+      {scanMode === 'packaging' ? <Text style={styles.sectionDescription}>Chạm vào dòng tên thuốc trên ảnh. Khung xanh cho biết phần sẽ quét; nhấn “Chỉ quét vùng tên đã chọn” trước khi nhận dạng.</Text> : null}
+      {scanMode === 'packaging' ? (
+        <Pressable
+          accessibilityLabel="Chạm vào dòng tên thuốc trên ảnh bao bì"
+          accessibilityRole="button"
+          disabled={disabled}
+          onLayout={(event) => setPreviewHeight(event.nativeEvent.layout.height)}
+          onPress={(event) => {
+            if (previewHeight <= 0) return;
+            const y = event.nativeEvent.locationY / previewHeight;
+            setNameY(Math.min(1, Math.max(0, y)));
+          }}
+          style={styles.imageSelectionSurface}
+        >
+          <Image accessibilityLabel={'Ảnh bao bì số ' + (index + 1)} resizeMode="contain" source={{ uri: page.uri }} style={[styles.previewImage, { aspectRatio: page.width / page.height }]} />
+          {nameY !== null ? (
+            <View pointerEvents="none" style={[styles.nameBandOverlay, { top: `${bandTop * 100}%` as `${number}%` }]} />
+          ) : null}
+        </Pressable>
+      ) : (
+        <Image accessibilityLabel={'Ảnh đơn thuốc trang ' + (index + 1)} source={{ uri: page.uri }} style={styles.previewImage} />
+      )}
+      {scanMode === 'packaging' ? <SecondaryButton disabled={disabled || nameY === null} label="Chỉ quét vùng tên đã chọn" onPress={() => { if (nameY !== null) onCropNameBand(nameY); }} /> : null}
       <View style={styles.imageCardContent}>
         <Text style={styles.cardTitle}>Trang {index + 1}</Text>
         <Text style={styles.metadataText}>{Math.round(page.byteSize / 1024)} KB · {page.width} × {page.height}</Text>
@@ -740,6 +765,8 @@ const styles = StyleSheet.create({
   actions: { gap: medicareSpacing.sm },
   imageCard: { borderColor: medicareColors.border, borderRadius: medicareRadius.md, borderWidth: 1, gap: medicareSpacing.md, overflow: 'hidden', padding: medicareSpacing.md },
   previewImage: { aspectRatio: 4 / 3, backgroundColor: medicareColors.primaryContainer, borderRadius: medicareRadius.sm, width: '100%' },
+  imageSelectionSurface: { position: 'relative', width: '100%' },
+  nameBandOverlay: { position: 'absolute', left: 0, right: 0, height: '22%', backgroundColor: 'rgba(0,108,103,0.15)', borderColor: medicareColors.primary, borderWidth: 2, borderRadius: medicareRadius.sm },
   imageCardContent: { gap: medicareSpacing.xxs },
   cardTitle: { color: medicareColors.text, fontSize: medicareTypography.label, fontWeight: '800', lineHeight: 23 },
   metadataText: { color: medicareColors.textMuted, fontSize: medicareTypography.bodySmall, lineHeight: 22 },

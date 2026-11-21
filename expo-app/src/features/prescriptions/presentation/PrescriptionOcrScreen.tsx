@@ -542,7 +542,8 @@ function ImagePageCard({
 }>) {
   const [nameY, setNameY] = useState<number | null>(null);
   const [previewHeight, setPreviewHeight] = useState(0);
-  const bandTop = nameY === null ? 0 : Math.max(0, Math.min(0.78, nameY - 0.11));
+  const bandFraction = page.width / page.height >= 2.3 ? 0.42 : 0.15;
+  const bandTop = nameY === null ? 0 : Math.max(0, Math.min(1 - bandFraction, nameY - bandFraction / 2));
   return (
     <View style={styles.imageCard}>
       {scanMode === 'packaging' ? <Text style={styles.sectionDescription}>Chạm vào dòng tên thuốc trên ảnh. Khung xanh cho biết phần sẽ quét; nhấn “Chỉ quét vùng tên đã chọn” trước khi nhận dạng.</Text> : null}
@@ -561,7 +562,7 @@ function ImagePageCard({
         >
           <Image accessibilityLabel={'Ảnh bao bì số ' + (index + 1)} resizeMode="contain" source={{ uri: page.uri }} style={[styles.previewImage, { aspectRatio: page.width / page.height }]} />
           {nameY !== null ? (
-            <View pointerEvents="none" style={[styles.nameBandOverlay, { top: `${bandTop * 100}%` as `${number}%` }]} />
+            <View pointerEvents="none" style={[styles.nameBandOverlay, { top: `${bandTop * 100}%` as `${number}%`, height: `${bandFraction * 100}%` as `${number}%` }]} />
           ) : null}
         </Pressable>
       ) : (

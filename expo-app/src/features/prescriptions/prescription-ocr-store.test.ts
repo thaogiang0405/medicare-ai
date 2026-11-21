@@ -162,4 +162,45 @@ describe('prescription OCR store', () => {
     await processing;
     expect(store.getState()).toMatchObject({ status: 'ready', ocrResult: null, candidates: [] });
   });
+
+  it('parses an offline package scan with no automatically selected medicine or directions', async () => {
+    const gateway: PrescriptionOcrGateway = {
+      recognizePrescription: jest.fn(async () => ({
+        provider: 'local-offline' as const,
+        pages: [{ pageIndex: 0, text: 'Tên thuốc: Paracetamol 500 mg\nHSD: 12/2028', confidence: 0.92, qualityWarnings: [] }],
+      })),
+    };
+    const store = createPrescriptionOcrStore(gateway, repository, () => true);
+    store.getState().bindAuthenticatedUser('elderly-a');
+    store.getState().setPages([imagePage]);
+    store.getState().setConsentAccepted(true);
+    store.getState().setSourceMode('packaging');
+    expect(store.getState().pages).toEqual([]);
+
+    store.getState().setPages([imagePage]);
+    store.getState().setConsentAccepted(true);
+    await store.getState().process();
+    expect(store.getState().candidates).toHaveLength(1);
+    expect(store.getState().candidates[0]).toMatchObject({
+      selected: false,
+      input: { name: 'Paracetamol', strengthText: '500 mg', directionsText: '' },
+    });
+    store.getState().setCandidateSelected(store.getState().candidates[0].id, true);
+    expect(store.getState().candidates[0].selected).toBe(true);
+
+    store.getState().setSourceMode('prescription');
+    expect(store.getState()).toMatchObject({ sourceMode: 'prescription', pages: [], candidates: [], ocrResult: null });
+  });
+
+  it('parses pasted packaging letters without an OCR server request', () => {
+    const gateway: PrescriptionOcrGateway = { recognizePrescription: jest.fn(async () => ocrResult) };
+    const store = createPrescriptionOcrStore(gateway, repository, () => false);
+    store.getState().bindAuthenticatedUser('elderly-a');
+    store.getState().setSourceMode('packaging');
+    store.getState().reviewPastedText('Tên thuốc: Vitamin C 500 mg');
+    expect(gateway.recognizePrescription).not.toHaveBeenCalled();
+    expect(store.getState().candidates[0]).toMatchObject({
+      selected: false, input: { name: 'Vitamin C', strengthText: '500 mg', directionsText: '' },
+    });
+  });
 });

@@ -6,9 +6,10 @@ import type {
 /** Data passed through the DOM bridge contains one transient image page only. */
 export type LocalOfflineOcrPageInput = Readonly<Pick<
   PrescriptionOcrImagePage,
-  'id' | 'mimeType' | 'base64'
+  'id' | 'mimeType' | 'base64' | 'width' | 'height'
 > & {
   pageIndex: number;
+  sourceMode: 'prescription' | 'packaging';
 }>;
 
 export type LocalOfflineOcrPageResult = Readonly<{

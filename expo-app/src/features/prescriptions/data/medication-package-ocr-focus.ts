@@ -18,6 +18,23 @@ function candidateNameLine(line: string): boolean {
     && !excludedName.test(name);
 }
 
+/**
+ * Compare two genuine OCR readings. Only prefer the enhanced pass if it
+ * actually reads a plausible printed product name AND unit-bearing strength.
+ * Never repair SOO -> 500 or invent a missing unit from a drug catalogue.
+ */
+export function selectPackageLabelReading(
+  originalText: string,
+  enhancedText: string,
+): Readonly<{ text: string; enhancedSelected: boolean }> {
+  const originalHasEvidence = originalText.split(/\r?\n/).some(candidateNameLine);
+  const enhancedHasEvidence = enhancedText.split(/\r?\n/).some(candidateNameLine);
+  if (enhancedHasEvidence && !originalHasEvidence) {
+    return { text: enhancedText, enhancedSelected: true };
+  }
+  return { text: originalText, enhancedSelected: false };
+}
+
 export type PackageLabelRegion = Readonly<{ left: number; top: number; width: number; height: number }>;
 
 /** Center-upper portion where large printed product titles commonly appear. */

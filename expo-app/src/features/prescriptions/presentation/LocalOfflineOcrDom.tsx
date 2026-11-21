@@ -19,7 +19,7 @@ type TesseractLoggerEvent = Readonly<{
 
 type TesseractWorker = Readonly<{
   recognize(image: string, options?: Readonly<{ rectangle?: Readonly<{ left: number; top: number; width: number; height: number }> }>): Promise<Readonly<{ data: Readonly<{ text: unknown; confidence: unknown }> }>>;
-  setParameters(params: Readonly<{ tessedit_pageseg_mode: '6' | '11' }>): Promise<unknown>;
+  setParameters(params: Readonly<{ tessedit_pageseg_mode: '6' | '7' | '11' }>): Promise<unknown>;
   terminate(): Promise<unknown>;
 }>;
 
@@ -265,8 +265,13 @@ export default function LocalOfflineOcrDom({
         const imageData = toImageDataUri(job.page);
         // Packaging differs from prescriptions: names can be much larger than
         // the small printed instructions in the same photograph.
+        // When a user taps the name line and locally crops its narrow band,
+        // Tesseract's single-line segmentation reads the large printed label
+        // instead of attempting to segment the whole package layout.
+        const isolatedNameBand = job.page.sourceMode === 'packaging'
+          && job.page.width >= job.page.height * 2.3;
         if (job.page.sourceMode === 'packaging') {
-          await worker.setParameters({ tessedit_pageseg_mode: '11' });
+          await worker.setParameters({ tessedit_pageseg_mode: isolatedNameBand ? '7' : '11' });
         }
         const result = await worker.recognize(imageData);
         if (cancelled || activeJobIdRef.current !== job.id) {
@@ -276,7 +281,7 @@ export default function LocalOfflineOcrDom({
 
         let text = typeof result.data.text === 'string' ? result.data.text : '';
         let usedFocusedPass = false;
-        if (job.page.sourceMode === 'packaging') {
+        if (job.page.sourceMode === 'packaging' && !isolatedNameBand) {
           const region = getPackageLabelRegion(job.page.width, job.page.height);
           if (region && !cancelled && activeJobIdRef.current === job.id) {
             // A single bounded additional pass; if WebView runs out of memory

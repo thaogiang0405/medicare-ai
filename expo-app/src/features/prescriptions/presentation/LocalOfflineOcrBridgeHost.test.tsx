@@ -7,6 +7,7 @@ import {
 import { LocalOfflineOcrBridgeHost } from './LocalOfflineOcrBridgeHost';
 
 let mockEngineFails = false;
+let mockHoldOcrJob = false;
 const mockWebViewSettings = jest.fn();
 
 jest.mock('./LocalOfflineOcrDom', () => {
@@ -24,7 +25,7 @@ jest.mock('./LocalOfflineOcrDom', () => {
       void (mockEngineFails ? onEngineError() : onEngineReady());
     }, [onEngineError, onEngineReady]);
     React.useEffect(() => {
-      if (!job) return;
+      if (!job || mockHoldOcrJob) return;
       void onProgress({ jobId: job.id, progress: { phase: 'recognizing', progress: 0.5 } });
       void onResult({
         jobId: job.id,
@@ -43,6 +44,7 @@ jest.mock('./LocalOfflineOcrDom', () => {
 describe('LocalOfflineOcrBridgeHost', () => {
   afterEach(() => {
     mockEngineFails = false;
+    mockHoldOcrJob = false;
     resetLocalOfflineOcrPortForTests();
   });
 
@@ -72,6 +74,32 @@ describe('LocalOfflineOcrBridgeHost', () => {
     expect(result).toEqual({ text: 'Paracetamol 500 mg', confidence: 0.94, qualityWarnings: [] });
     expect(progress).toHaveBeenCalledWith({ phase: 'recognizing', progress: 0.5 });
     await screen.unmount();
+    expect(getLocalOfflineOcrPort()).toBeNull();
+  });
+
+  it('rejects a pending OCR job during unmount without delivering a stale DOM result', async () => {
+    mockHoldOcrJob = true;
+    const screen = await render(<LocalOfflineOcrBridgeHost />);
+    await waitFor(() => expect(getLocalOfflineOcrPort()?.isReady()).toBe(true));
+    const localPort = getLocalOfflineOcrPort();
+    expect(localPort).not.toBeNull();
+
+    let pending!: ReturnType<NonNullable<typeof localPort>['recognizePage']>;
+    await act(async () => {
+      pending = localPort!.recognizePage({
+        id: 'page-pending',
+        pageIndex: 0,
+        mimeType: 'image/jpeg',
+        base64: 'YWJj',
+        width: 800,
+        height: 280,
+        sourceMode: 'packaging',
+      }, {});
+      // Attach a handler before unmount, to avoid an unhandled rejection in Jest.
+      void pending.catch(() => undefined);
+    });
+    await screen.unmount();
+    await expect(pending).rejects.toMatchObject({ code: 'cancelled' });
     expect(getLocalOfflineOcrPort()).toBeNull();
   });
 

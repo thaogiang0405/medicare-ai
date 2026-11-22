@@ -104,4 +104,21 @@ describe('conservative package-lettering parser', () => {
     expect(items[0]?.input).toEqual({ name: 'Acetaminophen', strengthText: '500 mg', directionsText: '' });
     expect(items[0]?.sourceText).toBe('Acetaminophen\n\n500 mg');
   });
+  it('ignores an OCR border mark after the title and keeps the original text for review', () => {
+    const page = { pageIndex: 0, confidence: 0.9, qualityWarnings: [] };
+    const items = parseMedicationPackageOcrPage({ ...page, text: "CỔ 2 8\n\node:\n\nPharmViet\n\na aati\n\n6p 0 vi x 10 viên nén\n\nVì sức khỏe cộng đồng\n\nW\n\nAcetaminophen |\n\n500 mg\n\nGiam dau - Ha sot\n\nChi dinh:\n\ntung\n\nDùng để giảm đau các mức độ nhẹ và\n\nhạ sốt.\n\nFy\n\nHO j\n\ndùng\n\nA ee" });
+    expect(items).toHaveLength(1);
+    expect(items[0]?.input).toEqual({ name: 'Acetaminophen', strengthText: '500 mg', directionsText: '' });
+    expect(items[0]?.sourceText).toBe('Acetaminophen |\n\n500 mg');
+
+    for (const text of [
+      'Acetaminophen|\n500 mg',
+      'Acetaminophen | Extra\n500 mg',
+      'Acetaminophen |\n\n\n500 mg',
+      'Acetaminophen |\nSOO mg',
+      'Acetaminophen |\n500 mg\nAmoxicillin\n250 mg',
+    ]) {
+      expect(parseMedicationPackageOcrPage({ ...page, text })).toEqual([]);
+    }
+  });
 });

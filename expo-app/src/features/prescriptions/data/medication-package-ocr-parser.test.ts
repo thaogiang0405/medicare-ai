@@ -51,4 +51,20 @@ describe('conservative package-lettering parser', () => {
       expect.stringContaining('tin cậy thấp'), 'OCR_LOW_CONFIDENCE',
     ]));
   });
+
+  it('ignores descriptive text ahead of the real name', () => {
+    const page = { pageIndex: 0, confidence: 0.9, qualityWarnings: [] };
+    expect(parseMedicationPackageOcrPage({ ...page, text: 'Thuốc giảm đau 500 mg\nParacetamol 500 mg' })[0]?.input.name)
+      .toBe('Paracetamol');
+    expect(parseMedicationPackageOcrPage({ ...page, text: 'Thuốc hạ sốt 500 mg' })).toEqual([]);
+  });
+
+  it('joins adjacent explicitly labelled fields without guessing an ambiguous strength', () => {
+    const page = { pageIndex: 0, confidence: 0.9, qualityWarnings: [] };
+    const read = (text: string) => parseMedicationPackageOcrPage({ ...page, text })[0];
+    expect(read('Tên thuốc: Paracetamol\nHàm lượng: 500 mg')?.input.strengthText).toBe('500 mg');
+    expect(read('Tên thuốc: Paracetamol\nHàm lượng: SOO mg')?.input.strengthText).toBe('');
+    expect(read('Tên thuốc: Paracetamol\nThành phần khác: 500 mg')?.input.strengthText).toBe('');
+    expect(read('Tên thuốc: Paracetamol\n\nHàm lượng: 500 mg')?.input.strengthText).toBe('');
+  });
 });

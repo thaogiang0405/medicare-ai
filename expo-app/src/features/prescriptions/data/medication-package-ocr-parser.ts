@@ -4,6 +4,9 @@ import type { PrescriptionOcrCandidate, PrescriptionOcrPage } from '../domain/pr
 const strengthPattern = /\b\d{1,5}(?:[.,]\d{1,4})?\s*(?:mg|mcg|µg|g|ml|iu|%)(?![a-z])/i;
 const labeledName = /^(?:tên\s+thuốc|tên\s+sản\s+phẩm|medicine\s+name|product\s+name|thuốc)\s*[:：-]\s*(.+)$/i;
 const exclude = /^(?:thành\s+phần|hoạt\s+chất|hàm\s+lượng|hướng\s+dẫn|liều\s+dùng|cách\s+dùng|công\s+dụng|chỉ\s+định|chống\s+chỉ\s+định|nhà\s+sản\s+xuất|nơi\s+sản\s+xuất|sản\s+xuất|công\s+ty|xuất\s+xứ|bảo\s+quản|hạn\s+sử\s+dụng|ngày\s+sản\s+xuất|số\s+lô|số\s+đăng\s+ký|sđk|hộp|viên\s+nén|viên\s+nang|đọc\s+kỹ|để\s+xa|trẻ\s+em|khối\s+lượng|thể\s+tích|manufactured|expiry|exp\b|mfg\b|lot\b|batch\b|registration\b|composition\b|ingredients\b|directions\b|dose\b)/i;
+const descriptiveName = /^(?:thuốc\s+(?:giảm\s+đau|hạ\s+sốt|kê\s+đơn|không\s+kê\s+đơn)|giảm\s+đau|hạ\s+sốt|pain\s+relief)(?=\s|[:/–—-]|$)/i;
+const strengthLabel = /^(?:hàm\s+lượng|strength)\s*[:：-]\s*(.+)$/i;
+const standaloneStrength = new RegExp('^(?:' + strengthPattern.source + ')$', 'i');
 const genericName = /^(?:thuốc|medicine|product|dược\s+phẩm|thực\s+phẩm|bổ\s+sung|chất\s+lượng)$/i;
 type Evidence = Readonly<{ name: string; strengthText: string; line: string; lineIndex: number; labelled: boolean }>;
 const normalize = (s: string) => s.replace(/\s+/g, ' ').trim();
@@ -16,7 +19,7 @@ function parseLine(line: string, lineIndex: number): Evidence | null {
   if (!labelled && (!strength || strength.index === 0)) return null;
   const before = strength?.index === undefined ? value : value.slice(0, strength.index);
   const name = normalize(before.replace(/[\s,;:–—-]+$/, ''));
-  if (name.length < 3 || name.length > 120 || genericName.test(name)) return null;
+  if (name.length < 3 || name.length > 120 || genericName.test(name) || descriptiveName.test(name)) return null;
   if (!/^[A-Za-zÀ-ỹ]/.test(name)) return null;
   if (!labelled && name.split(/\s+/).length > 6) return null;
   const after = strength?.index === undefined ? '' : normalize(value.slice(strength.index + strength[0].length));
@@ -26,8 +29,15 @@ function parseLine(line: string, lineIndex: number): Evidence | null {
 
 /** At most one candidate per photo; the caller must leave it unselected. */
 export function parseMedicationPackageOcrPage(page: PrescriptionOcrPage): PrescriptionOcrCandidate[] {
-  const evidence = page.text.split(/\r?\n/).map(normalize).filter(Boolean)
-    .map(parseLine).filter((x): x is Evidence => x !== null);
+  const lines = page.text.split(/\r?\n/).map(normalize);
+  const evidence = lines.map((line, index): Evidence | null => {
+    const item = parseLine(line, index);
+    if (!item?.labelled || item.strengthText) return item;
+    const nextLine = lines[index + 1] ?? '';
+    const strength = nextLine.match(strengthLabel)?.[1] ?? '';
+    if (!standaloneStrength.test(strength)) return item;
+    return { ...item, strengthText: strength, line: item.line + '\n' + nextLine };
+  }).filter((x): x is Evidence => x !== null);
   const found = evidence.find((x) => x.labelled) ?? evidence.find((x) => !!x.strengthText);
   if (!found) return [];
   const warnings = [

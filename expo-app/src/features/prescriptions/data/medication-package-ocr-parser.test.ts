@@ -84,12 +84,24 @@ describe('conservative package-lettering parser', () => {
     const page = { pageIndex: 0, confidence: 0.9, qualityWarnings: [] };
     for (const text of [
       'Acetaminophen\nSOO mg',
-      'Acetaminophen\n\n500 mg',
+      'Acetaminophen\n\n\n500 mg',
+      'Acetaminophen\nPharmViet logo\n500 mg',
+      'Acetsniili\n\nphen\n\n500mg',
+      'Acetaminophen\n\n500 mg\nAmoxicillin\n250 mg',
       'Acetaminophen\n500',
       'Thành phần:\nAcetaminophen\n500 mg',
       'Acetaminophen\n500 mg\nAmoxicillin\n250 mg',
     ]) {
       expect(parseMedicationPackageOcrPage({ ...page, text })).toEqual([]);
     }
+  });
+  it('reads the two clearly printed fields separated by one empty OCR line', () => {
+    const items = parseMedicationPackageOcrPage({
+      pageIndex: 0, confidence: 0.9, qualityWarnings: [],
+      text: "ARTES,\n\n`\n\nƒ PharmViet\n\n'10 vỉ x 10 viên nén\n\nÉ\n\nN\n\ni Vi sức khỏe cộng đồng\n\n|\n\nAcetaminophen\n\n500 mg\n\nGiảm dau - Hạ sốt\n\nChỉ định:\n\nDùng để giảm đau các mức độ nhẹ và\n\nhạ sốt.\n\nlướng\n\nng trướ\n\nLGMP-WHO }",
+    });
+    expect(items).toHaveLength(1);
+    expect(items[0]?.input).toEqual({ name: 'Acetaminophen', strengthText: '500 mg', directionsText: '' });
+    expect(items[0]?.sourceText).toBe('Acetaminophen\n\n500 mg');
   });
 });

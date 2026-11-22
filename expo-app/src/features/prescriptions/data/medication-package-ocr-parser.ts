@@ -46,10 +46,13 @@ export function parseMedicationPackageOcrPage(page: PrescriptionOcrPage): Prescr
   const stacked: Evidence[] = [];
   for (const [index, name] of lines.entries()) {
     if (detailsHeader.test(name)) break;
-    const strengthText = lines[index + 1] ?? '';
+    // Sparse OCR sometimes inserts one empty line between the printed fields.
+    // Never cross a nonempty line or a larger gap to find a strength.
+    const strengthIndex = lines[index + 1] === '' ? index + 2 : index + 1;
+    const strengthText = lines[strengthIndex] ?? '';
     if (!stackedName.test(name) || exclude.test(name) || genericName.test(name)
       || descriptiveName.test(name) || !stackedStrength.test(strengthText)) continue;
-    stacked.push({ name, strengthText, line: name + '\n' + strengthText, lineIndex: index, labelled: false });
+    stacked.push({ name, strengthText, line: lines.slice(index, strengthIndex + 1).join('\n'), lineIndex: index, labelled: false });
   }
   const found = evidence.find((x) => x.labelled) ?? evidence.find((x) => !!x.strengthText)
     ?? (stacked.length === 1 ? stacked[0] : undefined);

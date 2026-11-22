@@ -206,12 +206,22 @@ async function enhancePackageLabelImage(imageDataUri: string, focusedTitle = fal
   context.fillRect(0, 0, canvas.width, canvas.height);
   context.imageSmoothingEnabled = true;
   context.imageSmoothingQuality = 'high';
-  context.filter = 'grayscale(1) contrast(2.2)';
   context.drawImage(
     image, region.left, region.top, region.width, region.height,
     padding, padding, width, height,
   );
-  context.filter = 'none';
+  // Apply the transform to pixels, not Canvas.filter: some iOS WebViews
+  // can draw a canvas but do not apply canvas filter strings.
+  const pixels = context.getImageData(padding, padding, width, height);
+  const rgba = pixels.data;
+  for (let index = 0; index < rgba.length; index += 4) {
+    const gray = .2126 * rgba[index] + .7152 * rgba[index + 1] + .0722 * rgba[index + 2];
+    const contrasted = 128 + (gray - 128) * 2.2;
+    rgba[index] = contrasted;
+    rgba[index + 1] = contrasted;
+    rgba[index + 2] = contrasted;
+  }
+  context.putImageData(pixels, padding, padding);
   return canvas.toDataURL('image/png');
 }
 

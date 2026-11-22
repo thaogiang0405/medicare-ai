@@ -80,12 +80,12 @@ export function prioritizePrintedPackageLabel(fullText: string, focusedText: str
 export function getPackageTitleRetryRegion(width: number, height: number): PackageLabelRegion | null {
   if (!Number.isFinite(width) || !Number.isFinite(height) || width < 200 || height < 200) return null;
   const left = Math.floor(width * 0.08);
-  const top = Math.floor(height * 0.25);
+  const top = Math.floor(height * 0.24);
   return {
     left,
     top,
-    width: Math.floor(width * 0.82) - left,
-    height: Math.floor(height * 0.53) - top,
+    width: Math.floor(width * 0.87) - left,
+    height: Math.floor(height * 0.56) - top,
   };
 }
 

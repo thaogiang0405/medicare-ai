@@ -53,7 +53,8 @@ describe('focused packaging OCR without hallucination', () => {
 
 describe('two-line front panel retry', () => {
   it('bounds the title crop and skips small frames', () => {
-    expect(getPackageTitleRetryRegion(718, 437)).toEqual({ left: 57, top: 109, width: 531, height: 122 });
+    expect(getPackageTitleRetryRegion(718, 437)).toEqual({ left: 57, top: 104, width: 567, height: 140 });
+    expect(getPackageTitleRetryRegion(1163, 751)).toEqual({ left: 93, top: 180, width: 918, height: 240 });
     expect(getPackageTitleRetryRegion(718, 199)).toBeNull();
   });
 

@@ -5,7 +5,13 @@ import type { DOMProps } from 'expo/dom';
 
 import { getLocalOfflineOcrAssetUrls } from '../data/local-offline-ocr-assets';
 import { toLocalOfflineOcrPageResult } from '../data/local-offline-ocr-result';
-import { getPackageLabelRegion, prioritizePrintedPackageLabel, selectPackageLabelReading } from '../data/medication-package-ocr-focus';
+import {
+  getPackageLabelRegion,
+  getPackageTitleRetryRegion,
+  hasCompletePrintedPackageLabel,
+  prioritizePrintedPackageLabel,
+  selectPackageLabelReading,
+} from '../data/medication-package-ocr-focus';
 import type {
   LocalOfflineOcrPageInput,
   LocalOfflineOcrPageProgress,
@@ -169,11 +175,11 @@ async function safelyNotify(callback: () => Promise<void>): Promise<boolean> {
 }
 
 /**
- * Runs only in the embedded DOM/WebView for a user-selected narrow name band.
+ * Runs only in the embedded DOM/WebView on a packaging label region.
  * Improves contrast of dark printed letters without network calls or retaining
  * images. Best-effort: callers fall back to original when canvas is unavailable.
  */
-async function enhanceLocalNameBand(imageDataUri: string): Promise<string> {
+async function enhancePackageLabelImage(imageDataUri: string, focusedTitle = false): Promise<string> {
   const image = new Image();
   await new Promise<void>((resolve, reject) => {
     image.onload = () => resolve();
@@ -183,10 +189,17 @@ async function enhanceLocalNameBand(imageDataUri: string): Promise<string> {
   if (image.naturalWidth < 1 || image.naturalHeight < 1) {
     throw new Error('invalid image dimensions');
   }
-  const scale = Math.min(2, Math.max(1, 2600 / image.naturalWidth));
+  const region = focusedTitle
+    ? getPackageTitleRetryRegion(image.naturalWidth, image.naturalHeight)
+    : { left: 0, top: 0, width: image.naturalWidth, height: image.naturalHeight };
+  if (!region) throw new Error('image too small for title retry');
+  const scale = Math.min(2, Math.max(1, 2600 / region.width));
+  const width = Math.round(region.width * scale);
+  const height = Math.round(region.height * scale);
+  const padding = focusedTitle ? 24 : 0;
   const canvas = document.createElement('canvas');
-  canvas.width = Math.round(image.naturalWidth * scale);
-  canvas.height = Math.round(image.naturalHeight * scale);
+  canvas.width = width + padding * 2;
+  canvas.height = height + padding * 2;
   const context = canvas.getContext('2d');
   if (!context) throw new Error('canvas unavailable');
   context.fillStyle = '#ffffff';
@@ -194,7 +207,10 @@ async function enhanceLocalNameBand(imageDataUri: string): Promise<string> {
   context.imageSmoothingEnabled = true;
   context.imageSmoothingQuality = 'high';
   context.filter = 'grayscale(1) contrast(2.2)';
-  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  context.drawImage(
+    image, region.left, region.top, region.width, region.height,
+    padding, padding, width, height,
+  );
   context.filter = 'none';
   return canvas.toDataURL('image/png');
 }
@@ -320,7 +336,7 @@ export default function LocalOfflineOcrDom({
           // prefer it when it visibly contains name + numeric printed strength.
           // No spelling correction, guesswork or medicine database lookup.
           try {
-            const enhancedImage = await enhanceLocalNameBand(imageData);
+            const enhancedImage = await enhancePackageLabelImage(imageData);
             if (!cancelled && activeJobIdRef.current === job.id) {
               const enhanced = await worker.recognize(enhancedImage);
               const best = selectPackageLabelReading(
@@ -361,6 +377,25 @@ export default function LocalOfflineOcrDom({
           await safelyNotify(() => onCancelled({ jobId: job.id }));
           return;
         }
+
+        if (job.page.sourceMode === 'packaging' && !isolatedNameBand && !hasCompletePrintedPackageLabel(text)) {
+          try {
+            const titleImage = await enhancePackageLabelImage(imageData, true);
+            if (cancelled || activeJobIdRef.current !== job.id) return;
+            await worker.setParameters({ tessedit_pageseg_mode: '6' });
+            if (cancelled || activeJobIdRef.current !== job.id) return;
+            const retry = await worker.recognize(titleImage);
+            const retryText = typeof retry.data.text === 'string' ? retry.data.text : '';
+            if (hasCompletePrintedPackageLabel(retryText)) {
+              text = retryText;
+              confidence = retry.data.confidence;
+              usedFocusedPass = true;
+            }
+          } catch {
+            // Preserve the original reading if the retry cannot complete.
+          }
+        }
+        if (cancelled || activeJobIdRef.current !== job.id) return;
 
         const normalized = toLocalOfflineOcrPageResult({ text, confidence });
         const pageResult = usedFocusedPass || enhancedNameBand ? {

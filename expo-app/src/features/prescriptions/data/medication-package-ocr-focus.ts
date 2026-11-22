@@ -1,3 +1,5 @@
+import { parseMedicationPackageOcrPage } from './medication-package-ocr-parser';
+
 /**
  * A conservative second pass for printed package names, not an inference model.
  * Only prioritizes text that the local OCR worker actually read.
@@ -72,4 +74,24 @@ export function prioritizePrintedPackageLabel(fullText: string, focusedText: str
   return focusedCandidates.length > 0
     ? { text: [...focusedCandidates, ...existing].join('\n'), usedFocusedPass: true }
     : { text: fullText, usedFocusedPass: false };
+}
+
+/** Best-effort retry for common upper-left, two-line front-panel titles. */
+export function getPackageTitleRetryRegion(width: number, height: number): PackageLabelRegion | null {
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width < 200 || height < 200) return null;
+  const left = Math.floor(width * 0.08);
+  const top = Math.floor(height * 0.25);
+  return {
+    left,
+    top,
+    width: Math.floor(width * 0.82) - left,
+    height: Math.floor(height * 0.53) - top,
+  };
+}
+
+/** Evaluate each complete OCR pass independently; never join partial readings. */
+export function hasCompletePrintedPackageLabel(text: string): boolean {
+  return Boolean(parseMedicationPackageOcrPage({
+    pageIndex: 0, text, confidence: null, qualityWarnings: [],
+  })[0]?.input.strengthText);
 }

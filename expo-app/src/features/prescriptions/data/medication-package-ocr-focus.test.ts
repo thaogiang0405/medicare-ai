@@ -1,4 +1,10 @@
-import { getPackageLabelRegion, prioritizePrintedPackageLabel, selectPackageLabelReading } from './medication-package-ocr-focus';
+import {
+  getPackageLabelRegion,
+  getPackageTitleRetryRegion,
+  hasCompletePrintedPackageLabel,
+  prioritizePrintedPackageLabel,
+  selectPackageLabelReading,
+} from './medication-package-ocr-focus';
 
 describe('focused packaging OCR without hallucination', () => {
   it('prioritizes a name read in the focus region while retaining the raw source text', () => {
@@ -42,5 +48,19 @@ describe('focused packaging OCR without hallucination', () => {
     expect(selectPackageLabelReading('Thuốc giảm đau 500 mg', 'Thuốc giảm đau 500 mg')).toEqual({
       text: 'Thuốc giảm đau 500 mg', enhancedSelected: false,
     });
+  });
+});
+
+describe('two-line front panel retry', () => {
+  it('bounds the title crop and skips small frames', () => {
+    expect(getPackageTitleRetryRegion(718, 437)).toEqual({ left: 57, top: 109, width: 531, height: 122 });
+    expect(getPackageTitleRetryRegion(718, 199)).toBeNull();
+  });
+
+  it('requires a name and explicit strength from the same pass', () => {
+    expect(hasCompletePrintedPackageLabel('PharmViet -\n\nAcetsniili\n\nphen\n\n500mg')).toBe(false);
+    expect(hasCompletePrintedPackageLabel('Acetaminophen\n500 mg')).toBe(true);
+    expect(hasCompletePrintedPackageLabel('Acetaminophen\nSOO mg')).toBe(false);
+    expect(hasCompletePrintedPackageLabel('Amoxicillin 500 mg')).toBe(true);
   });
 });

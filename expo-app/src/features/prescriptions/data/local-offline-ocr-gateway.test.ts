@@ -82,7 +82,7 @@ describe('LocalOfflineOcrGateway', () => {
 
 
   it('forwards packaging mode and image dimensions to the local worker without image URI', async () => {
-    const recognizePage = jest.fn(async () => recognizedPage('Paracetamol 500 mg'));
+    const recognizePage = jest.fn(async (_page: Parameters<LocalOfflineOcrPort['recognizePage']>[0]) => recognizedPage('Paracetamol 500 mg'));
     const gateway = new LocalOfflineOcrGateway(() => port({ recognizePage }), () => 'elderly-a');
     const result = await gateway.recognizePrescription(
       'elderly-a', { ...request, pages: [request.pages[0]!] },

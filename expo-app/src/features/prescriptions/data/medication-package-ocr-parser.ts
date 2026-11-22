@@ -19,7 +19,7 @@ function parseLine(line: string, lineIndex: number): Evidence | null {
   if (name.length < 3 || name.length > 120 || genericName.test(name)) return null;
   if (!/^[A-Za-zÀ-ỹ]/.test(name)) return null;
   if (!labelled && name.split(/\s+/).length > 6) return null;
-  const after = strength ? normalize(value.slice(strength.index + strength[0].length)) : '';
+  const after = strength?.index === undefined ? '' : normalize(value.slice(strength.index + strength[0].length));
   if (!labelled && /\b(?:uống|ngày|lần|giờ|chỉ\s+định|cách\s+dùng)\b/i.test(after)) return null;
   return { name, strengthText: strength ? normalize(strength[0]) : '', line, lineIndex, labelled: !!labelled };
 }

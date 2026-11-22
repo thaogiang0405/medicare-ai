@@ -46,12 +46,24 @@ export function parseMedicationPackageOcrPage(page: PrescriptionOcrPage): Prescr
   const stacked: Evidence[] = [];
   for (const [index, line] of lines.entries()) {
     if (detailsHeader.test(line)) break;
-    // Ignore a single, whitespace-separated border mark at the end of a
-    // stacked title. Keep the original OCR lettering in sourceText.
-    const name = line.replace(/ \|$/, '');
-    // Sparse OCR sometimes inserts one empty line between the printed fields.
-    // Never cross a nonempty line or a larger gap to find a strength.
-    const strengthIndex = lines[index + 1] === '' ? index + 2 : index + 1;
+    // Permit one isolated margin mark, never letters, numbers, or a
+    // nonempty instruction between the title and an explicit strength.
+    const name = line.replace(/ [|–—-]$/, '');
+    let strengthIndex = index + 1;
+    let skippedMark = false;
+    let emptyRun = 0;
+    while (strengthIndex <= index + 4) {
+      const between = lines[strengthIndex];
+      if (between === '' && emptyRun === 0) {
+        emptyRun++;
+      } else if (between && /^[#|–—-]$/.test(between) && !skippedMark) {
+        skippedMark = true;
+        emptyRun = 0;
+      } else {
+        break;
+      }
+      strengthIndex++;
+    }
     const strengthText = lines[strengthIndex] ?? '';
     if (!stackedName.test(name) || exclude.test(name) || genericName.test(name)
       || descriptiveName.test(name) || !stackedStrength.test(strengthText)) continue;

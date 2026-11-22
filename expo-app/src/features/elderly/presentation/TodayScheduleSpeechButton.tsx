@@ -1,27 +1,35 @@
 import { useFocusEffect } from 'expo-router';
 import * as Speech from 'expo-speech';
 import { useCallback, useRef, useState } from 'react';
-import { Alert, AppState } from 'react-native';
+import { Alert, AppState, Platform } from 'react-native';
 
 import { SecondaryButton } from '@/components/medicare';
 
 export function TodayScheduleSpeechButton({ message }: Readonly<{ message: string }>) {
-  const [playing, setPlaying] = useState(false);
+  const [phase, setPhase] = useState<'idle' | 'preparing' | 'playing'>('idle');
+  const startTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearStartTimer = useCallback(() => {
+    if (startTimer.current !== null) {
+      clearTimeout(startTimer.current);
+      startTimer.current = null;
+    }
+  }, []);
   const active = useRef<number | null>(null);
   const sequence = useRef(0);
 
   const stop = useCallback(() => {
     if (active.current === null) return;
     active.current = null;
+    clearStartTimer();
     void Speech.stop().catch(() => undefined);
-  }, []);
+  }, [clearStartTimer]);
 
   useFocusEffect(useCallback(() => {
-    setPlaying(false);
+    setPhase('idle');
     const subscription = AppState.addEventListener('change', (state) => {
       if (state !== 'active') {
         stop();
-        setPlaying(false);
+        setPhase('idle');
       }
     });
     return () => {
@@ -33,17 +41,18 @@ export function TodayScheduleSpeechButton({ message }: Readonly<{ message: strin
   const toggleSpeech = async () => {
     if (active.current !== null) {
       stop();
-      setPlaying(false);
+      setPhase('idle');
       return;
     }
     const id = ++sequence.current;
     active.current = id;
-    setPlaying(true);
+    setPhase('preparing');
 
     const finish = () => {
       if (active.current !== id) return;
       active.current = null;
-      setPlaying(false);
+      clearStartTimer();
+      setPhase('idle');
     };
 
     const reportError = (description: string) => {
@@ -53,6 +62,12 @@ export function TodayScheduleSpeechButton({ message }: Readonly<{ message: strin
     };
 
     const audioError = () => reportError('Hãy kiểm tra âm lượng và chế độ im lặng rồi thử lại.');
+    startTimer.current = setTimeout(() => {
+      if (active.current !== id) return;
+      stop();
+      setPhase('idle');
+      Alert.alert('Giọng đọc chưa bắt đầu', 'Hãy thử lại và kiểm tra giọng tiếng Việt trong Cài đặt của thiết bị.');
+    }, 8000);
     try {
       const voices = await Speech.getAvailableVoicesAsync();
       if (active.current !== id) return;
@@ -65,6 +80,12 @@ export function TodayScheduleSpeechButton({ message }: Readonly<{ message: strin
         language: 'vi-VN',
         voice: voice.identifier,
         rate: 0.85,
+        ...(Platform.OS === 'ios' ? { useApplicationAudioSession: false } : {}),
+        onStart: () => {
+          if (active.current !== id) return;
+          clearStartTimer();
+          setPhase('playing');
+        },
         onDone: finish,
         onStopped: finish,
         onError: audioError,
@@ -77,7 +98,7 @@ export function TodayScheduleSpeechButton({ message }: Readonly<{ message: strin
   return (
     <SecondaryButton
       accessibilityHint="Chỉ phát khi bạn bấm nút; không thay đổi lịch hoặc ghi nhận đã uống"
-      label={playing ? 'Dừng đọc lịch thuốc' : 'Nghe lịch thuốc hôm nay'}
+      label={phase === 'preparing' ? 'Hủy chuẩn bị giọng đọc' : phase === 'playing' ? 'Dừng đọc lịch thuốc' : 'Nghe lịch thuốc hôm nay'}
       onPress={() => void toggleSpeech()}
     />
   );

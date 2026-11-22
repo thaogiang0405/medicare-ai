@@ -8,6 +8,11 @@ const descriptiveName = /^(?:thuốc\s+(?:giảm\s+đau|hạ\s+sốt|kê\s+đơn
 const strengthLabel = /^(?:hàm\s+lượng|strength)\s*[:：-]\s*(.+)$/i;
 const standaloneStrength = new RegExp('^(?:' + strengthPattern.source + ')$', 'i');
 const genericName = /^(?:thuốc|medicine|product|dược\s+phẩm|thực\s+phẩm|bổ\s+sung|chất\s+lượng)$/i;
+// Unlabelled, stacked front-panel titles need stronger evidence than labelled
+// fields: one word followed immediately by a standalone printed strength.
+const stackedName = /^\p{L}[\p{L}\p{M}-]{4,39}$/u;
+const stackedStrength = /^\d{1,5}(?:[.,]\d{1,4})?\s*(?:mg|mcg|µg|iu)$/i;
+const detailsHeader = /^(?:thành\s+phần|hoạt\s+chất|chỉ\s+định|cách\s+dùng|liều\s+dùng|composition|ingredients|directions)(?=\s|[:：]|$)/i;
 type Evidence = Readonly<{ name: string; strengthText: string; line: string; lineIndex: number; labelled: boolean }>;
 const normalize = (s: string) => s.replace(/\s+/g, ' ').trim();
 
@@ -38,7 +43,16 @@ export function parseMedicationPackageOcrPage(page: PrescriptionOcrPage): Prescr
     if (!standaloneStrength.test(strength)) return item;
     return { ...item, strengthText: strength, line: item.line + '\n' + nextLine };
   }).filter((x): x is Evidence => x !== null);
-  const found = evidence.find((x) => x.labelled) ?? evidence.find((x) => !!x.strengthText);
+  const stacked: Evidence[] = [];
+  for (const [index, name] of lines.entries()) {
+    if (detailsHeader.test(name)) break;
+    const strengthText = lines[index + 1] ?? '';
+    if (!stackedName.test(name) || exclude.test(name) || genericName.test(name)
+      || descriptiveName.test(name) || !stackedStrength.test(strengthText)) continue;
+    stacked.push({ name, strengthText, line: name + '\n' + strengthText, lineIndex: index, labelled: false });
+  }
+  const found = evidence.find((x) => x.labelled) ?? evidence.find((x) => !!x.strengthText)
+    ?? (stacked.length === 1 ? stacked[0] : undefined);
   if (!found) return [];
   const warnings = [
     'Gợi ý từ chữ in trên bao bì, KHÔNG xác minh thuốc bằng hình dạng/màu sắc. Hãy kiểm tra tên trên hộp thật.',

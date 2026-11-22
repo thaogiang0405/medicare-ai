@@ -67,4 +67,29 @@ describe('conservative package-lettering parser', () => {
     expect(read('Tên thuốc: Paracetamol\nThành phần khác: 500 mg')?.input.strengthText).toBe('');
     expect(read('Tên thuốc: Paracetamol\n\nHàm lượng: 500 mg')?.input.strengthText).toBe('');
   });
+
+  it('reads a stacked package title without requiring printed field labels', () => {
+    const page = { pageIndex: 0, confidence: 0.9, qualityWarnings: [] };
+    const items = parseMedicationPackageOcrPage({
+      ...page, text: 'PharmViet\nAcetaminophen\n500 mg\nGiảm đau - Hạ sốt\nChỉ định:',
+    });
+    expect(items[0]?.input).toEqual({ name: 'Acetaminophen', strengthText: '500 mg', directionsText: '' });
+    expect(items[0]?.sourceText).toBe('Acetaminophen\n500 mg');
+    expect(parseMedicationPackageOcrPage({
+      ...page, text: 'MedPharma\nAmoxicillin\n500 mg\nThành phần:\nAmoxicillin 500 mg',
+    })[0]?.input).toEqual({ name: 'Amoxicillin', strengthText: '500 mg', directionsText: '' });
+  });
+
+  it('does not guess a stacked title from ambiguous or unrelated lines', () => {
+    const page = { pageIndex: 0, confidence: 0.9, qualityWarnings: [] };
+    for (const text of [
+      'Acetaminophen\nSOO mg',
+      'Acetaminophen\n\n500 mg',
+      'Acetaminophen\n500',
+      'Thành phần:\nAcetaminophen\n500 mg',
+      'Acetaminophen\n500 mg\nAmoxicillin\n250 mg',
+    ]) {
+      expect(parseMedicationPackageOcrPage({ ...page, text })).toEqual([]);
+    }
+  });
 });

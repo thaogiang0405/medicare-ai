@@ -7,6 +7,10 @@ jest.mock('expo-router', () => ({
   },
 }));
 
+jest.mock('./TodayScheduleSpeechButton', () => ({
+  TodayScheduleSpeechButton: () => null,
+}));
+
 jest.mock('@/components/medicare', () => {
   const React = jest.requireActual<typeof import('react')>('react');
   const { Pressable, Text, View } = jest.requireActual<typeof import('react-native')>('react-native');

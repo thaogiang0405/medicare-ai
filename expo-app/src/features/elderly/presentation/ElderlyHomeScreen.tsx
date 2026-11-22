@@ -19,6 +19,8 @@ import { useSessionStore } from '@/store';
 import type { PersistedDoseResponseStatus } from '@/types/domain';
 import { formatVietnameseTime } from '@/utils/formatters';
 
+import { buildTodayScheduleSpeech } from './today-schedule-speech';
+import { TodayScheduleSpeechButton } from './TodayScheduleSpeechButton';
 import { useElderlyDashboard } from './useElderlyDashboard';
 
 function showDeferredFeature(feature: string) {
@@ -53,6 +55,10 @@ export default function ElderlyHomeScreen() {
   const prescriptionOcrFeatureEnabled = isPrescriptionOcrFeatureEnabled();
   const [pendingDoseResponseId, setPendingDoseResponseId] = useState<string | null>(null);
   const pendingDoseResponseRef = useRef<string | null>(null);
+
+  const todaySpeech = user?.id && usesFirestoreSchedules && !isLoading && !errorMessage && !isSigningOut
+    ? buildTodayScheduleSpeech(usesFirestoreDoseTracking ? doseTrackingSchedules : medicationSchedules)
+    : '';
 
   const handleSignOut = async () => {
     try {
@@ -152,6 +158,7 @@ export default function ElderlyHomeScreen() {
         <Text accessibilityRole="header" style={styles.sectionTitle}>
           Lịch thuốc hôm nay
         </Text>
+        {todaySpeech ? <TodayScheduleSpeechButton key={user?.id} message={todaySpeech} /> : null}
         {isLoading ? <ActivityIndicator color={medicareColors.primary} size="large" /> : null}
         {!isLoading && !errorMessage && usesFirestoreSchedules && medicationSchedules.length === 0 ? (
           <SafetyNotice

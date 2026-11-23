@@ -111,6 +111,7 @@ function isReadableActiveMedication(ownerUid: string, data: Record<string, unkno
 }
 
 function isReadableActiveSchedule(ownerUid: string, data: Record<string, unknown>): boolean {
+  const weekdays = data.weekdays;
   if (data.ownerUid !== ownerUid || data.active !== true
     || typeof data.medicationId !== 'string'
     || data.medicationId.length < 1 || data.medicationId.length > 150
@@ -122,13 +123,13 @@ function isReadableActiveSchedule(ownerUid: string, data: Record<string, unknown
     || !(data.endDate === null || (typeof data.endDate === 'string'
       && isValidMedicationScheduleDate(data.endDate) && data.endDate >= data.startDate))
     || data.timeZone !== 'Asia/Ho_Chi_Minh'
-    || !Array.isArray(data.weekdays)
-    || !data.weekdays.every((day: unknown) => Number.isInteger(day)
+    || !Array.isArray(weekdays)
+    || !weekdays.every((day: unknown) => Number.isInteger(day)
       && typeof day === 'number' && day >= 1 && day <= 7)
-    || new Set(data.weekdays).size !== data.weekdays.length) return false;
-  return (data.recurrence === 'daily' && data.weekdays.length === 7
-    && [1, 2, 3, 4, 5, 6, 7].every((day) => data.weekdays.includes(day)))
-    || (data.recurrence === 'weekly' && data.weekdays.length > 0);
+    || new Set(weekdays).size !== weekdays.length) return false;
+  return (data.recurrence === 'daily' && weekdays.length === 7
+    && [1, 2, 3, 4, 5, 6, 7].every((day) => weekdays.includes(day)))
+    || (data.recurrence === 'weekly' && weekdays.length > 0);
 }
 
 /** Asia/Ho_Chi_Minh has UTC+07 and no DST in this app's date range. */

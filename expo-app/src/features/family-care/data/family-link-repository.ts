@@ -281,7 +281,7 @@ export function watchCaregiverPlans(
     const root = getFirebaseFirestore();
     const generation = ++childGeneration;
     const subscriptions: Unsubscribe[] = [
-      onSnapshot(query(collection(root, 'elderlyProfiles', ownerUid, 'medications'), where('status', '==', 'active'), limit(101)), { includeMetadataChanges: true }, (medDocs) => {
+      onSnapshot(query(collection(root, 'elderlyProfiles', ownerUid, 'medications'), where('ownerUid', '==', ownerUid), where('status', '==', 'active'), limit(101)), { includeMetadataChanges: true }, (medDocs) => {
         if (!live || denied || generation !== childGeneration) return;
         if (medDocs.metadata.fromCache) { medications = null; onChange({ status: 'loading', plans: [] }); return; }
         if (medDocs.size > 100) {
@@ -298,7 +298,7 @@ export function watchCaregiverPlans(
       }, () => {
         if (generation === childGeneration) fail('Không thể tiếp tục đọc danh sách thuốc được chia sẻ.', 'error');
       }),
-      onSnapshot(query(collection(root, 'elderlyProfiles', ownerUid, 'medicationSchedules'), where('active', '==', true), limit(101)), { includeMetadataChanges: true }, (scheduleDocs) => {
+      onSnapshot(query(collection(root, 'elderlyProfiles', ownerUid, 'medicationSchedules'), where('ownerUid', '==', ownerUid), where('active', '==', true), limit(101)), { includeMetadataChanges: true }, (scheduleDocs) => {
         if (!live || denied || generation !== childGeneration) return;
         if (scheduleDocs.metadata.fromCache) { schedules = null; onChange({ status: 'loading', plans: [] }); return; }
         if (scheduleDocs.size > 100) {

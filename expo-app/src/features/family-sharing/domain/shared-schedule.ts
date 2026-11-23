@@ -1,0 +1,112 @@
+/**
+ * A manually forwarded, read-only schedule snapshot.
+ *
+ * This is not a signed token, authentication, permission grant, or live link.
+ * The recipient cannot verify its provenance, and it must never be used to
+ * authorize a Firestore read or to register a dose response.
+ */
+export type SharedSchedule = Readonly<{
+  kind: 'medicare-ai-planned-schedule';
+  version: 1;
+  date: string;
+  items: readonly Readonly<{ time: string; name: string }>[];
+}>;
+
+type PlannedItem = Readonly<{
+  schedule: Readonly<{ localTime: string }>;
+  medication: Readonly<{ name: string }>;
+}>;
+
+const prefix = 'MEDICARE-AI-LICH-THUOC-V1';
+const maxItems = 20;
+const maxMessageLength = 8192;
+const timePattern = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
+const datePattern = /^20\d{2}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])$/;
+
+function isCalendarDay(value: string): boolean {
+  if (!datePattern.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  const time = new Date(Date.UTC(year, month - 1, day));
+  return time.getUTCFullYear() === year
+    && time.getUTCMonth() + 1 === month
+    && time.getUTCDate() === day;
+}
+
+function isRecord(input: unknown): input is Record<string, unknown> {
+  return typeof input === 'object' && input !== null && !Array.isArray(input);
+}
+
+function hasExactKeys(input: Record<string, unknown>, keys: readonly string[]): boolean {
+  const actual = Object.keys(input);
+  return actual.length === keys.length && actual.every((key) => keys.includes(key));
+}
+
+/**
+ * Only the currently loaded real schedule may be exported. No UID, contact,
+ * drug strength, directions, adherence status, OCR, or notification metadata.
+ * An empty/invalid list is not exportable, and demo events are never passed in.
+ */
+export function buildSharedScheduleText(
+  date: string,
+  planned: readonly PlannedItem[],
+): string | null {
+  if (!isCalendarDay(date) || planned.length === 0 || planned.length > maxItems) return null;
+
+  const items = planned.map(({ schedule, medication }) => ({
+    time: schedule.localTime,
+    name: medication.name.replace(/\s+/g, ' ').trim(),
+  }));
+
+  if (items.some(({ time, name }) => !timePattern.test(time)
+    || name.length < 1 || name.length > 120 || /[\u0000-\u001f]/.test(name))) return null;
+
+  items.sort((a, b) => a.time.localeCompare(b.time) || a.name.localeCompare(b.name));
+  const payload: SharedSchedule = {
+    kind: 'medicare-ai-planned-schedule',
+    version: 1,
+    date,
+    items,
+  };
+  const text = prefix + '\n' + JSON.stringify(payload);
+  return text.length <= maxMessageLength ? text : null;
+}
+
+/**
+ * Untrusted pasted text is parsed strictly and never persisted. Even a valid
+ * snapshot is only self-reported text forwarded via another app.
+ */
+export function parseSharedScheduleText(text: string): SharedSchedule | null {
+  if (!text || text.length > maxMessageLength || !text.startsWith(prefix + '\n')) return null;
+  const json = text.slice(prefix.length + 1).trim();
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(json);
+  } catch {
+    return null;
+  }
+  if (!isRecord(decoded)
+    || !hasExactKeys(decoded, ['kind', 'version', 'date', 'items'])
+    || decoded.kind !== 'medicare-ai-planned-schedule'
+    || decoded.version !== 1
+    || typeof decoded.date !== 'string' || !isCalendarDay(decoded.date)
+    || !Array.isArray(decoded.items)
+    || decoded.items.length < 1 || decoded.items.length > maxItems) return null;
+
+  const items: { time: string; name: string }[] = [];
+  for (const item of decoded.items) {
+    if (!isRecord(item) || !hasExactKeys(item, ['time', 'name'])
+      || typeof item.time !== 'string' || !timePattern.test(item.time)
+      || typeof item.name !== 'string'
+      || item.name.length < 1 || item.name.length > 120
+      || item.name !== item.name.trim().replace(/\s+/g, ' ')
+      || /[\u0000-\u001f]/.test(item.name)) return null;
+    items.push({ time: item.time, name: item.name });
+  }
+
+  return {
+    kind: 'medicare-ai-planned-schedule',
+    version: 1,
+    date: decoded.date,
+    items: items.sort((a, b) => a.time.localeCompare(b.time) || a.name.localeCompare(b.name)),
+  };
+}

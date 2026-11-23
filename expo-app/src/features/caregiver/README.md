@@ -1,10 +1,11 @@
-# Caregiver / Người chăm sóc
+# Family Care: nhập bản lịch đã chia sẻ thủ công
 
-Các thao tác cơ bản trong Expo Go:
+MediCare AI chưa cấp quyền **Người chăm sóc** truy cập Firestore của người cao tuổi khác. Để dùng **dữ liệu lịch thật** trong đợt thử nghiệm miễn phí, owner **chủ động** chia sẻ một bản lịch hiện có; caregiver dán văn bản đó và đọc bản sao **chỉ trên thiết bị đang dùng**.
 
-- **Theo dõi lịch thuốc**: mở/ẩn lịch cố định **minh họa**, lọc các mốc chưa phản hồi, phân biệt tự báo đã uống/bỏ qua/chưa phản hồi. Không lấy dữ liệu người cao tuổi khác.
-- **Nhắc người thân**: chọn một trong hai câu mẫu chung rồi **chủ động** mở bảng chia sẻ gốc của iOS/Android. Không gửi SMS, email, FCM hoặc push tự động; không xác nhận đã gửi.
-- **Liên kết hồ sơ**: giải thích yêu cầu đồng ý và cho phép soạn tin nhắn trao đổi ngoài ứng dụng. **Không tạo/duyệt/cấp quyền liên kết**, không dùng mã thật, không ghi Firestore.
-- **Đăng xuất**: dùng chung session hiện có.
+- **Người cao tuổi**: khi chế độ Firestore Medication + Schedule đã bật, tải thành công và hôm nay có lịch, nút **Chia sẻ lịch thuốc hôm nay** xuất hiện; trước khi mở bảng chia sẻ phải xem cảnh báo và bấm đồng ý.
+- Bản chia sẻ `MEDICARE-AI-LICH-THUOC-V1` chỉ có ngày, tên và giờ dự kiến; không có dose, UID, dữ liệu uống, hình ảnh hoặc hướng dẫn. Tối đa 20 mục; không tự chia sẻ khi đang tải hoặc lỗi.
+- **Người chăm sóc**: dán nội dung đã nhận, bấm đọc để kiểm tra, xem danh sách và xóa. Lưu tạm bằng React state; không có lưu trữ Firestore/AsyncStorage; xóa khi đổi account/sign out.
+- **Nhắc người thân**: tạo lời nhắn chung, mở bảng Share khi người dùng bấm.
+- **Liên kết hồ sơ**: chỉ hỗ trợ trao đổi về việc xin phép; không thực hiện invite/approval/revoke, không xác minh người gửi của bản chia sẻ và không mở quyền đọc tài khoản khác.
 
-Để có liên kết gia đình thật phải có giao dịch server-trusted cho invite/approve/revoke, quyền caregiver trong Security Rules và dữ liệu kiểm thử phù hợp. Giao diện minh họa này cố ý không giả lập quyền thật.
+**Không có liên kết hay đồng bộ thật.** Chỉ nên chia sẻ với người nhận tin cậy. Để liên kết qua Firebase cần triển khai server-trusted invitation/approval/revocation và kiểm thử Rules theo tài liệu `docs/firestore-data-model.md`; không deploy tự động. Xem checklist `docs/caregiver-basics-batch-qa.md`.

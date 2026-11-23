@@ -1059,6 +1059,39 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
     await assertFails(setDoc(ref, familyLink(userA, caregiver)));
   });
 
+  it('denies caregiver reads of malformed or cross-owner active health documents', async () => {
+    await seed('users/' + userA, userProfile(userA));
+    await seed('users/' + caregiver, userProfile(caregiver, 'caregiver'));
+    const ownerDB = firestoreAs(userA);
+    const caregiverDB = firestoreAs(caregiver);
+    await assertSucceeds(setDoc(familyLinkRef(ownerDB), familyLink(userA, caregiver)));
+
+    // These documents are deliberately seeded outside Rules to model legacy,
+    // imported, or administrator-written records that bypass client writes.
+    await seed('elderlyProfiles/' + userA + '/medications/misfiled', medication(userB));
+    await seed('elderlyProfiles/' + userA + '/medications/extra-field', medication(userA, {
+      internalNote: 'must not be shared through a malformed document',
+    }));
+    await seed('elderlyProfiles/' + userA + '/medicationSchedules/misfiled', medicationSchedule(userB));
+    await seed('elderlyProfiles/' + userA + '/medicationSchedules/extra-field', medicationSchedule(userA, {
+      internalNote: 'must not be shared through a malformed document',
+    }));
+
+    await assertFails(getDoc(medicationReference(caregiverDB, userA, 'misfiled')));
+    await assertFails(getDoc(medicationReference(caregiverDB, userA, 'extra-field')));
+    await assertFails(getDoc(medicationScheduleReference(caregiverDB, userA, 'misfiled')));
+    await assertFails(getDoc(medicationScheduleReference(caregiverDB, userA, 'extra-field')));
+
+    await assertFails(getDocs(query(
+      medicationsCollection(caregiverDB, userA),
+      where('status', '==', 'active'),
+    )));
+    await assertFails(getDocs(query(
+      medicationSchedulesCollection(caregiverDB, userA),
+      where('active', '==', true),
+    )));
+  });
+
   it('denies caregiver self-approval, spoofed target roles and extra privilege fields', async () => {
     await seed('users/' + userA, userProfile(userA));
     await seed('users/' + userB, userProfile(userB));

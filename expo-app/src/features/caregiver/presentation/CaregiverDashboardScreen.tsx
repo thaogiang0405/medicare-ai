@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 
@@ -13,6 +14,12 @@ import {
 import { medicareColors, medicareRadius, medicareSpacing, medicareTypography } from '@/constants/medicare-theme';
 import { useSessionStore } from '@/store';
 
+const demoSchedule = [
+  { time: '08:00', label: 'Thuốc mẫu A', response: 'Tự báo đã uống' },
+  { time: '13:00', label: 'Thuốc mẫu B', response: 'Tự báo bỏ qua' },
+  { time: '20:00', label: 'Thuốc mẫu C', response: 'Chưa phản hồi' },
+] as const;
+
 function showDeferredFeature(feature: string) {
   Alert.alert('Chưa có trong lộ trình hiện tại', `${feature} sẽ được xây dựng ở milestone phù hợp.`);
 }
@@ -22,6 +29,7 @@ export default function CaregiverDashboardScreen() {
   const signOut = useSessionStore((state) => state.signOut);
   const operationStatus = useSessionStore((state) => state.operationStatus);
   const authErrorMessage = useSessionStore((state) => state.errorMessage);
+  const [showDemoSchedule, setShowDemoSchedule] = useState(false);
   const isSigningOut = operationStatus === 'loading';
 
   const handleSignOut = async () => {
@@ -71,11 +79,23 @@ export default function CaregiverDashboardScreen() {
           Thao tác nhanh
         </Text>
         <ActionCard
-          description="Màn hình theo dõi chi tiết chưa được triển khai."
+          accessibilityHint="Mở hoặc ẩn lịch minh họa, không đọc hồ sơ của người khác"
+          description="Xem giờ dự kiến và phản hồi tự báo của hồ sơ minh họa."
           icon={<Text style={styles.icon}>◷</Text>}
-          onPress={() => showDeferredFeature('Theo dõi lịch thuốc')}
-          title="Theo dõi lịch thuốc"
+          onPress={() => setShowDemoSchedule((visible) => !visible)}
+          title={showDemoSchedule ? 'Ẩn lịch thuốc minh họa' : 'Theo dõi lịch thuốc'}
         />
+        {showDemoSchedule ? (
+          <View style={styles.section}>
+            <Text accessibilityRole="header" style={styles.sectionTitle}>Lịch thuốc hôm nay · Minh họa</Text>
+            {demoSchedule.map(({ time, label, response }) => (
+              <View key={time} style={styles.scheduleRow}>
+                <Text style={styles.profileName}>{time} · {label}</Text>
+                <Text style={styles.profileDescription}>{response}</Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
         <ActionCard
           description="Thông báo và chăm sóc từ xa sẽ được bổ sung sau."
           icon={<Text style={styles.icon}>♥</Text>}
@@ -116,6 +136,14 @@ const styles = StyleSheet.create({
     fontSize: medicareTypography.subheading,
     fontWeight: '800',
     lineHeight: 29,
+  },
+  scheduleRow: {
+    gap: medicareSpacing.xxs,
+    padding: medicareSpacing.md,
+    borderRadius: medicareRadius.lg,
+    borderWidth: 1,
+    borderColor: medicareColors.border,
+    backgroundColor: medicareColors.surfaceElevated,
   },
   profileCard: {
     minHeight: 102,

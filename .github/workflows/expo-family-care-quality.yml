@@ -41,6 +41,45 @@ jobs:
         working-directory: expo-app
         run: npm ci
 
+      - name: Dependency advisory inventory (non-blocking)
+        id: dependency-audit
+        continue-on-error: true
+        working-directory: expo-app
+        run: |
+          audit_file="$RUNNER_TEMP/npm-audit.json"
+          if npm audit --json > "$audit_file"; then
+            audit_status=0
+          else
+            audit_status=$?
+          fi
+          node - "$audit_file" "$audit_status" <<'NODE'
+          const fs = require('node:fs');
+          const auditPath = process.argv[2];
+          const auditStatus = Number(process.argv[3]);
+          let audit;
+          try {
+            audit = JSON.parse(fs.readFileSync(auditPath, 'utf8'));
+          } catch {
+            console.log('npm audit did not return a readable JSON report; inspect the npm output above.');
+            process.exit(0);
+          }
+          const metadata = audit.metadata?.vulnerabilities ?? {};
+          console.log('Dependency advisory totals:', JSON.stringify(metadata));
+          for (const [name, item] of Object.entries(audit.vulnerabilities ?? {})) {
+            const via = (item.via ?? []).map((entry) => typeof entry === 'string'
+              ? entry
+              : `${entry.name}: ${entry.title ?? entry.url ?? 'advisory'}`);
+            console.log(JSON.stringify({
+              package: name,
+              severity: item.severity,
+              direct: item.isDirect,
+              range: item.range,
+              fixAvailable: item.fixAvailable,
+              via,
+            }));
+          }
+          if (auditStatus !== 0) console.log('npm audit reported advisories; this inventory is non-blocking while existing dependency debt is triaged.');
+          NODE
       - name: TypeScript
         working-directory: expo-app
         run: npm run typecheck

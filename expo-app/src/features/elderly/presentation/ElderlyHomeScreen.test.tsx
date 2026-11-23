@@ -7,6 +7,10 @@ jest.mock('expo-router', () => ({
   },
 }));
 
+jest.mock('@/services/firebase/family-care-feature', () => ({
+  isFamilyCareFeatureEnabled: () => false,
+}));
+
 jest.mock('./TodayScheduleSpeechButton', () => ({
   TodayScheduleSpeechButton: () => null,
 }));

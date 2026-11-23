@@ -36,6 +36,7 @@ const session = { user: { id: 'elderly-123', role: 'elderly' as const } };
 describe('owner-driven Family Care approval/revocation UI', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    session.user.id = 'elderly-123';
     (useSessionStore as unknown as jest.Mock).mockImplementation(
       (selector: (state: typeof session) => unknown) => selector(session),
     );

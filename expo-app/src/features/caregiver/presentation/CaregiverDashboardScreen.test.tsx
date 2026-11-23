@@ -47,7 +47,7 @@ describe('CaregiverDashboardScreen basic demo flows', () => {
     (useSessionStore as unknown as jest.Mock).mockImplementation(
       (selector: (state: typeof session) => unknown) => selector(session),
     );
-    jest.spyOn(Share, 'share').mockResolvedValue({ action: Share.dismissedAction });
+    jest.spyOn(Share, 'share').mockResolvedValue({ action: Share.dismissedAction, activityType: undefined });
   });
 
   afterEach(() => { jest.restoreAllMocks(); });

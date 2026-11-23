@@ -949,7 +949,6 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
     const blockedReads = [
       `elderlyProfiles/${userA}/prescriptions/prescription-a`,
       `elderlyProfiles/${userA}/ocrResults/ocr-a`,
-      `elderlyProfiles/${userA}/caregiverLinks/${caregiver}`,
       `elderlyProfiles/${userA}/notifications/notification-a`,
       `elderlyProfiles/${userA}/auditLogs/audit-a`,
       `caregiverProfiles/${userA}`,
@@ -961,4 +960,98 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
       await assertFails(getDoc(doc(database, path)));
     }
   });
+  function familyLink(ownerUid, caregiverUid, overrides = {}) {
+    return {
+      ownerUid,
+      caregiverUid,
+      status: 'active',
+      scopes: { medicationsRead: true, schedulesRead: true },
+      revision: 1,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      ...overrides,
+    };
+  }
+
+  function familyLinkRef(database, ownerUid = userA, caregiverUid = caregiver) {
+    return doc(database, 'elderlyProfiles', ownerUid, 'caregiverLinks', caregiverUid);
+  }
+
+  it('permits an elderly owner to approve an existing caregiver UID and only then read medicines/schedules', async () => {
+    await seed('users/' + userA, userProfile(userA));
+    await seed('users/' + userB, userProfile(userB));
+    await seed('users/' + caregiver, userProfile(caregiver, 'caregiver'));
+    await seed('elderlyProfiles/' + userA + '/medications/medication-a', medication(userA));
+    await seed('elderlyProfiles/' + userA + '/medicationSchedules/schedule-a', medicationSchedule(userA));
+
+    const ownerDB = firestoreAs(userA);
+    const caregiverDB = firestoreAs(caregiver);
+    const unrelatedDB = firestoreAs(userB);
+
+    await assertFails(getDocs(medicationsCollection(caregiverDB, userA)));
+    await assertFails(getDocs(medicationSchedulesCollection(caregiverDB, userA)));
+    await assertFails(getDoc(familyLinkRef(caregiverDB)));
+
+    await assertSucceeds(setDoc(familyLinkRef(ownerDB), familyLink(userA, caregiver)));
+    await assertSucceeds(getDoc(familyLinkRef(caregiverDB)));
+    await assertSucceeds(getDocs(medicationsCollection(caregiverDB, userA)));
+    await assertSucceeds(getDocs(medicationSchedulesCollection(caregiverDB, userA)));
+    await assertSucceeds(getDoc(medicationReference(caregiverDB, userA)));
+    await assertSucceeds(getDoc(medicationScheduleReference(caregiverDB, userA)));
+
+    await assertFails(getDoc(familyLinkRef(unrelatedDB)));
+    await assertFails(getDocs(medicationsCollection(unrelatedDB, userA)));
+    await assertFails(getDocs(medicationSchedulesCollection(unrelatedDB, userA)));
+    await assertFails(getDocs(medicationsCollection(caregiverDB, userB)));
+    await assertFails(getDocs(collection(caregiverDB, 'users')));
+    await assertFails(getDocs(collection(caregiverDB, 'elderlyProfiles', userA, 'caregiverLinks')));
+    await assertFails(updateDoc(medicationReference(caregiverDB, userA), { name: 'Not mine', updatedAt: serverTimestamp() }));
+    await assertFails(updateDoc(medicationScheduleReference(caregiverDB, userA), { active: false, updatedAt: serverTimestamp() }));
+    await assertFails(getDocs(doseEventsCollection(caregiverDB, userA)));
+  });
+
+  it('revokes caregiver access and disallows reactivation or owner deletion', async () => {
+    await seed('users/' + userA, userProfile(userA));
+    await seed('users/' + caregiver, userProfile(caregiver, 'caregiver'));
+    await seed('elderlyProfiles/' + userA + '/medications/medication-a', medication(userA));
+    await seed('elderlyProfiles/' + userA + '/medicationSchedules/schedule-a', medicationSchedule(userA));
+    const ownerDB = firestoreAs(userA), caregiverDB = firestoreAs(caregiver);
+    const ref = familyLinkRef(ownerDB);
+    await assertSucceeds(setDoc(ref, familyLink(userA, caregiver)));
+    await assertSucceeds(updateDoc(ref, {
+      status: 'revoked', revision: 2, updatedAt: serverTimestamp(),
+    }));
+    await assertFails(getDoc(familyLinkRef(caregiverDB)));
+    await assertFails(getDocs(medicationsCollection(caregiverDB, userA)));
+    await assertFails(getDocs(medicationSchedulesCollection(caregiverDB, userA)));
+    await assertFails(updateDoc(ref, {
+      status: 'active', revision: 3, updatedAt: serverTimestamp(),
+    }));
+    await assertFails(deleteDoc(ref));
+    await assertFails(setDoc(ref, familyLink(userA, caregiver)));
+  });
+
+  it('denies caregiver self-approval, spoofed target roles and extra privilege fields', async () => {
+    await seed('users/' + userA, userProfile(userA));
+    await seed('users/' + userB, userProfile(userB));
+    await seed('users/' + caregiver, userProfile(caregiver, 'caregiver'));
+    const ownerDB = firestoreAs(userA), caregiverDB = firestoreAs(caregiver);
+
+    await assertFails(setDoc(familyLinkRef(caregiverDB), familyLink(userA, caregiver)));
+    await assertFails(setDoc(familyLinkRef(ownerDB, userA, userB), familyLink(userA, userB)));
+    const bad = [
+      familyLink(userA, caregiver, { ownerUid: userB }),
+      familyLink(userA, caregiver, { caregiverUid: userB }),
+      familyLink(userA, caregiver, { status: 'revoked' }),
+      familyLink(userA, caregiver, { revision: 5 }),
+      familyLink(userA, caregiver, { scopes: { medicationsRead: true, schedulesRead: true, doseHistoryRead: true } }),
+      familyLink(userA, caregiver, { scopes: { medicationsRead: true, schedulesRead: false } }),
+      familyLink(userA, caregiver, { privilege: 'admin' }),
+      familyLink(userA, caregiver, { createdAt: new Date('2020-01-01T00:00:00Z') }),
+    ];
+    for (const data of bad) {
+      await assertFails(setDoc(familyLinkRef(ownerDB), data));
+    }
+  });
+
 });

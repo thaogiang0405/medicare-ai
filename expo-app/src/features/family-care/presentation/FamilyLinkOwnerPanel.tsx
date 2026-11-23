@@ -34,8 +34,30 @@ export function FamilyLinkOwnerPanel({ ownerUid }: Readonly<{ ownerUid: string }
   }, [authorizedOwner, ownerUid]);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    if (!authorizedOwner) return;
+
+    // Load as an asynchronous subscription result rather than synchronously
+    // dispatching React state updates in an effect. Ignore stale responses on
+    // unmount or when the authenticated owner changes.
+    let cancelled = false;
+    void listOwnCaregiverLinks(ownerUid)
+      .then((result) => {
+        if (cancelled) return;
+        setLinks(result);
+        setLoaded(true);
+        setError('');
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setLinks([]);
+        setLoaded(false);
+        setError('Không thể đọc danh sách liên kết. Kiểm tra mạng hoặc cấu hình Firebase.');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authorizedOwner, ownerUid]);
 
   const grant = () => {
     if (!authorizedOwner || busy) return;

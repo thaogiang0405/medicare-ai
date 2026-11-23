@@ -14,12 +14,15 @@ import {
 } from '@/components/medicare';
 import { medicareColors, medicareSpacing, medicareTypography } from '@/constants/medicare-theme';
 import { medicationScheduleRecurrenceLabel } from '@/features/schedules/presentation/medication-schedule-utils';
+import { buildSharedScheduleText } from '@/features/family-sharing/domain/shared-schedule';
 import { isPrescriptionOcrFeatureEnabled } from '@/features/prescriptions';
 import { useSessionStore } from '@/store';
 import type { PersistedDoseResponseStatus } from '@/types/domain';
 import { formatVietnameseTime } from '@/utils/formatters';
 
 import { buildTodayScheduleSpeech } from './today-schedule-speech';
+import { getMedicationScheduleCalendarDay } from './elderly-dashboard-utils';
+import { ShareTodayScheduleButton } from './ShareTodayScheduleButton';
 import { TodayScheduleSpeechButton } from './TodayScheduleSpeechButton';
 import { useElderlyDashboard } from './useElderlyDashboard';
 
@@ -56,9 +59,13 @@ export default function ElderlyHomeScreen() {
   const [pendingDoseResponseId, setPendingDoseResponseId] = useState<string | null>(null);
   const pendingDoseResponseRef = useRef<string | null>(null);
 
-  const todaySpeech = user?.id && usesFirestoreSchedules && !isLoading && !errorMessage && !isSigningOut
-    ? buildTodayScheduleSpeech(usesFirestoreDoseTracking ? doseTrackingSchedules : medicationSchedules)
-    : '';
+  const realPlans = usesFirestoreDoseTracking ? doseTrackingSchedules : medicationSchedules;
+  const canUseRealPlans = Boolean(user?.id && user.role === 'elderly'
+    && usesFirestoreSchedules && !isLoading && !errorMessage && !isSigningOut);
+  const todaySpeech = canUseRealPlans ? buildTodayScheduleSpeech(realPlans) : '';
+  const sharedScheduleText = canUseRealPlans
+    ? buildSharedScheduleText(getMedicationScheduleCalendarDay().isoDate, realPlans)
+    : null;
 
   const handleSignOut = async () => {
     try {
@@ -159,6 +166,9 @@ export default function ElderlyHomeScreen() {
           Lịch thuốc hôm nay
         </Text>
         {todaySpeech ? <TodayScheduleSpeechButton key={user?.id} message={todaySpeech} /> : null}
+        {sharedScheduleText ? (
+          <ShareTodayScheduleButton key={user?.id} message={sharedScheduleText} />
+        ) : null}
         {isLoading ? <ActivityIndicator color={medicareColors.primary} size="large" /> : null}
         {!isLoading && !errorMessage && usesFirestoreSchedules && medicationSchedules.length === 0 ? (
           <SafetyNotice

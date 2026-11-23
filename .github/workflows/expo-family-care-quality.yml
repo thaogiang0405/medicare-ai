@@ -41,12 +41,18 @@ jobs:
         working-directory: expo-app
         run: npm ci
 
-      - name: Export Expo Android bundle and audit Firebase React Native transport
+      - name: Test Firebase React Native bundle audit
+        working-directory: expo-app
+        run: node --test scripts/verify-firebase-rn-bundle.test.mjs
+
+      - name: Export Expo Android and iOS bundles and audit Firebase React Native transport
         working-directory: expo-app
         run: |
-          export_dir="$RUNNER_TEMP/medicare-expo-android"
-          npx expo export --platform android --output-dir "$export_dir"
-          node scripts/verify-firebase-rn-bundle.mjs "$export_dir"
+          for platform in android ios; do
+            export_dir="$RUNNER_TEMP/medicare-expo-$platform"
+            npx expo export --platform "$platform" --output-dir "$export_dir"
+            node scripts/verify-firebase-rn-bundle.mjs "$export_dir"
+          done
 
       - name: Dependency advisory inventory (non-blocking)
         id: dependency-audit

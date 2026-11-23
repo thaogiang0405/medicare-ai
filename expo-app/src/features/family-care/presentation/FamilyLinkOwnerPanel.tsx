@@ -150,7 +150,7 @@ export function FamilyLinkOwnerPanel({ ownerUid }: Readonly<{ ownerUid: string }
       />
       <SafetyNotice
         title="Phạm vi quyền xem"
-        message="Sau khi cấp quyền, tài khoản người chăm sóc có thể đọc toàn bộ bản ghi thuốc và lịch trong Firebase, kể cả hàm lượng, hướng dẫn dùng và các thuốc đã ngừng. Giao diện hiện chỉ hiển thị tên và lịch dự kiến, nhưng không giới hạn các trường mà tài khoản được quyền đọc. Chỉ đồng ý khi bạn tin tưởng người nhận."
+        message="Sau khi cấp quyền, tài khoản người chăm sóc có thể đọc toàn bộ trường trong các bản ghi thuốc và lịch ĐANG HOẠT ĐỘNG trên Firebase, kể cả hàm lượng và hướng dẫn dùng. Rules chặn thuốc/lịch đã ngừng hoạt động và lịch sử uống thuốc. Giao diện chỉ hiển thị tên thuốc và giờ dự kiến; dữ liệu đã xem vẫn có thể được lưu bên ngoài ứng dụng. Chỉ đồng ý khi bạn tin tưởng người nhận."
         tone="warning"
       />
       <TextField

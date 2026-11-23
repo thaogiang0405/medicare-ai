@@ -49,6 +49,7 @@ describe('owner-driven Family Care approval/revocation UI', () => {
   it('never writes a link until the owner confirms the separate consent dialog', async () => {
     const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
     const view = await render(<FamilyLinkOwnerPanel ownerUid="elderly-123" />);
+    expect(view.getByText('Phạm vi quyền xem')).toBeTruthy();
     await fireEvent.changeText(view.getByLabelText('Mã tài khoản người chăm sóc'), 'caregiver-123');
     await fireEvent.press(view.getByLabelText('Xem và xác nhận cấp quyền'));
     expect(alert).toHaveBeenCalledWith('Đồng ý cấp quyền xem?', expect.any(String), expect.any(Array));

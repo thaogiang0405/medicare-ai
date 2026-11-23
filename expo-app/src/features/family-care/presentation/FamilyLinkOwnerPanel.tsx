@@ -133,6 +133,11 @@ export function FamilyLinkOwnerPanel({ ownerUid }: Readonly<{ ownerUid: string }
         message="Nhận mã tài khoản từ người chăm sóc mà bạn quen biết, kiểm tra lại trực tiếp rồi mới đồng ý. Mã tài khoản không phải mật khẩu. Không tự động cấp quyền khi chỉ dán mã."
         tone="information"
       />
+      <SafetyNotice
+        title="Phạm vi quyền xem"
+        message="Sau khi cấp quyền, tài khoản người chăm sóc có thể đọc toàn bộ bản ghi thuốc và lịch trong Firebase, kể cả hàm lượng, hướng dẫn dùng và các thuốc đã ngừng. Giao diện hiện chỉ hiển thị tên và lịch dự kiến, nhưng không giới hạn các trường mà tài khoản được quyền đọc. Chỉ đồng ý khi bạn tin tưởng người nhận."
+        tone="warning"
+      />
       <TextField
         label="Mã tài khoản người chăm sóc"
         autoCapitalize="none"

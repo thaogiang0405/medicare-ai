@@ -52,6 +52,7 @@ const scheduleMessage = buildSharedScheduleText('2026-11-23', [
 
 describe('CaregiverDashboardScreen manual data flow', () => {
   beforeEach(() => {
+    session.user.id = 'caregiver-a';
     jest.clearAllMocks();
     (useSessionStore as unknown as jest.Mock).mockImplementation(
       (selector: (state: typeof session) => unknown) => selector(session),
@@ -83,6 +84,22 @@ describe('CaregiverDashboardScreen manual data flow', () => {
     await fireEvent.press(view.getByLabelText('Đọc bản lịch đã dán'));
     expect(view.getByText(/Bản chia sẻ chưa đúng định dạng hoặc bị cắt/)).toBeTruthy();
     expect(view.queryByText('Thuốc mẫu bị giả mạo 500mg')).toBeNull();
+  });
+
+  it('erases a previously imported schedule when the authenticated account changes', async () => {
+    const view = await render(<CaregiverDashboardScreen />);
+    await fireEvent.press(view.getByLabelText('Theo dõi lịch thuốc'));
+    await fireEvent.changeText(view.getByLabelText('Dán bản chia sẻ lịch thuốc'), scheduleMessage);
+    await fireEvent.press(view.getByLabelText('Đọc bản lịch đã dán'));
+    expect(view.getByText('08:00 · Thuốc nhập thực tế')).toBeTruthy();
+
+    session.user.id = 'caregiver-b';
+    await view.rerender(<CaregiverDashboardScreen />);
+    expect(view.getByText('Chưa có bản chia sẻ')).toBeTruthy();
+    expect(view.queryByText('08:00 · Thuốc nhập thực tế')).toBeNull();
+
+    await fireEvent.press(view.getByLabelText('Theo dõi lịch thuốc'));
+    expect(view.getByLabelText('Dán bản chia sẻ lịch thuốc').props.value).toBe('');
   });
 
   it('previews generic reminder messages and never sends automatically', async () => {

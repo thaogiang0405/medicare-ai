@@ -35,7 +35,6 @@ export function FamilyLinkOwnerPanel({ ownerUid }: Readonly<{ ownerUid: string }
 
   useEffect(() => {
     void refresh();
-    return () => { setLinks([]); setTarget(''); };
   }, [refresh]);
 
   const grant = () => {

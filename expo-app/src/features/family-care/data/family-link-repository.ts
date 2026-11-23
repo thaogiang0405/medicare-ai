@@ -87,6 +87,40 @@ export async function revokeCaregiverLink(ownerUid: string, rawCaregiverUid: str
 type RawMedication = { id: string; name: string; status: string };
 type RawSchedule = { medicationId: string; localTime: string; recurrence: string; weekdays: number[]; startDate: string; endDate: string | null; timeZone: string; active: boolean };
 
+/**
+ * Validate the read-only DTO before displaying a caregiver's schedule.
+ * A corrupted active row must never be silently omitted: that could make a
+ * partially loaded plan look complete to a family member.
+ */
+function isReadableActiveMedication(ownerUid: string, data: Record<string, unknown>): boolean {
+  return data.ownerUid === ownerUid
+    && data.status === 'active'
+    && typeof data.name === 'string'
+    && data.name.length >= 1 && data.name.length <= 120
+    && data.name.trim().length > 0;
+}
+
+function isReadableActiveSchedule(ownerUid: string, data: Record<string, unknown>): boolean {
+  if (data.ownerUid !== ownerUid || data.active !== true
+    || typeof data.medicationId !== 'string'
+    || data.medicationId.length < 1 || data.medicationId.length > 150
+    || data.medicationId.includes('/')
+    || typeof data.localTime !== 'string'
+    || !/^(?:[01]\\d|2[0-3]):[0-5]\\d$/.test(data.localTime)
+    || typeof data.startDate !== 'string'
+    || !isValidMedicationScheduleDate(data.startDate)
+    || !(data.endDate === null || (typeof data.endDate === 'string'
+      && isValidMedicationScheduleDate(data.endDate) && data.endDate >= data.startDate))
+    || data.timeZone !== 'Asia/Ho_Chi_Minh'
+    || !Array.isArray(data.weekdays)
+    || !data.weekdays.every((day: unknown) => Number.isInteger(day)
+      && typeof day === 'number' && day >= 1 && day <= 7)
+    || new Set(data.weekdays).size !== data.weekdays.length) return false;
+  return (data.recurrence === 'daily' && data.weekdays.length === 7
+    && [1, 2, 3, 4, 5, 6, 7].every((day) => data.weekdays.includes(day)))
+    || (data.recurrence === 'weekly' && data.weekdays.length > 0);
+}
+
 /** Asia/Ho_Chi_Minh has UTC+07 and no DST in this app's date range. */
 export function millisecondsUntilNextVietnamDay(now = new Date()): number {
   const dayMs = 24 * 60 * 60 * 1000;
@@ -184,13 +218,13 @@ export function watchCaregiverPlans(
     medications = null;
     schedules = null;
   };
-  const fail = (message: string) => {
+  const fail = (message: string, status: 'revoked' | 'error' = 'revoked') => {
     if (!live || denied) return;
     denied = true;
     stopMidnightTimer();
     stopLink();
     clearChildren();
-    onChange({ status: 'revoked', plans: [], message });
+    onChange({ status, plans: [], message });
   };
   const emit = () => {
     if (!live) return;
@@ -239,38 +273,41 @@ export function watchCaregiverPlans(
       onSnapshot(query(collection(root, 'elderlyProfiles', ownerUid, 'medications'), where('status', '==', 'active'), limit(101)), { includeMetadataChanges: true }, (medDocs) => {
         if (!live || denied || generation !== childGeneration) return;
         if (medDocs.metadata.fromCache) { medications = null; onChange({ status: 'loading', plans: [] }); return; }
-        if (medDocs.size > 100) { fail('Danh sách thuốc vượt giới hạn 100 mục của chế độ theo dõi này.'); return; }
-        medications = medDocs.docs.flatMap((d) => {
-          const data = d.data();
-          if (data.ownerUid !== ownerUid || typeof data.name !== 'string'
-            || (data.status !== 'active' && data.status !== 'inactive')) return [];
-          return [{ id: d.id, name: data.name, status: data.status }];
-        });
+        if (medDocs.size > 100) {
+          fail('Danh sách thuốc vượt giới hạn 100 mục của chế độ theo dõi này.', 'error');
+          return;
+        }
+        const rows = medDocs.docs.map((d) => ({ id: d.id, data: d.data() }));
+        if (rows.some(({ data }) => !isReadableActiveMedication(ownerUid, data))) {
+          fail('Dữ liệu thuốc được chia sẻ không hợp lệ. Vui lòng nhờ chủ hồ sơ kiểm tra.', 'error');
+          return;
+        }
+        medications = rows.map(({ id, data }) => ({ id, name: data.name, status: 'active' }));
         emit();
       }, () => {
-        if (generation === childGeneration) fail('Không thể tiếp tục đọc danh sách thuốc được chia sẻ.');
+        if (generation === childGeneration) fail('Không thể tiếp tục đọc danh sách thuốc được chia sẻ.', 'error');
       }),
       onSnapshot(query(collection(root, 'elderlyProfiles', ownerUid, 'medicationSchedules'), where('active', '==', true), limit(101)), { includeMetadataChanges: true }, (scheduleDocs) => {
         if (!live || denied || generation !== childGeneration) return;
         if (scheduleDocs.metadata.fromCache) { schedules = null; onChange({ status: 'loading', plans: [] }); return; }
-        if (scheduleDocs.size > 100) { fail('Danh sách lịch vượt giới hạn 100 mục của chế độ theo dõi này.'); return; }
-        schedules = scheduleDocs.docs.flatMap((d) => {
-          const data = d.data();
-          if (data.ownerUid !== ownerUid || typeof data.medicationId !== 'string'
-            || typeof data.localTime !== 'string' || typeof data.recurrence !== 'string'
-            || !Array.isArray(data.weekdays) || typeof data.startDate !== 'string'
-            || !(data.endDate === null || typeof data.endDate === 'string')
-            || typeof data.timeZone !== 'string' || typeof data.active !== 'boolean') return [];
-          return [{
-            medicationId: data.medicationId, localTime: data.localTime,
-            recurrence: data.recurrence, weekdays: data.weekdays,
-            startDate: data.startDate, endDate: data.endDate,
-            timeZone: data.timeZone, active: data.active,
-          }];
-        });
+        if (scheduleDocs.size > 100) {
+          fail('Danh sách lịch vượt giới hạn 100 mục của chế độ theo dõi này.', 'error');
+          return;
+        }
+        const rows = scheduleDocs.docs.map((d) => d.data());
+        if (rows.some((data) => !isReadableActiveSchedule(ownerUid, data))) {
+          fail('Dữ liệu lịch thuốc được chia sẻ không hợp lệ. Vui lòng nhờ chủ hồ sơ kiểm tra.', 'error');
+          return;
+        }
+        schedules = rows.map((data) => ({
+          medicationId: data.medicationId, localTime: data.localTime,
+          recurrence: data.recurrence, weekdays: data.weekdays,
+          startDate: data.startDate, endDate: data.endDate,
+          timeZone: data.timeZone, active: data.active,
+        }));
         emit();
       }, () => {
-        if (generation === childGeneration) fail('Không thể tiếp tục đọc lịch thuốc được chia sẻ.');
+        if (generation === childGeneration) fail('Không thể tiếp tục đọc lịch thuốc được chia sẻ.', 'error');
       }),
     ];
     // A synchronous test adapter or already-queued SDK error may revoke the

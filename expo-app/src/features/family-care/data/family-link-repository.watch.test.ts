@@ -178,6 +178,44 @@ describe('Family Care Firestore watcher fail-closed behavior', () => {
     close();
   });
 
+  it('rejects malformed active medication data without showing a partial schedule', () => {
+    const close = watchCaregiverPlans(caregiverUid, elderlyUid, (state) => received.push(state));
+    emit(linkPath, linkSnapshot(true));
+    emit(medicationsPath, med);
+    emit(schedulesPath, schedule);
+    expect(received.at(-1)?.status).toBe('ready');
+
+    emit(medicationsPath, recordsSnapshot([
+      { id: 'medicine-1', fields: { ownerUid: elderlyUid, name: 'Thuốc từ Firestore', status: 'active' } },
+      { id: 'invalid', fields: { ownerUid: 'another-owner', name: 'Unknown', status: 'active' } },
+    ]));
+    expect(received.at(-1)).toMatchObject({ status: 'error', plans: [], message: expect.any(String) });
+    expect(stops.get(medicationsPath)).toHaveBeenCalledTimes(1);
+    expect(stops.get(schedulesPath)).toHaveBeenCalledTimes(1);
+    close();
+  });
+
+  it('rejects invalid active schedule dates instead of quietly hiding a medicine', () => {
+    const close = watchCaregiverPlans(caregiverUid, elderlyUid, (state) => received.push(state));
+    emit(linkPath, linkSnapshot(true));
+    emit(medicationsPath, med);
+    emit(schedulesPath, schedule);
+    expect(received.at(-1)?.status).toBe('ready');
+
+    emit(schedulesPath, recordsSnapshot([
+      { id: 'invalid', fields: {
+        ownerUid: elderlyUid, medicationId: 'medicine-1',
+        localTime: '09:00', recurrence: 'daily',
+        weekdays: [1, 2, 3, 4, 5, 6, 7],
+        startDate: '2026-02-30', endDate: null,
+        timeZone: 'Asia/Ho_Chi_Minh', active: true,
+      } },
+    ]));
+    expect(received.at(-1)).toMatchObject({ status: 'error', plans: [], message: expect.any(String) });
+    expect(stops.get(linkPath)).toHaveBeenCalledTimes(1);
+    close();
+  });
+
   it('removes visible medicine data as soon as the owner revokes the link', () => {
     const close = watchCaregiverPlans(caregiverUid, elderlyUid, (state) => received.push(state));
     emit(linkPath, linkSnapshot(true));

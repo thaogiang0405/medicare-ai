@@ -129,7 +129,7 @@ function FamilyCareDashboardContent() {
                 <Text style={styles.detail}>Đang kiểm tra quyền và tải thuốc, lịch thuốc…</Text>
               ) : result.status === 'revoked' || result.status === 'error' ? (
                 <SafetyNotice
-                  title="Không có quyền xem"
+                  title={result.status === 'error' ? 'Không thể tải lịch thuốc' : 'Không có quyền xem'}
                   message={result.message ?? 'Quyền đã bị thu hồi hoặc kết nối không còn hợp lệ.'}
                   tone="warning"
                 />

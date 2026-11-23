@@ -118,6 +118,21 @@ describe('Family Care: caregiver read-only linked schedule', () => {
     expect(view.queryByLabelText('Chỉnh sửa thuốc')).toBeNull();
   });
 
+  it('shows a data error without exposing stale medication rows', async () => {
+    const view = await render(<CaregiverDashboardScreen />);
+    await fireEvent.changeText(view.getByLabelText('Mã hồ sơ người cao tuổi'), 'elderly-123');
+    await fireEvent.press(view.getByLabelText('Xem lịch người thân'));
+    await act(async () => {
+      deliver?.({ status: 'ready', plans: [{ time: '08:00', medicationName: 'Private medicine' }] });
+    });
+    expect(view.getByText('08:00 · Private medicine')).toBeTruthy();
+    await act(async () => {
+      deliver?.({ status: 'error', plans: [], message: 'Dữ liệu lịch thuốc không hợp lệ.' });
+    });
+    expect(view.getByText('Không thể tải lịch thuốc')).toBeTruthy();
+    expect(view.queryByText('08:00 · Private medicine')).toBeNull();
+  });
+
   it('hides all previously visible medicine details when a link is revoked', async () => {
     const view = await render(<CaregiverDashboardScreen />);
     await fireEvent.changeText(view.getByLabelText('Mã hồ sơ người cao tuổi'), 'elderly-123');

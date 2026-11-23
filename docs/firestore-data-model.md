@@ -58,6 +58,9 @@ Không lưu mật khẩu, token, raw OCR hay thuốc trong `/users`.
 
 ### Caregiver link
 
+> **Phân nhánh thiết kế 2026-11-23 (chưa triển khai):** Family Care MVP dùng owner-approved link trực tiếp trên Firestore, chỉ gồm `ownerUid`, `caregiverUid`, `status: active|revoked`, `scopes: {medicationsRead: true, schedulesRead: true}`, `revision` và timestamps. Chỉ owner elderly hợp lệ được tạo/revoke; không cho caregiver ghi. Mô hình pending/invitationId bên dưới là phương án *server-trusted invite* dài hạn, **không phải schema được code MVP sử dụng**. Khi thử phải dùng đúng Rules của nhánh Family Care, đã review và deploy riêng; production không tự thay đổi. Xem [Family Care MVP](family-care-owner-approved-links.md).
+
+
 ```json
 // elderlyProfiles/{elderlyId}/caregiverLinks/{caregiverId}
 {

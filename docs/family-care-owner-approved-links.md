@@ -64,3 +64,10 @@ npm override. Không ép phiên bản `@grpc/grpc-js` ngoài range của Firebas
 
 Bước export dùng cấu hình Expo client hiện có; không deploy Firebase hoặc thay
 đổi feature flags trên production.
+
+CI trên commit `9a38c9f` đã export Android thành công và quét **8 bundle JavaScript/Hermes**:
+không tìm thấy các chữ ký Node-only nêu trên. Đây là bằng chứng cụ thể từ output Metro
+của ứng dụng (không chỉ suy luận từ export map của Firebase). Bước kế tiếp mở rộng kiểm
+tra sang iOS và có test riêng cho script audit, gồm trường hợp bundle sạch, thiếu bundle
+và từng chữ ký bị chặn. Kết quả của lần mở rộng sẽ được ghi nhận sau khi workflow hoàn tất.
+

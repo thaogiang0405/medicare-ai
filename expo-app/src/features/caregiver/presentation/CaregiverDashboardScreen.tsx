@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Share, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 
@@ -9,11 +9,13 @@ import {
   SafetyNotice,
   Screen,
   SecondaryButton,
-  StatusBadge,
+  TextField,
 } from '@/components/medicare';
 import { medicareColors, medicareRadius, medicareSpacing, medicareTypography } from '@/constants/medicare-theme';
+import { parseSharedScheduleText, type SharedSchedule } from '@/features/family-sharing/domain/shared-schedule';
 import { useSessionStore } from '@/store';
-import { demoSchedule, getReminderMessage, linkConversationMessage, type ReminderChoice } from '../data/caregiver-demo';
+
+import { getReminderMessage, linkConversationMessage, type ReminderChoice } from '../data/caregiver-demo';
 
 type OpenPanel = 'schedule' | 'reminder' | 'link' | null;
 
@@ -23,18 +25,44 @@ export default function CaregiverDashboardScreen() {
   const operationStatus = useSessionStore((state) => state.operationStatus);
   const authErrorMessage = useSessionStore((state) => state.errorMessage);
   const [openPanel, setOpenPanel] = useState<OpenPanel>(null);
-  const [onlyUnanswered, setOnlyUnanswered] = useState(false);
+  const [importText, setImportText] = useState('');
+  const [imported, setImported] = useState<SharedSchedule | null>(null);
+  const [importError, setImportError] = useState(false);
   const [reminderChoice, setReminderChoice] = useState<ReminderChoice>('schedule');
   const [shareError, setShareError] = useState(false);
   const isSigningOut = operationStatus === 'loading';
+
+  // In-memory snapshots belong to this signed-in caregiver session only.
+  useEffect(() => {
+    setOpenPanel(null);
+    setImported(null);
+    setImportText('');
+    setImportError(false);
+  }, [user?.id]);
 
   const togglePanel = (panel: Exclude<OpenPanel, null>) => {
     setShareError(false);
     setOpenPanel((currentPanel) => currentPanel === panel ? null : panel);
   };
 
-  // The OS opens a share sheet, not a remote push notification. Dismissing the
-  // sheet must never be presented as a delivered message.
+  const importSharedText = () => {
+    const snapshot = parseSharedScheduleText(importText.trim());
+    if (!snapshot) {
+      setImportError(true);
+      return;
+    }
+    setImported(snapshot);
+    setImportText('');
+    setImportError(false);
+  };
+
+  const clearSharedText = () => {
+    setImported(null);
+    setImportText('');
+    setImportError(false);
+  };
+
+  // Opens only the OS share sheet; no push, SMS, Firestore or delivery claim.
   const openShareSheet = async (message: string) => {
     setShareError(false);
     try {
@@ -45,6 +73,7 @@ export default function CaregiverDashboardScreen() {
   };
 
   const handleSignOut = async () => {
+    clearSharedText();
     try {
       await signOut();
       router.replace('/login');
@@ -60,66 +89,80 @@ export default function CaregiverDashboardScreen() {
         title={`Chào ${user?.displayName ?? 'bạn'}`}
       />
       <DemoModeBanner
-        description="Vai trò đã được kiểm tra từ hồ sơ của chính bạn. Hồ sơ và trạng thái dưới đây là dữ liệu giả lập; chưa có liên kết chăm sóc, đồng bộ hay quyền dữ liệu sức khỏe."
-        title="Chế độ trình diễn"
+        description="Chưa có quyền đọc lịch thuốc trực tuyến của người khác. Bạn chỉ có thể xem một bản lịch do người cao tuổi chủ động chia sẻ. Bản nhận được có thể bị sửa trước khi dán."
+        title="Chưa liên kết hồ sơ trực tuyến"
       />
       {authErrorMessage ? (
         <SafetyNotice message={authErrorMessage} title="Không thể hoàn tất phiên đăng nhập" tone="error" />
       ) : null}
-      <SafetyNotice
-        message="“Chưa phản hồi” không đồng nghĩa người dùng chưa uống thuốc. Hãy liên hệ nhẹ nhàng khi cần."
-        title="Hiểu đúng trạng thái"
-        tone="warning"
-      />
       <View style={styles.section}>
-        <Text accessibilityRole="header" style={styles.sectionTitle}>
-          Hồ sơ được chia sẻ
-        </Text>
-        <View accessibilityRole="summary" style={styles.profileCard}>
-          <View style={styles.avatar}>
-            <Text accessibilityElementsHidden style={styles.avatarText}>MH</Text>
-          </View>
-          <View style={styles.profileCopy}>
-            <Text style={styles.profileName}>Hồ sơ minh họa</Text>
-            <Text style={styles.profileDescription}>Dữ liệu trình diễn · Không phải hồ sơ người dùng khác</Text>
-          </View>
-          <StatusBadge label="Chưa phản hồi" status="unanswered" />
-        </View>
+        <Text accessibilityRole="header" style={styles.sectionTitle}>Dữ liệu người thân</Text>
+        <SafetyNotice
+          title={imported ? 'Đang xem bản lịch đã nhập' : 'Chưa có bản chia sẻ'}
+          message={imported
+            ? 'Đây là bản sao thủ công, không cập nhật tự động và không xác minh được người gửi. Không có dữ liệu uống thuốc thực tế.'
+            : 'Người cao tuổi phải chủ động chia sẻ lịch từ tài khoản của họ. Ứng dụng không có quyền tự tìm hoặc đọc hồ sơ người khác.'}
+          tone="information"
+        />
       </View>
       <View style={styles.section}>
-        <Text accessibilityRole="header" style={styles.sectionTitle}>
-          Thao tác nhanh
-        </Text>
+        <Text accessibilityRole="header" style={styles.sectionTitle}>Thao tác nhanh</Text>
         <ActionCard
-          accessibilityHint="Mở hoặc ẩn lịch minh họa, không đọc hồ sơ của người khác"
-          description="Xem giờ dự kiến và phản hồi tự báo của hồ sơ minh họa."
+          accessibilityHint="Nhập và xem bản chia sẻ lịch thật, không đọc tài khoản khác trên Firebase"
+          description="Dán bản lịch do người cao tuổi đã gửi, xem tên và giờ dự kiến."
           icon={<Text style={styles.icon}>◷</Text>}
           onPress={() => togglePanel('schedule')}
-          title={openPanel === 'schedule' ? 'Ẩn lịch thuốc minh họa' : 'Theo dõi lịch thuốc'}
+          title={openPanel === 'schedule' ? 'Ẩn bản lịch đã chia sẻ' : 'Theo dõi lịch thuốc'}
         />
         {openPanel === 'schedule' ? (
           <View style={styles.section}>
-            <Text accessibilityRole="header" style={styles.sectionTitle}>Lịch thuốc hôm nay · Minh họa</Text>
-            <Text style={styles.profileDescription}>3 mốc trong lịch mẫu · 1 chưa phản hồi. Đây không phải dữ liệu của người thân.</Text>
-            <SecondaryButton
-              label={onlyUnanswered ? 'Xem tất cả lịch minh họa' : 'Chỉ xem chưa phản hồi'}
-              onPress={() => setOnlyUnanswered((current) => !current)}
-            />
-            {demoSchedule.filter((entry) => !onlyUnanswered || entry.unanswered).map(({ time, name, response }) => (
-              <View key={time} style={styles.scheduleRow}>
-                <Text style={styles.profileName}>{time} · {name}</Text>
-                <Text style={styles.profileDescription}>{response}</Text>
-              </View>
-            ))}
-            <SafetyNotice
-              title="Không tự suy đoán bỏ liều"
-              message="“Chưa phản hồi” chỉ có nghĩa chưa có báo cáo trong ví dụ; không chứng minh người đó chưa uống thuốc."
-              tone="warning"
-            />
+            <Text accessibilityRole="header" style={styles.sectionTitle}>Bản chia sẻ lịch thuốc</Text>
+            {imported ? (
+              <>
+                <Text style={styles.profileDescription}>Ngày {imported.date} · {imported.items.length} mốc · Giờ Việt Nam</Text>
+                {imported.items.map(({ time, name }, index) => (
+                  <View key={time + '-' + index} style={styles.scheduleRow}>
+                    <Text style={styles.profileName}>{time} · {name}</Text>
+                    <Text style={styles.profileDescription}>Lịch dự kiến; chưa có xác nhận đã uống</Text>
+                  </View>
+                ))}
+                <SafetyNotice
+                  title="Bản sao không tự cập nhật"
+                  message="Nếu lịch thay đổi, hãy xin bản mới. Người gửi và nội dung chưa được xác thực bởi hệ thống."
+                  tone="warning"
+                />
+                <SecondaryButton label="Xóa bản lịch đã nhập" onPress={clearSharedText} />
+              </>
+            ) : (
+              <>
+                <Text style={styles.profileDescription}>
+                  Người cao tuổi mở Lịch thuốc hôm nay → Chia sẻ lịch thuốc hôm nay → đồng ý → gửi tin nhắn. Sao chép toàn bộ bản lịch vào ô dưới đây.
+                </Text>
+                <TextField
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  errorMessage={importError ? 'Bản chia sẻ chưa đúng định dạng hoặc bị cắt. Hãy yêu cầu gửi lại toàn bộ nội dung.' : undefined}
+                  helperText="Bản lịch chỉ được giữ tạm trong màn hình này; không ghi lên Firebase hay bộ nhớ lâu dài."
+                  label="Dán bản chia sẻ lịch thuốc"
+                  maxLength={8192}
+                  multiline
+                  numberOfLines={6}
+                  onChangeText={(value) => { setImportText(value); setImportError(false); }}
+                  placeholder="MEDICARE-AI-LICH-THUOC-V1..."
+                  style={styles.pasteInput}
+                  value={importText}
+                />
+                <SecondaryButton
+                  disabled={!importText.trim()}
+                  label="Đọc bản lịch đã dán"
+                  onPress={importSharedText}
+                />
+              </>
+            )}
           </View>
         ) : null}
         <ActionCard
-          description="Chuẩn bị lời nhắc chung, chỉ chia sẻ khi bạn tự chọn ứng dụng gửi."
+          description="Chuẩn bị lời nhắc chung và chủ động chọn ứng dụng để gửi."
           icon={<Text style={styles.icon}>♥</Text>}
           onPress={() => togglePanel('reminder')}
           title={openPanel === 'reminder' ? 'Ẩn lời nhắc' : 'Nhắc người thân'}
@@ -137,11 +180,11 @@ export default function CaregiverDashboardScreen() {
               label="Mở bảng chia sẻ lời nhắc"
               onPress={() => void openShareSheet(getReminderMessage(reminderChoice))}
             />
-            <Text style={styles.profileDescription}>Không có thông báo đẩy hay SMS tự động. Bạn quyết định có gửi qua ứng dụng khác hay không.</Text>
+            <Text style={styles.profileDescription}>Không có thông báo đẩy hay SMS tự động. Bạn quyết định có gửi hay không.</Text>
           </View>
         ) : null}
         <ActionCard
-          description="Tìm hiểu việc xin phép và soạn tin trao đổi; chưa tạo liên kết tài khoản."
+          description="Trao đổi về việc xin phép; chưa tạo liên kết hoặc quyền trên Firebase."
           icon={<Text style={styles.icon}>⌁</Text>}
           onPress={() => togglePanel('link')}
           title={openPanel === 'link' ? 'Ẩn hướng dẫn liên kết' : 'Liên kết hồ sơ'}
@@ -151,7 +194,7 @@ export default function CaregiverDashboardScreen() {
             <Text accessibilityRole="header" style={styles.sectionTitle}>Liên kết hồ sơ · Chưa kích hoạt</Text>
             <SafetyNotice
               title="Chưa cấp quyền"
-              message="Việc liên kết thật cần người cao tuổi chấp thuận và hệ thống kiểm tra quyền phía máy chủ. Hiện không đọc được lịch thuốc của tài khoản khác."
+              message="Kết nối trực tuyến cần người cao tuổi chấp thuận và hệ thống kiểm tra quyền phía máy chủ. Bản chia sẻ thủ công không cấp quyền này."
               tone="warning"
             />
             <View style={styles.scheduleRow}>
@@ -173,7 +216,7 @@ export default function CaregiverDashboardScreen() {
         ) : null}
       </View>
       <SecondaryButton
-        accessibilityHint="Đăng xuất và xóa trạng thái phiên trong bộ nhớ"
+        accessibilityHint="Đăng xuất và xóa bản lịch đang xem khỏi bộ nhớ tạm"
         disabled={isSigningOut}
         label={isSigningOut ? 'Đang đăng xuất…' : 'Đăng xuất'}
         onPress={() => void handleSignOut()}
@@ -208,33 +251,9 @@ const styles = StyleSheet.create({
     borderColor: medicareColors.border,
     backgroundColor: medicareColors.surfaceElevated,
   },
-  profileCard: {
-    minHeight: 102,
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: medicareSpacing.sm,
-    padding: medicareSpacing.md,
-    borderRadius: medicareRadius.lg,
-    borderColor: medicareColors.border,
-    borderWidth: 1,
-    backgroundColor: medicareColors.surfaceElevated,
-  },
-  avatar: {
-    width: 52,
-    height: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 26,
-    backgroundColor: medicareColors.primaryContainer,
-  },
-  avatarText: {
-    color: medicareColors.primary,
-    fontSize: medicareTypography.label,
-    fontWeight: '800',
-  },
-  profileCopy: {
-    flex: 1,
-    gap: medicareSpacing.xxs,
+  pasteInput: {
+    minHeight: 140,
+    textAlignVertical: 'top',
   },
   profileName: {
     color: medicareColors.text,

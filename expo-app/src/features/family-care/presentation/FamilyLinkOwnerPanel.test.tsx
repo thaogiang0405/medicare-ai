@@ -69,6 +69,8 @@ describe('owner-driven Family Care approval/revocation UI', () => {
     const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
     const view = await render(<FamilyLinkOwnerPanel ownerUid="elderly-123" />);
     expect(view.getByText('Phạm vi quyền xem')).toBeTruthy();
+    expect(view.getByText(/ĐANG HOẠT ĐỘNG/)).toBeTruthy();
+    expect(view.getByText(/lịch sử uống thuốc/)).toBeTruthy();
     await fireEvent.changeText(view.getByLabelText('Mã tài khoản người chăm sóc'), 'caregiver-123');
     await fireEvent.press(view.getByLabelText('Xem và xác nhận cấp quyền'));
     expect(alert).toHaveBeenCalledWith('Đồng ý cấp quyền xem?', expect.any(String), expect.any(Array));

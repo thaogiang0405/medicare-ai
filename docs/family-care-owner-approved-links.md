@@ -37,8 +37,17 @@ Chạy tại expo-app/ trong nhánh feature/owner-approved-family-links:
 
 Lệnh test:rules chạy Firestore Emulator cục bộ, có thể cần Java/Firebase CLI. Nó không deploy gì lên production. **GitHub Actions trên commit `506aa956` đã đạt: Node.js 24.12.0, TypeScript, ESLint, 50/50 Jest suites (227/227 tests), và 49/49 Firestore Rules Emulator tests.** Workflow dùng checkout/setup-node/setup-java v5, không còn cảnh báo action Node 20. Kết quả: https://github.com/thaogiang0405/medicare-ai/actions/runs/45203956961 . Test Rules xác nhận: không link → deny; caregiver tự approve → deny; elderly cấp đúng UID caregiver → allow chỉ đọc thuốc/lịch đang hoạt động; đọc của owner khác hoặc ghi thuốc/lịch → deny; chủ hồ sơ revoke → không đọc tiếp và không thể re-active.
 
-Các test client bổ sung mô phỏng listener Firestore, không sử dụng tài khoản bệnh nhân thật, gồm: kiểm tra link server trước khi đọc, giữ trạng thái tải khi offline/cache, xóa dữ liệu khi revoked, xử lý đổi tài khoản, hủy subscription, cập nhật lịch qua nửa đêm tại Việt Nam, danh sách thuốc đang dùng, lỗi cấu trúc dữ liệu, transaction thu hồi khi offline/đổi Auth và phản hồi danh sách liên kết đến không đúng thứ tự. **Các ca này đã đạt trong GitHub Actions**, nhưng chưa được kiểm tra trên iPhone thật. npm ci hiện cảnh báo 27 dependency advisories (22 moderate, 5 high); cần triage riêng trước release, không chạy `npm audit fix --force` trong PR này.
+Các test client bổ sung mô phỏng listener Firestore, không sử dụng tài khoản bệnh nhân thật, gồm: kiểm tra link server trước khi đọc, giữ trạng thái tải khi offline/cache, xóa dữ liệu khi revoked, xử lý đổi tài khoản, hủy subscription, cập nhật lịch qua nửa đêm tại Việt Nam, danh sách thuốc đang dùng, lỗi cấu trúc dữ liệu, transaction thu hồi khi offline/đổi Auth và phản hồi danh sách liên kết đến không đúng thứ tự. **Các ca này đã đạt trong GitHub Actions**, nhưng chưa được kiểm tra trên iPhone thật.
+
+## Dependency audit – release gate
+
+- `npm ci` / `npm audit` báo 27 package advisories (22 moderate, 5 high). Năm mục high được gom quanh cùng dependency gốc: `@firebase/firestore@4.20.0` đang khai báo `@grpc/grpc-js: ~1.9.0`, lockfile cài `1.9.16`.
+- Advisory high [GHSA-m9gg-hp2v-232j](https://github.com/advisories/GHSA-m9gg-hp2v-232j) ảnh hưởng `@grpc/grpc-js <1.13.6` và `>=1.14.0 <1.14.5`, bản vá được công bố là `1.13.6` / `1.14.5`. Advisory mô tả lỗi xác thực certificate ở một số cấu hình **gRPC server** dùng `getAuthContext`; chưa có bằng chứng luồng Firebase client trong Expo app thực thi đoạn server-side dễ bị ảnh hưởng.
+- Firebase upstream issue [firebase/firebase-js-sdk#10400](https://github.com/firebase/firebase-js-sdk/issues/10400) ghi nhận pin `~1.9.0` khiến người dùng bị giữ ở nhánh 1.9; issue vẫn mở và cập nhật ngày 17-11-2026. Nâng bằng npm override có thể tạo thêm bản gRPC lồng nhau, không bảo đảm thay đúng bản mà Firestore dùng.
+- Vì vậy **không tự ép override, downgrade Firebase, hoặc chạy `npm audit fix --force`**. Trước release cần xác minh Expo Metro/RN bundle có kéo Node gRPC transport không, theo dõi bản sửa chính thức từ Firebase và kiểm thử lại Emulator + app. Đây là cảnh báo dependency cần xử lý có chủ đích, không phải bằng chứng đã khai thác được trong app.
+
+
 
 Sau khi Rules được xét duyệt và triển khai có chủ đích, dùng hai tài khoản test riêng (không dùng dữ liệu y tế thật), lần lượt trao đổi UID, approve, xem lịch live, sửa một lịch để kiểm tra thay đổi, revoke để kiểm tra mất quyền, đổi account để kiểm tra xóa dữ liệu.
 
-**CI trên commit `506aa956` đã thành công với Node 24.12.0. Chưa kiểm thử luồng hai điện thoại trên Expo Go hoặc thử nghiệm Rules đã triển khai production. PR tiếp tục là Draft; chưa deploy Rules hoặc đổi billing.**
+**CI trên commit `103fcb19` đã thành công với Node 24.12.0. Chưa kiểm thử luồng hai điện thoại trên Expo Go hoặc thử nghiệm Rules đã triển khai production. PR tiếp tục là Draft; chưa deploy Rules hoặc đổi billing.**

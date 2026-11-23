@@ -227,7 +227,9 @@ describe('Family Care Firestore watcher fail-closed behavior', () => {
     emit(linkPath, linkSnapshot(true));
     expect(observed.has(medicationsPath)).toBe(true);
     expect(observed.has(schedulesPath)).toBe(true);
+    expect(where).toHaveBeenCalledWith('ownerUid', '==', elderlyUid);
     expect(where).toHaveBeenCalledWith('status', '==', 'active');
+    expect(where).toHaveBeenCalledWith('ownerUid', '==', elderlyUid);
     expect(where).toHaveBeenCalledWith('active', '==', true);
     close();
     expect(stops.get(linkPath)).toHaveBeenCalledTimes(1);

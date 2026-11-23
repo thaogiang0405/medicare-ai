@@ -90,11 +90,14 @@ function currentVietnamDay(now = new Date()) {
 /** A pure formatter for a caregiver's read-only, planned medicine times. */
 export function deriveCaregiverPlans(medications: readonly RawMedication[], schedules: readonly RawSchedule[], now = new Date()): CaregiverPlan[] {
   const { today, week } = currentVietnamDay(now);
-  const names = new Map(medications.filter((med) => med.status === 'active').map((med) => [med.id, med.name]));
+  const names = new Map(medications.filter((med) => med.status === 'active' && typeof med.name === 'string').map((med) => [med.id, med.name]));
   return schedules.flatMap((plan) => {
     const name = names.get(plan.medicationId);
-    if (!name || !plan.active || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(plan.localTime)
-      || plan.startDate > today || (plan.endDate !== null && plan.endDate < today)
+    if (!name || !plan.active || typeof plan.localTime !== 'string'
+      || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(plan.localTime)
+      || typeof plan.startDate !== 'string'
+      || plan.startDate > today || (plan.endDate !== null && (typeof plan.endDate !== 'string' || plan.endDate < today))
+      || !Array.isArray(plan.weekdays)
       || !((plan.recurrence === 'daily' && plan.weekdays.length === 7)
         || (plan.recurrence === 'weekly' && plan.weekdays.includes(week)))) return [];
     return [{ time: plan.localTime, medicationName: name }];
@@ -116,6 +119,7 @@ export function watchCaregiverPlans(
   if (ownerUid === caregiverUid) throw new Error('Không thể theo dõi chính tài khoản này.');
 
   let live = true;
+  let denied = false;
   let childSubscriptions: Unsubscribe[] = [];
   let medications: RawMedication[] | null = null;
   let schedules: RawSchedule[] | null = null;
@@ -127,7 +131,8 @@ export function watchCaregiverPlans(
     schedules = null;
   };
   const fail = (message: string) => {
-    if (!live) return;
+    if (!live || denied) return;
+    denied = true;
     clearChildren();
     onChange({ status: 'revoked', plans: [], message });
   };
@@ -142,8 +147,13 @@ export function watchCaregiverPlans(
   };
 
   onChange({ status: 'loading', plans: [] });
-  const unsubscribeLink = onSnapshot(linkRef(ownerUid, caregiverUid), (snapshot) => {
-    if (!live) return;
+  const unsubscribeLink = onSnapshot(linkRef(ownerUid, caregiverUid), { includeMetadataChanges: true }, (snapshot) => {
+    if (!live || denied) return;
+    if (snapshot.metadata.fromCache) {
+      clearChildren();
+      onChange({ status: 'loading', plans: [] });
+      return;
+    }
     if (!snapshot.exists() || snapshot.data().status !== 'active'
       || snapshot.data().ownerUid !== ownerUid || snapshot.data().caregiverUid !== caregiverUid) {
       fail('Bạn chưa được cấp quyền hoặc quyền xem đã bị thu hồi.');
@@ -152,13 +162,17 @@ export function watchCaregiverPlans(
     if (childSubscriptions.length > 0) return; // active listener already running
     const root = getFirebaseFirestore();
     childSubscriptions = [
-      onSnapshot(query(collection(root, 'elderlyProfiles', ownerUid, 'medications'), limit(100)), (medDocs) => {
-        if (!live) return;
+      onSnapshot(query(collection(root, 'elderlyProfiles', ownerUid, 'medications'), limit(101)), { includeMetadataChanges: true }, (medDocs) => {
+        if (!live || denied) return;
+        if (medDocs.metadata.fromCache) { medications = null; onChange({ status: 'loading', plans: [] }); return; }
+        if (medDocs.size > 100) { fail('Danh sách thuốc vượt giới hạn 100 mục của chế độ theo dõi này.'); return; }
         medications = medDocs.docs.map((d) => ({ id: d.id, name: d.data().name, status: d.data().status }));
         emit();
       }, () => fail('Không thể tiếp tục đọc danh sách thuốc được chia sẻ.')),
-      onSnapshot(query(collection(root, 'elderlyProfiles', ownerUid, 'medicationSchedules'), limit(100)), (scheduleDocs) => {
-        if (!live) return;
+      onSnapshot(query(collection(root, 'elderlyProfiles', ownerUid, 'medicationSchedules'), limit(101)), { includeMetadataChanges: true }, (scheduleDocs) => {
+        if (!live || denied) return;
+        if (scheduleDocs.metadata.fromCache) { schedules = null; onChange({ status: 'loading', plans: [] }); return; }
+        if (scheduleDocs.size > 100) { fail('Danh sách lịch vượt giới hạn 100 mục của chế độ theo dõi này.'); return; }
         schedules = scheduleDocs.docs.map((d) => ({
           medicationId: d.data().medicationId, localTime: d.data().localTime,
           recurrence: d.data().recurrence, weekdays: d.data().weekdays,

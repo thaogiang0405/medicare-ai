@@ -1,0 +1,71 @@
+name: Expo quality gates
+
+on:
+  pull_request:
+    branches:
+      - migration/expo-sdk58
+    paths:
+      - "expo-app/**"
+      - "firestore.rules"
+      - ".github/workflows/expo-family-care-quality.yml"
+  push:
+    branches:
+      - migration/expo-sdk58
+      - feature/owner-approved-family-links
+    paths:
+      - "expo-app/**"
+      - "firestore.rules"
+      - ".github/workflows/expo-family-care-quality.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: expo-quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  expo-and-rules:
+    name: Expo typecheck, lint, Jest and Firestore Rules
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: expo-app/package-lock.json
+
+      - name: Set up Java 21 for Firestore Emulator
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install locked dependencies
+        working-directory: expo-app
+        run: npm ci
+
+      - name: TypeScript
+        working-directory: expo-app
+        run: npm run typecheck
+
+      - name: ESLint
+        working-directory: expo-app
+        run: npm run lint
+
+      - name: Jest unit and UI tests
+        working-directory: expo-app
+        run: npm test
+
+      - name: Offline OCR proof of concept
+        working-directory: expo-app
+        run: npm run test:ocr:poc
+
+      - name: Firestore Rules Emulator tests
+        working-directory: expo-app
+        run: npm run test:rules

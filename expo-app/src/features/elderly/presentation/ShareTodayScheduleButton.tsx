@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Share, View } from 'react-native';
+import { Share, Text, View } from 'react-native';
 
 import { SafetyNotice, SecondaryButton } from '@/components/medicare';
-import { medicareSpacing } from '@/constants/medicare-theme';
+import { medicareColors, medicareRadius, medicareSpacing, medicareTypography } from '@/constants/medicare-theme';
 
 /**
  * Manual, two-step consent. Never start sharing when a schedule is merely
@@ -39,9 +39,22 @@ export function ShareTodayScheduleButton({ message }: Readonly<{ message: string
         <>
           <SafetyNotice
             title="Chỉ chia sẻ khi bạn đồng ý"
-            message="Bản sao chứa tên thuốc và giờ dự kiến hôm nay từ hồ sơ của bạn. Thông tin sức khỏe có thể được người nhận lưu hoặc chuyển tiếp. Chỉ chọn người nhận đáng tin cậy. Không gửi hàm lượng, hướng dẫn uống hay phản hồi đã uống."
+            message="Tin nhắn chỉ gồm ngày, giờ dự kiến và tên thuốc. Sau khi đồng ý, bạn có thể chọn Zalo, Messenger hoặc ứng dụng nhắn tin khác nếu thiết bị hỗ trợ. Người nhận có thể lưu hoặc chuyển tiếp. Chỉ gửi cho người đáng tin cậy."
             tone="warning"
           />
+          <View style={{
+            padding: medicareSpacing.md,
+            borderWidth: 1,
+            borderColor: medicareColors.border,
+            borderRadius: medicareRadius.md,
+            backgroundColor: medicareColors.surfaceElevated,
+          }}>
+            <Text accessibilityLabel="Nội dung lịch thuốc sẽ chia sẻ" selectable style={{
+              color: medicareColors.text,
+              fontSize: medicareTypography.bodySmall,
+              lineHeight: 22,
+            }}>{message}</Text>
+          </View>
           <SecondaryButton
             disabled={sharing}
             label={sharing ? 'Đang mở bảng chia sẻ…' : 'Tôi đồng ý — mở bảng chia sẻ'}

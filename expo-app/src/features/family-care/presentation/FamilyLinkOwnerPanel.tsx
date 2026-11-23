@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Share, Text, View } from 'react-native';
 
 import { SafetyNotice, SecondaryButton, TextField } from '@/components/medicare';
@@ -20,6 +20,8 @@ export function FamilyLinkOwnerPanel({ ownerUid }: Readonly<{ ownerUid: string }
   const [loaded, setLoaded] = useState(false);
   const [loadedForOwnerUid, setLoadedForOwnerUid] = useState<string | null>(null);
   const [errorForOwnerUid, setErrorForOwnerUid] = useState<string | null>(null);
+  // Only the latest response may determine an owner's current grant list.
+  const listRequestGeneration = useRef(0);
   const authorizedOwner = Boolean(ownerUid && role === 'elderly' && sessionUid === ownerUid);
   // A new owner must never see the previous owner's links while loading.
   const visibleLinks = loadedForOwnerUid === ownerUid ? links : [];
@@ -32,13 +34,16 @@ export function FamilyLinkOwnerPanel({ ownerUid }: Readonly<{ ownerUid: string }
 
   const refresh = useCallback(async () => {
     if (!authorizedOwner) return;
+    const generation = ++listRequestGeneration.current;
     try {
       const result = await listOwnCaregiverLinks(ownerUid);
+      if (generation !== listRequestGeneration.current) return;
       setLinks(result);
       setLoaded(true);
       setLoadedForOwnerUid(ownerUid);
       updateError('');
     } catch {
+      if (generation !== listRequestGeneration.current) return;
       setLinks([]);
       setLoaded(false);
       setLoadedForOwnerUid(ownerUid);
@@ -53,16 +58,17 @@ export function FamilyLinkOwnerPanel({ ownerUid }: Readonly<{ ownerUid: string }
     // dispatching React state updates in an effect. Ignore stale responses on
     // unmount or when the authenticated owner changes.
     let cancelled = false;
+    const generation = ++listRequestGeneration.current;
     void listOwnCaregiverLinks(ownerUid)
       .then((result) => {
-        if (cancelled) return;
+        if (cancelled || generation !== listRequestGeneration.current) return;
         setLinks(result);
         setLoaded(true);
         setLoadedForOwnerUid(ownerUid);
         updateError('');
       })
       .catch(() => {
-        if (cancelled) return;
+        if (cancelled || generation !== listRequestGeneration.current) return;
         setLinks([]);
         setLoaded(false);
         setLoadedForOwnerUid(ownerUid);
@@ -71,6 +77,7 @@ export function FamilyLinkOwnerPanel({ ownerUid }: Readonly<{ ownerUid: string }
 
     return () => {
       cancelled = true;
+      listRequestGeneration.current += 1;
     };
   }, [authorizedOwner, ownerUid, updateError]);
 

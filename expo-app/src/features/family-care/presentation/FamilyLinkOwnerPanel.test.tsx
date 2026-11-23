@@ -65,6 +65,27 @@ describe('owner-driven Family Care approval/revocation UI', () => {
     expect(view.getByText('Danh sách liên kết chưa được tải.')).toBeTruthy();
   });
 
+  it('ignores a slow old grant-list response after a newer revocation refresh', async () => {
+    let resolveInitial: ((value: Awaited<ReturnType<typeof listOwnCaregiverLinks>>) => void) | undefined;
+    let resolveLatest: ((value: Awaited<ReturnType<typeof listOwnCaregiverLinks>>) => void) | undefined;
+    jest.mocked(listOwnCaregiverLinks)
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveInitial = resolve; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveLatest = resolve; }));
+    const view = await render(<FamilyLinkOwnerPanel ownerUid="elderly-123" />);
+    await fireEvent.press(view.getByLabelText('Tải lại danh sách liên kết'));
+    await act(async () => {
+      resolveLatest?.([{ caregiverUid: 'caregiver-123', status: 'revoked', revision: 2 }]);
+    });
+    expect(view.getByText('Đã thu hồi quyền')).toBeTruthy();
+    expect(view.queryByLabelText('Thu hồi quyền của caregiver-123')).toBeNull();
+
+    await act(async () => {
+      resolveInitial?.([{ caregiverUid: 'caregiver-123', status: 'active', revision: 1 }]);
+    });
+    expect(view.getByText('Đã thu hồi quyền')).toBeTruthy();
+    expect(view.queryByLabelText('Thu hồi quyền của caregiver-123')).toBeNull();
+  });
+
   it('never writes a link until the owner confirms the separate consent dialog', async () => {
     const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
     const view = await render(<FamilyLinkOwnerPanel ownerUid="elderly-123" />);

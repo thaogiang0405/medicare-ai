@@ -158,6 +158,7 @@ export function watchCaregiverPlans(
   let live = true;
   let denied = false;
   let childSubscriptions: Unsubscribe[] = [];
+  let childGeneration = 0;
   let linkSubscription: Unsubscribe | null = null;
   let midnightTimer: ReturnType<typeof setTimeout> | null = null;
   let medications: RawMedication[] | null = null;
@@ -176,6 +177,8 @@ export function watchCaregiverPlans(
     }
   };
   const clearChildren = () => {
+    // Invalidate callbacks already queued by Firestore before unsubscribing.
+    childGeneration += 1;
     childSubscriptions.forEach((unsubscribe) => unsubscribe());
     childSubscriptions = [];
     medications = null;
@@ -231,9 +234,10 @@ export function watchCaregiverPlans(
     }
     if (childSubscriptions.length > 0) return; // active listener already running
     const root = getFirebaseFirestore();
-    childSubscriptions = [
+    const generation = ++childGeneration;
+    const subscriptions: Unsubscribe[] = [
       onSnapshot(query(collection(root, 'elderlyProfiles', ownerUid, 'medications'), limit(101)), { includeMetadataChanges: true }, (medDocs) => {
-        if (!live || denied) return;
+        if (!live || denied || generation !== childGeneration) return;
         if (medDocs.metadata.fromCache) { medications = null; onChange({ status: 'loading', plans: [] }); return; }
         if (medDocs.size > 100) { fail('Danh sách thuốc vượt giới hạn 100 mục của chế độ theo dõi này.'); return; }
         medications = medDocs.docs.flatMap((d) => {
@@ -243,9 +247,11 @@ export function watchCaregiverPlans(
           return [{ id: d.id, name: data.name, status: data.status }];
         });
         emit();
-      }, () => fail('Không thể tiếp tục đọc danh sách thuốc được chia sẻ.')),
+      }, () => {
+        if (generation === childGeneration) fail('Không thể tiếp tục đọc danh sách thuốc được chia sẻ.');
+      }),
       onSnapshot(query(collection(root, 'elderlyProfiles', ownerUid, 'medicationSchedules'), limit(101)), { includeMetadataChanges: true }, (scheduleDocs) => {
-        if (!live || denied) return;
+        if (!live || denied || generation !== childGeneration) return;
         if (scheduleDocs.metadata.fromCache) { schedules = null; onChange({ status: 'loading', plans: [] }); return; }
         if (scheduleDocs.size > 100) { fail('Danh sách lịch vượt giới hạn 100 mục của chế độ theo dõi này.'); return; }
         schedules = scheduleDocs.docs.flatMap((d) => {
@@ -263,8 +269,17 @@ export function watchCaregiverPlans(
           }];
         });
         emit();
-      }, () => fail('Không thể tiếp tục đọc lịch thuốc được chia sẻ.')),
+      }, () => {
+        if (generation === childGeneration) fail('Không thể tiếp tục đọc lịch thuốc được chia sẻ.');
+      }),
     ];
+    // A synchronous test adapter or already-queued SDK error may revoke the
+    // generation before the unsubscribe functions have been assigned.
+    if (!live || denied || generation !== childGeneration) {
+      subscriptions.forEach((unsubscribe) => unsubscribe());
+    } else {
+      childSubscriptions = subscriptions;
+    }
   }, () => fail('Bạn chưa được cấp quyền hoặc quyền xem đã bị thu hồi.'));
   // If an SDK test adapter calls its snapshot synchronously, fail() may run
   // before the subscription's unsubscribe function is assigned.

@@ -249,6 +249,26 @@ describe('Family Care Firestore watcher fail-closed behavior', () => {
     close();
   });
 
+
+  it('ignores queued medication and schedule callbacks after link metadata becomes cache-only', () => {
+    const close = watchCaregiverPlans(caregiverUid, elderlyUid, (state) => received.push(state));
+    emit(linkPath, linkSnapshot(true));
+    const oldMedicationListener = observed.get(medicationsPath);
+    const oldScheduleListener = observed.get(schedulesPath);
+    expect(oldMedicationListener).toBeTruthy();
+    expect(oldScheduleListener).toBeTruthy();
+
+    emit(linkPath, linkSnapshot(true, true));
+    expect(received.at(-1)).toEqual({ status: 'loading', plans: [] });
+
+    // Simulate callbacks already queued before unsubscribe() took effect.
+    oldMedicationListener?.(med);
+    oldScheduleListener?.(schedule);
+    expect(received.at(-1)).toEqual({ status: 'loading', plans: [] });
+    expect(received.some((state) => state.status === 'ready')).toBe(false);
+    close();
+  });
+
   it('prevents any result being delivered after screen unsubscribe', () => {
     const close = watchCaregiverPlans(caregiverUid, elderlyUid, (state) => received.push(state));
     emit(linkPath, linkSnapshot(true));

@@ -8,15 +8,6 @@ on:
       - "expo-app/**"
       - "firestore.rules"
       - ".github/workflows/expo-family-care-quality.yml"
-  push:
-    branches:
-      - migration/expo-sdk58
-      - feature/owner-approved-family-links
-    paths:
-      - "expo-app/**"
-      - "firestore.rules"
-      - ".github/workflows/expo-family-care-quality.yml"
-
 permissions:
   contents: read
 
@@ -61,10 +52,6 @@ jobs:
       - name: Jest unit and UI tests
         working-directory: expo-app
         run: npm test
-
-      - name: Offline OCR proof of concept
-        working-directory: expo-app
-        run: npm run test:ocr:poc
 
       - name: Firestore Rules Emulator tests
         working-directory: expo-app

@@ -17,9 +17,9 @@ UID là mã định danh để chỉ đúng hồ sơ, không phải bí mật ha
 ## Quyền truy cập
 
 - Owner elderly vẫn sở hữu và sửa thuốc/lịch của chính mình.
-- Caregiver chỉ đọc danh sách thuốc và lịch trong Firestore; UI hiển thị mốc giờ và tên thuốc, không có nút sửa, không báo đã uống. Rules vẫn từ chối caregiver đọc DoseEvents/lịch sử, OCR, user profile khác, tạo/chỉnh sửa thuốc và lịch.
+- Caregiver chỉ đọc danh sách thuốc và lịch trong Firestore; UI hiển thị **cả các thuốc đang dùng chưa có mốc hôm nay**, cùng mốc giờ dự kiến của lịch trong ngày. Không có nút sửa, không báo đã uống, không hiển thị liều/hướng dẫn. Rules vẫn từ chối caregiver đọc DoseEvents/lịch sử, OCR, user profile khác, tạo/chỉnh sửa thuốc và lịch.
 - Rules không cho caregiver tự tạo link, list link của chủ hồ sơ, cấp thêm quyền, hoặc tự phục hồi link đã revoked.
-- Dữ liệu đọc trực tuyến chỉ hiển thị sau khi listener nhận xác nhận server; khi quyền bị từ chối hoặc mất kết nối, UI ẩn dữ liệu đã hiển thị. Tính giờ theo Asia/Ho_Chi_Minh; qua ngày mới có thể cần kết nối lại.
+- Dữ liệu đọc trực tuyến chỉ hiển thị sau khi listener nhận xác nhận server; khi quyền bị từ chối hoặc mất kết nối, UI ẩn dữ liệu đã hiển thị. Tính giờ theo Asia/Ho_Chi_Minh và **tự làm mới lịch dự kiến vào 00:00 giờ Việt Nam** khi màn hình vẫn đang mở. Khi thoát màn hình hoặc quyền bị thu hồi, listener/timer đều phải được ngắt.
 
 ## Miễn phí và an toàn triển khai
 
@@ -34,8 +34,10 @@ Chạy tại expo-app/ trong nhánh feature/owner-approved-family-links:
     npm run typecheck && npm run lint && npm test
     npm run test:rules
 
-Lệnh test:rules chạy Firestore Emulator cục bộ, có thể cần Java/Firebase CLI. Nó không deploy gì lên production. Test Rules phải xác nhận: không link → deny; caregiver tự approve → deny; elderly cấp đúng UID caregiver → allow chỉ đọc thuốc/lịch; đọc của owner khác hoặc ghi thuốc/lịch → deny; chủ hồ sơ revoke → không đọc tiếp và không thể re-active.
+Lệnh test:rules chạy Firestore Emulator cục bộ, có thể cần Java/Firebase CLI. Nó không deploy gì lên production. **Người dùng đã xác nhận 49/49 kiểm thử Rules đạt trên Windows** ở commit trước; Rules chưa thay đổi từ đó. Các test client mới thêm sau kết quả này cần chạy lại để xác minh. Test Rules phải xác nhận: không link → deny; caregiver tự approve → deny; elderly cấp đúng UID caregiver → allow chỉ đọc thuốc/lịch; đọc của owner khác hoặc ghi thuốc/lịch → deny; chủ hồ sơ revoke → không đọc tiếp và không thể re-active.
+
+Các test client bổ sung mô phỏng listener Firestore, không sử dụng tài khoản bệnh nhân thật, gồm: kiểm tra link server trước khi đọc, giữ trạng thái tải khi offline/cache, xóa dữ liệu khi revoked, xử lý đổi tài khoản, hủy subscription, cập nhật lịch qua nửa đêm tại Việt Nam và danh sách thuốc đang dùng. Chưa có bằng chứng toàn bộ các ca mới pass trong môi trường Expo của người dùng.
 
 Sau khi Rules được xét duyệt và triển khai có chủ đích, dùng hai tài khoản test riêng (không dùng dữ liệu y tế thật), lần lượt trao đổi UID, approve, xem lịch live, sửa một lịch để kiểm tra thay đổi, revoke để kiểm tra mất quyền, đổi account để kiểm tra xóa dữ liệu.
 
-**Chưa thực hiện test Expo Go hoặc Emulator trên máy người dùng ở commit này; PR cần được giữ Draft trước khi có kết quả.**
+**Đã chạy Rules Emulator thành công với 49 test theo log người dùng. Chưa kiểm thử luồng hai điện thoại trên Expo Go hoặc thử nghiệm Rules đã triển khai production. PR tiếp tục là Draft.**

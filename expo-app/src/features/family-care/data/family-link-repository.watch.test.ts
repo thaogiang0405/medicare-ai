@@ -109,10 +109,10 @@ describe('Family Care Firestore watcher fail-closed behavior', () => {
     errors = new Map();
     received = [];
 
-    (getFirebaseAuth as jest.Mock).mockImplementation(() => ({
+    (getFirebaseAuth as unknown as jest.Mock).mockImplementation(() => ({
       currentUser: authUid ? { uid: authUid } : null,
     }));
-    (getFirebaseFirestore as jest.Mock).mockReturnValue({});
+    (getFirebaseFirestore as unknown as jest.Mock).mockReturnValue({});
     (doc as unknown as jest.Mock).mockImplementation((_db: unknown, ...segments: string[]) => ({
       path: segments.join('/'),
     }));

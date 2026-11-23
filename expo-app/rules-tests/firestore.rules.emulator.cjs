@@ -1004,6 +1004,7 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
     await assertSucceeds(getDoc(familyLinkRef(caregiverDB)));
     const sharedMedicationDocs = await assertSucceeds(getDocs(query(
       medicationsCollection(caregiverDB, userA),
+      where('ownerUid', '==', userA),
       where('status', '==', 'active'),
     )));
     expect(sharedMedicationDocs.size).toBe(1);
@@ -1017,6 +1018,7 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
     );
     const sharedScheduleDocs = await assertSucceeds(getDocs(query(
       medicationSchedulesCollection(caregiverDB, userA),
+      where('ownerUid', '==', userA),
       where('active', '==', true),
     )));
     expect(sharedScheduleDocs.size).toBe(1);
@@ -1084,10 +1086,12 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
 
     await assertFails(getDocs(query(
       medicationsCollection(caregiverDB, userA),
+      where('ownerUid', '==', userA),
       where('status', '==', 'active'),
     )));
     await assertFails(getDocs(query(
       medicationSchedulesCollection(caregiverDB, userA),
+      where('ownerUid', '==', userA),
       where('active', '==', true),
     )));
   });

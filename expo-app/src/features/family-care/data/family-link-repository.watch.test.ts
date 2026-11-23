@@ -229,9 +229,11 @@ describe('Family Care Firestore watcher fail-closed behavior', () => {
     const mondayOnly = recordsSnapshot([{
       id: 'weekly-monday',
       fields: {
+        ownerUid: elderlyUid,
         medicationId: 'medicine-1', localTime: '08:00',
         recurrence: 'weekly', weekdays: [1],
-        startDate: '2026-01-01', endDate: null, active: true,
+        startDate: '2026-01-01', endDate: null,
+        timeZone: 'Asia/Ho_Chi_Minh', active: true,
       },
     }]);
     const close = watchCaregiverPlans(caregiverUid, elderlyUid, (state) => received.push(state));

@@ -10,7 +10,7 @@ describe('owner-approved Family Care client guardrails', () => {
   });
 
   it('keeps family routes behind an explicit disabled-by-default public flag', () => {
-    expect(isFamilyCareFeatureEnabled(undefined)).toBe(false);
+    expect(isFamilyCareFeatureEnabled('')).toBe(false);
     expect(isFamilyCareFeatureEnabled('false')).toBe(false);
     expect(isFamilyCareFeatureEnabled(' true ')).toBe(true);
   });

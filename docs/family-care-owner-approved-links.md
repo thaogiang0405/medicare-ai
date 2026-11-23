@@ -50,3 +50,17 @@ Các test client bổ sung mô phỏng listener Firestore, không sử dụng t�
 Sau khi Rules được xét duyệt và triển khai có chủ đích, dùng hai tài khoản test riêng (không dùng dữ liệu y tế thật), lần lượt trao đổi UID, approve, xem lịch live, sửa một lịch để kiểm tra thay đổi, revoke để kiểm tra mất quyền, đổi account để kiểm tra xóa dữ liệu.
 
 **CI trên commit `9c4375b4` đã thành công với Node 24.12.0. Chưa kiểm thử luồng hai điện thoại trên Expo Go hoặc thử nghiệm Rules đã triển khai production. PR tiếp tục là Draft; chưa deploy Rules hoặc đổi billing.**
+
+## Kiểm tra Firebase Node transport trong bundle React Native
+
+CI có thêm bước export bundle Android bằng Expo và quét các bundle JavaScript/Hermes
+được tạo ra để tìm chữ ký đặc trưng của Node-only Firestore gRPC transport
+(`@grpc/grpc-js`, `grpc_connection`, `getAuthContext`). Bước này giúp phân
+biệt dependency xuất hiện trong cây npm/npm audit với mã thực sự được đóng gói
+cho React Native. Nó không thay thế kiểm tra dependency advisory, không chứng
+minh mọi đường thực thi runtime và không phải security certification. Nếu bước
+này thất bại, cần xem bundle và Metro resolution trước khi kết luận hoặc thêm
+npm override. Không ép phiên bản `@grpc/grpc-js` ngoài range của Firebase SDK.
+
+Bước export dùng cấu hình Expo client hiện có; không deploy Firebase hoặc thay
+đổi feature flags trên production.

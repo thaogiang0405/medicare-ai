@@ -987,6 +987,10 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
       status: 'inactive',
     }));
     await seed('elderlyProfiles/' + userA + '/medicationSchedules/schedule-a', medicationSchedule(userA));
+    await seed('elderlyProfiles/' + userA + '/medicationSchedules/schedule-inactive', medicationSchedule(userA, {
+      localTime: '09:00',
+      active: false,
+    }));
 
     const ownerDB = firestoreAs(userA);
     const caregiverDB = firestoreAs(caregiver);
@@ -1017,13 +1021,15 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
         }),
       ]),
     );
-    await assertSucceeds(getDocs(query(
+    const sharedScheduleDocs = await assertSucceeds(getDocs(query(
       medicationSchedulesCollection(caregiverDB, userA),
       where('active', '==', true),
     )));
+    expect(sharedScheduleDocs.size).toBe(1);
     await assertSucceeds(getDoc(medicationReference(caregiverDB, userA)));
     await assertSucceeds(getDoc(medicationScheduleReference(caregiverDB, userA)));
     await assertFails(getDoc(medicationReference(caregiverDB, userA, 'medication-inactive')));
+    await assertFails(getDoc(medicationScheduleReference(caregiverDB, userA, 'schedule-inactive')));
     await assertFails(getDocs(medicationsCollection(caregiverDB, userA)));
     await assertFails(getDocs(medicationSchedulesCollection(caregiverDB, userA)));
 

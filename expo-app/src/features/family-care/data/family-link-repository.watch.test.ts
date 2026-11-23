@@ -184,6 +184,7 @@ describe('Family Care Firestore watcher fail-closed behavior', () => {
     expect(received.at(-1)?.plans).toEqual([]);
     expect(stops.get(medicationsPath)).toHaveBeenCalledTimes(1);
     expect(stops.get(schedulesPath)).toHaveBeenCalledTimes(1);
+    expect(stops.get(linkPath)).toHaveBeenCalledTimes(1);
     const count = received.length;
     emit(medicationsPath, med); // delayed callback from an already stopped listener
     expect(received).toHaveLength(count);

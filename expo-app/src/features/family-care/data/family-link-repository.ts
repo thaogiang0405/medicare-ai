@@ -147,6 +147,7 @@ export function watchCaregiverPlans(
   let live = true;
   let denied = false;
   let childSubscriptions: Unsubscribe[] = [];
+  let linkSubscription: Unsubscribe | null = null;
   let midnightTimer: ReturnType<typeof setTimeout> | null = null;
   let medications: RawMedication[] | null = null;
   let schedules: RawSchedule[] | null = null;
@@ -155,6 +156,12 @@ export function watchCaregiverPlans(
     if (midnightTimer !== null) {
       clearTimeout(midnightTimer);
       midnightTimer = null;
+    }
+  };
+  const stopLink = () => {
+    if (linkSubscription) {
+      linkSubscription();
+      linkSubscription = null;
     }
   };
   const clearChildren = () => {
@@ -167,6 +174,7 @@ export function watchCaregiverPlans(
     if (!live || denied) return;
     denied = true;
     stopMidnightTimer();
+    stopLink();
     clearChildren();
     onChange({ status: 'revoked', plans: [], message });
   };
@@ -197,10 +205,8 @@ export function watchCaregiverPlans(
       scheduleNextDay();
     }, millisecondsUntilNextVietnamDay());
   };
-  scheduleNextDay();
-
   onChange({ status: 'loading', plans: [] });
-  const unsubscribeLink = onSnapshot(linkRef(ownerUid, caregiverUid), { includeMetadataChanges: true }, (snapshot) => {
+  linkSubscription = onSnapshot(linkRef(ownerUid, caregiverUid), { includeMetadataChanges: true }, (snapshot) => {
     if (!live || denied) return;
     if (snapshot.metadata.fromCache) {
       clearChildren();
@@ -235,11 +241,15 @@ export function watchCaregiverPlans(
       }, () => fail('Không thể tiếp tục đọc lịch thuốc được chia sẻ.')),
     ];
   }, () => fail('Bạn chưa được cấp quyền hoặc quyền xem đã bị thu hồi.'));
+  // If an SDK test adapter calls its snapshot synchronously, fail() may run
+  // before the subscription's unsubscribe function is assigned.
+  if (denied) stopLink();
+  scheduleNextDay();
 
   return () => {
     live = false;
     stopMidnightTimer();
-    unsubscribeLink();
+    stopLink();
     clearChildren();
   };
 }

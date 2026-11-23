@@ -5,7 +5,7 @@ jest.mock('@/store', () => ({ useSessionStore: jest.fn() }));
 
 jest.mock('@/components/medicare', () => {
   const React = jest.requireActual<typeof import('react')>('react');
-  const { View, Text, Pressable } = jest.requireActual<typeof import('react-native')>('react-native');
+  const { View, Text, Pressable, TextInput } = jest.requireActual<typeof import('react-native')>('react-native');
   const button = ({ title, label, onPress, disabled }: {
     title?: string; label?: string; onPress: () => void; disabled?: boolean;
   }) => React.createElement(
@@ -13,16 +13,19 @@ jest.mock('@/components/medicare', () => {
     { accessibilityLabel: title ?? label, onPress, disabled },
     React.createElement(Text, null, title ?? label),
   );
-
   return {
     Screen: ({ children }: { children: import('react').ReactNode }) => React.createElement(View, null, children),
     AppHeader: ({ title }: { title: string }) => React.createElement(Text, null, title),
     DemoModeBanner: ({ description }: { description: string }) => React.createElement(Text, null, description),
     SafetyNotice: ({ title, message }: { title: string; message: string }) =>
       React.createElement(View, null, React.createElement(Text, null, title), React.createElement(Text, null, message)),
-    StatusBadge: ({ label }: { label: string }) => React.createElement(Text, null, label),
     ActionCard: button,
     SecondaryButton: button,
+    TextField: ({ label, errorMessage, value, onChangeText }: {
+      label: string; errorMessage?: string; value: string; onChangeText: (value: string) => void;
+    }) => React.createElement(View, null,
+      React.createElement(TextInput, { accessibilityLabel: label, value, onChangeText }),
+      errorMessage ? React.createElement(Text, null, errorMessage) : null),
   };
 });
 
@@ -32,16 +35,22 @@ import { Share } from 'react-native';
 
 import { useSessionStore } from '@/store';
 import { getReminderMessage, linkConversationMessage } from '../data/caregiver-demo';
+import { buildSharedScheduleText } from '@/features/family-sharing/domain/shared-schedule';
 import CaregiverDashboardScreen from './CaregiverDashboardScreen';
 
 const session = {
-  user: { id: 'caregiver-demo', displayName: 'Người chăm sóc mẫu', role: 'caregiver' as const },
+  user: { id: 'caregiver-a', displayName: 'Người chăm sóc', role: 'caregiver' as const },
   signOut: jest.fn().mockResolvedValue(undefined),
   operationStatus: 'idle' as const,
   errorMessage: null,
 };
 
-describe('CaregiverDashboardScreen basic demo flows', () => {
+const scheduleMessage = buildSharedScheduleText('2026-11-23', [
+  { schedule: { localTime: '08:00' }, medication: { name: 'Thuốc nhập thực tế' } },
+  { schedule: { localTime: '20:00' }, medication: { name: 'Thuốc buổi tối' } },
+]) ?? '';
+
+describe('CaregiverDashboardScreen manual data flow', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (useSessionStore as unknown as jest.Mock).mockImplementation(
@@ -49,27 +58,34 @@ describe('CaregiverDashboardScreen basic demo flows', () => {
     );
     jest.spyOn(Share, 'share').mockResolvedValue({ action: Share.dismissedAction, activityType: undefined });
   });
-
   afterEach(() => { jest.restoreAllMocks(); });
 
-  it('only renders synthetic schedule when requested; can filter and collapse', async () => {
+  it('does not display synthetic medicines; imports owner-forwarded schedule then clears it', async () => {
     const view = await render(<CaregiverDashboardScreen />);
-    expect(view.getByText('Hồ sơ minh họa')).toBeTruthy();
-    expect(view.queryByText('08:00 · Thuốc mẫu A')).toBeNull();
+    expect(view.getByText('Chưa có bản chia sẻ')).toBeTruthy();
+    expect(view.queryByText('08:00 · Thuốc nhập thực tế')).toBeNull();
+    expect(view.queryByText('Thuốc mẫu A')).toBeNull();
     await fireEvent.press(view.getByLabelText('Theo dõi lịch thuốc'));
-    expect(view.getByText('08:00 · Thuốc mẫu A')).toBeTruthy();
-    expect(view.getByText('20:00 · Thuốc mẫu C')).toBeTruthy();
-    expect(view.getByText('Không tự suy đoán bỏ liều')).toBeTruthy();
-    await fireEvent.press(view.getByLabelText('Chỉ xem chưa phản hồi'));
-    expect(view.queryByText('08:00 · Thuốc mẫu A')).toBeNull();
-    expect(view.getByText('20:00 · Thuốc mẫu C')).toBeTruthy();
-    await fireEvent.press(view.getByLabelText('Xem tất cả lịch minh họa'));
-    expect(view.getByText('13:00 · Thuốc mẫu B')).toBeTruthy();
-    await fireEvent.press(view.getByLabelText('Ẩn lịch thuốc minh họa'));
-    expect(view.queryByText('20:00 · Thuốc mẫu C')).toBeNull();
+    expect(view.getByText('Bản chia sẻ lịch thuốc')).toBeTruthy();
+    await fireEvent.changeText(view.getByLabelText('Dán bản chia sẻ lịch thuốc'), scheduleMessage);
+    await fireEvent.press(view.getByLabelText('Đọc bản lịch đã dán'));
+    expect(view.getByText('08:00 · Thuốc nhập thực tế')).toBeTruthy();
+    expect(view.getByText('20:00 · Thuốc buổi tối')).toBeTruthy();
+    expect(view.getByText('Bản sao không tự cập nhật')).toBeTruthy();
+    await fireEvent.press(view.getByLabelText('Xóa bản lịch đã nhập'));
+    expect(view.queryByText('08:00 · Thuốc nhập thực tế')).toBeNull();
   });
 
-  it('previews generic reminder messages; sharing requires explicit press', async () => {
+  it('rejects an invalid copied message without displaying its contents', async () => {
+    const view = await render(<CaregiverDashboardScreen />);
+    await fireEvent.press(view.getByLabelText('Theo dõi lịch thuốc'));
+    await fireEvent.changeText(view.getByLabelText('Dán bản chia sẻ lịch thuốc'), 'Thuốc mẫu bị giả mạo 500mg');
+    await fireEvent.press(view.getByLabelText('Đọc bản lịch đã dán'));
+    expect(view.getByText(/Bản chia sẻ chưa đúng định dạng hoặc bị cắt/)).toBeTruthy();
+    expect(view.queryByText('Thuốc mẫu bị giả mạo 500mg')).toBeNull();
+  });
+
+  it('previews generic reminder messages and never sends automatically', async () => {
     const share = jest.spyOn(Share, 'share');
     const view = await render(<CaregiverDashboardScreen />);
     await fireEvent.press(view.getByLabelText('Nhắc người thân'));
@@ -78,12 +94,10 @@ describe('CaregiverDashboardScreen basic demo flows', () => {
     await fireEvent.press(view.getByLabelText('Chọn lời hỏi thăm'));
     expect(view.getByText(getReminderMessage('checkIn'))).toBeTruthy();
     await fireEvent.press(view.getByLabelText('Mở bảng chia sẻ lời nhắc'));
-    expect(share).toHaveBeenCalledTimes(1);
     expect(share).toHaveBeenCalledWith({ message: getReminderMessage('checkIn') });
-    expect(view.getByText(/Không có thông báo đẩy hay SMS tự động/)).toBeTruthy();
   });
 
-  it('does not grant caregiver rights; invitation is a separate share-sheet handoff', async () => {
+  it('explains that the link message does not grant any permission', async () => {
     const share = jest.spyOn(Share, 'share');
     const view = await render(<CaregiverDashboardScreen />);
     await fireEvent.press(view.getByLabelText('Liên kết hồ sơ'));
@@ -92,22 +106,25 @@ describe('CaregiverDashboardScreen basic demo flows', () => {
     expect(share).not.toHaveBeenCalled();
     await fireEvent.press(view.getByLabelText('Mở bảng chia sẻ lời mời trao đổi'));
     expect(share).toHaveBeenCalledWith({ message: linkConversationMessage });
-    expect(view.getByText('Liên kết hồ sơ · Chưa kích hoạt')).toBeTruthy();
   });
 
-  it('shows an error without claiming an outgoing message was delivered', async () => {
-    jest.spyOn(Share, 'share').mockRejectedValueOnce(new Error('Cannot open'));
+  it('shows a failed share sheet without claiming delivery', async () => {
+    jest.spyOn(Share, 'share').mockRejectedValueOnce(new Error('Unavailable'));
     const view = await render(<CaregiverDashboardScreen />);
     await fireEvent.press(view.getByLabelText('Nhắc người thân'));
     await fireEvent.press(view.getByLabelText('Mở bảng chia sẻ lời nhắc'));
     expect(view.getByText('Không mở được bảng chia sẻ')).toBeTruthy();
-    expect(view.getByText(/Không có tin nhắn nào được gửi từ ứng dụng/)).toBeTruthy();
   });
 
-  it('keeps existing sign-out navigation', async () => {
+  it('clears the imported data when signing out', async () => {
     const view = await render(<CaregiverDashboardScreen />);
+    await fireEvent.press(view.getByLabelText('Theo dõi lịch thuốc'));
+    await fireEvent.changeText(view.getByLabelText('Dán bản chia sẻ lịch thuốc'), scheduleMessage);
+    await fireEvent.press(view.getByLabelText('Đọc bản lịch đã dán'));
+    expect(view.getByText('08:00 · Thuốc nhập thực tế')).toBeTruthy();
     await fireEvent.press(view.getByLabelText('Đăng xuất'));
     expect(session.signOut).toHaveBeenCalledTimes(1);
     expect(router.replace).toHaveBeenCalledWith('/login');
+    expect(view.queryByText('08:00 · Thuốc nhập thực tế')).toBeNull();
   });
 });

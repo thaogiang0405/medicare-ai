@@ -1,10 +1,3 @@
-/** Fixed, explicitly synthetic caregiver data. Never read cross-account records here. */
-export const demoSchedule = [
-  { time: '08:00', name: 'Thuốc mẫu A', response: 'Tự báo đã uống', unanswered: false },
-  { time: '13:00', name: 'Thuốc mẫu B', response: 'Tự báo bỏ qua', unanswered: false },
-  { time: '20:00', name: 'Thuốc mẫu C', response: 'Chưa phản hồi', unanswered: true },
-] as const;
-
 export type ReminderChoice = 'schedule' | 'checkIn';
 
 /** Only general messages, without name, strength, dosage, or health records. */

@@ -1,13 +1,7 @@
-import { demoSchedule, getReminderMessage, linkConversationMessage } from './caregiver-demo';
+import { getReminderMessage, linkConversationMessage } from './caregiver-demo';
 
-describe('caregiver demo data must not masquerade as real records', () => {
-  it('uses a fixed sample schedule and keeps unanswered distinct from skipped', () => {
-    expect(demoSchedule).toHaveLength(3);
-    expect(demoSchedule.filter((entry) => entry.unanswered).map((entry) => entry.response)).toEqual(['Chưa phản hồi']);
-    expect(demoSchedule.filter((entry) => entry.response === 'Tự báo bỏ qua')).toHaveLength(1);
-  });
-
-  it('prepares general messages without disclosing any medicine sample or dosage', () => {
+describe('caregiver generic conversation templates', () => {
+  it('does not include medicine names, dose or schedule data', () => {
     for (const choice of ['schedule', 'checkIn'] as const) {
       const message = getReminderMessage(choice);
       expect(message.length).toBeGreaterThan(30);

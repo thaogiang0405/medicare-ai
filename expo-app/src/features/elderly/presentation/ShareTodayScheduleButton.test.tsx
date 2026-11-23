@@ -47,6 +47,16 @@ describe('explicit owner schedule sharing', () => {
     expect(view.queryByText('Chỉ chia sẻ khi bạn đồng ý')).toBeNull();
   });
 
+  it('requires fresh consent after the actual schedule changes', async () => {
+    const share = jest.spyOn(Share, 'share');
+    const view = await render(<ShareTodayScheduleButton message="version-a" />);
+    await fireEvent.press(view.getByLabelText('Chia sẻ lịch thuốc hôm nay'));
+    expect(view.getByLabelText('Tôi đồng ý — mở bảng chia sẻ')).toBeTruthy();
+    await view.rerender(<ShareTodayScheduleButton message="version-b" />);
+    expect(view.queryByLabelText('Tôi đồng ý — mở bảng chia sẻ')).toBeNull();
+    expect(share).not.toHaveBeenCalled();
+  });
+
   it('handles share errors without claiming a message was delivered', async () => {
     jest.spyOn(Share, 'share').mockRejectedValueOnce(new Error('Unavailable'));
     const view = await render(<ShareTodayScheduleButton message="private" />);

@@ -18,7 +18,17 @@ export function FamilyLinkOwnerPanel({ ownerUid }: Readonly<{ ownerUid: string }
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [loaded, setLoaded] = useState(false);
+  const [loadedForOwnerUid, setLoadedForOwnerUid] = useState<string | null>(null);
+  const [errorForOwnerUid, setErrorForOwnerUid] = useState<string | null>(null);
   const authorizedOwner = Boolean(ownerUid && role === 'elderly' && sessionUid === ownerUid);
+  // A new owner must never see the previous owner's links while loading.
+  const visibleLinks = loadedForOwnerUid === ownerUid ? links : [];
+  const hasLoadedLinks = loadedForOwnerUid === ownerUid && loaded;
+  const visibleError = errorForOwnerUid === ownerUid ? error : '';
+  const updateError = useCallback((message: string) => {
+    setError(message);
+    setErrorForOwnerUid(ownerUid);
+  }, [ownerUid]);
 
   const refresh = useCallback(async () => {
     if (!authorizedOwner) return;
@@ -26,12 +36,15 @@ export function FamilyLinkOwnerPanel({ ownerUid }: Readonly<{ ownerUid: string }
       const result = await listOwnCaregiverLinks(ownerUid);
       setLinks(result);
       setLoaded(true);
-      setError('');
+      setLoadedForOwnerUid(ownerUid);
+      updateError('');
     } catch {
       setLinks([]);
-      setError('Không thể đọc danh sách liên kết. Kiểm tra mạng hoặc cấu hình Firebase.');
+      setLoaded(false);
+      setLoadedForOwnerUid(ownerUid);
+      updateError('Không thể đọc danh sách liên kết. Kiểm tra mạng hoặc cấu hình Firebase.');
     }
-  }, [authorizedOwner, ownerUid]);
+  }, [authorizedOwner, ownerUid, updateError]);
 
   useEffect(() => {
     if (!authorizedOwner) return;
@@ -45,19 +58,21 @@ export function FamilyLinkOwnerPanel({ ownerUid }: Readonly<{ ownerUid: string }
         if (cancelled) return;
         setLinks(result);
         setLoaded(true);
-        setError('');
+        setLoadedForOwnerUid(ownerUid);
+        updateError('');
       })
       .catch(() => {
         if (cancelled) return;
         setLinks([]);
         setLoaded(false);
-        setError('Không thể đọc danh sách liên kết. Kiểm tra mạng hoặc cấu hình Firebase.');
+        setLoadedForOwnerUid(ownerUid);
+        updateError('Không thể đọc danh sách liên kết. Kiểm tra mạng hoặc cấu hình Firebase.');
       });
 
     return () => {
       cancelled = true;
     };
-  }, [authorizedOwner, ownerUid]);
+  }, [authorizedOwner, ownerUid, updateError]);
 
   const grant = () => {
     if (!authorizedOwner || busy) return;
@@ -66,7 +81,7 @@ export function FamilyLinkOwnerPanel({ ownerUid }: Readonly<{ ownerUid: string }
       caregiverUid = validateFamilyUid(target);
       if (caregiverUid === ownerUid) throw new Error('Mã người chăm sóc trùng với tài khoản này.');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Mã không hợp lệ.');
+      updateError(e instanceof Error ? e.message : 'Mã không hợp lệ.');
       return;
     }
     Alert.alert(
@@ -80,7 +95,7 @@ export function FamilyLinkOwnerPanel({ ownerUid }: Readonly<{ ownerUid: string }
             setBusy(true);
             void approveCaregiverLink(ownerUid, caregiverUid)
               .then(async () => { setTarget(''); await refresh(); })
-              .catch(() => setError('Không thể cấp quyền. Mã phải thuộc tài khoản Người chăm sóc hợp lệ và chưa từng bị thu hồi.'))
+              .catch(() => updateError('Không thể cấp quyền. Mã phải thuộc tài khoản Người chăm sóc hợp lệ và chưa từng bị thu hồi.'))
               .finally(() => setBusy(false));
           },
         },
@@ -102,7 +117,7 @@ export function FamilyLinkOwnerPanel({ ownerUid }: Readonly<{ ownerUid: string }
             setBusy(true);
             void revokeCaregiverLink(ownerUid, caregiverUid)
               .then(refresh)
-              .catch(() => setError('Không thể thu hồi quyền. Hãy thử lại khi có mạng.'))
+              .catch(() => updateError('Không thể thu hồi quyền. Hãy thử lại khi có mạng.'))
               .finally(() => setBusy(false));
           },
         },
@@ -117,7 +132,7 @@ export function FamilyLinkOwnerPanel({ ownerUid }: Readonly<{ ownerUid: string }
         message: `MediCare AI - mã hồ sơ người cao tuổi của tôi: ${ownerUid}\nĐây chỉ là mã để người chăm sóc nhập vào ứng dụng sau khi tôi cấp quyền. Không phải mật khẩu.`,
       });
     } catch {
-      setError('Không mở được bảng chia sẻ mã hồ sơ.');
+      updateError('Không mở được bảng chia sẻ mã hồ sơ.');
     }
   };
 
@@ -144,15 +159,15 @@ export function FamilyLinkOwnerPanel({ ownerUid }: Readonly<{ ownerUid: string }
         autoCorrect={false}
         maxLength={128}
         value={target}
-        onChangeText={(value) => { setTarget(value); setError(''); }}
+        onChangeText={(value) => { setTarget(value); updateError(''); }}
         placeholder="Dán mã tài khoản được gửi"
       />
       <SecondaryButton disabled={busy || !target.trim()} label="Xem và xác nhận cấp quyền" onPress={grant} />
-      {error ? <SafetyNotice title="Liên kết chưa hoàn tất" message={error} tone="error" /> : null}
+      {visibleError ? <SafetyNotice title="Liên kết chưa hoàn tất" message={visibleError} tone="error" /> : null}
       <SecondaryButton disabled={busy} label="Tải lại danh sách liên kết" onPress={() => void refresh()} />
-      {!loaded ? <Text style={{ color: medicareColors.textMuted }}>Danh sách liên kết chưa được tải.</Text> : null}
-      {loaded && links.length === 0 ? <Text style={{ color: medicareColors.textMuted }}>Chưa có người chăm sóc nào được cấp quyền.</Text> : null}
-      {links.map((link) => (
+      {!hasLoadedLinks ? <Text style={{ color: medicareColors.textMuted }}>Danh sách liên kết chưa được tải.</Text> : null}
+      {hasLoadedLinks && visibleLinks.length === 0 ? <Text style={{ color: medicareColors.textMuted }}>Chưa có người chăm sóc nào được cấp quyền.</Text> : null}
+      {visibleLinks.map((link) => (
         <View key={link.caregiverUid} style={{ gap: medicareSpacing.xs }}>
           <Text selectable style={{ color: medicareColors.text }}>Mã người chăm sóc: {link.caregiverUid}</Text>
           <Text style={{ color: medicareColors.textMuted }}>
@@ -163,7 +178,7 @@ export function FamilyLinkOwnerPanel({ ownerUid }: Readonly<{ ownerUid: string }
           ) : null}
         </View>
       ))}
-      {links.some((link) => link.status === 'active') ? (
+      {visibleLinks.some((link) => link.status === 'active') ? (
         <SecondaryButton label="Gửi mã hồ sơ của tôi cho người chăm sóc" onPress={() => void shareMyUid()} />
       ) : null}
     </View>

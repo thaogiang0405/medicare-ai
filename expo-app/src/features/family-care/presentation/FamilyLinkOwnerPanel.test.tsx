@@ -46,6 +46,24 @@ describe('owner-driven Family Care approval/revocation UI', () => {
 
   afterEach(() => { jest.restoreAllMocks(); });
 
+
+  it('does not show the previous elderly owner links while a different owner is loading', async () => {
+    jest.mocked(listOwnCaregiverLinks).mockResolvedValue([
+      { caregiverUid: 'caregiver-123', status: 'active', revision: 1 },
+    ]);
+    const view = await render(<FamilyLinkOwnerPanel ownerUid="elderly-123" />);
+    expect(await view.findByText('Mã người chăm sóc: caregiver-123')).toBeTruthy();
+
+    session.user.id = 'elderly-456';
+    jest.mocked(listOwnCaregiverLinks).mockImplementation(
+      () => new Promise<Awaited<ReturnType<typeof listOwnCaregiverLinks>>>(() => undefined),
+    );
+    await view.rerender(<FamilyLinkOwnerPanel ownerUid="elderly-456" />);
+
+    expect(view.queryByText('Mã người chăm sóc: caregiver-123')).toBeNull();
+    expect(view.getByText('Danh sách liên kết chưa được tải.')).toBeTruthy();
+  });
+
   it('never writes a link until the owner confirms the separate consent dialog', async () => {
     const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
     const view = await render(<FamilyLinkOwnerPanel ownerUid="elderly-123" />);

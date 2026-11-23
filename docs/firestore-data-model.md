@@ -241,7 +241,7 @@ recurrence/clock tuyệt đối ngoài dữ liệu client khai báo.
 3. Dose event ID and local reminder logical key are deterministic. Local delivery is best effort, so the device dedupes only MediCare-owned IDs.
 4. Changing a schedule increments its own revision. A future trusted scheduler must never rewrite self-reported dose events already generated.
 5. Stopping a medication/schedule prevents future event creation in a later milestone; it does not delete history.
-6. Revoke marks the link inactive, stops future caregiver notifications and deletes projection records. It cannot erase data already observed by the caregiver.
+6. Family Care MVP revocation marks the link inactive; Firestore Rules deny subsequent reads and the caregiver client clears its visible state and listeners. The MVP creates no projection documents or caregiver notifications to delete. Revocation cannot erase data already observed, copied, or screenshotted by the caregiver.
 
 ## Queries/indexes
 

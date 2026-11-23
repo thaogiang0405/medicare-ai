@@ -982,6 +982,10 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
     await seed('users/' + userB, userProfile(userB));
     await seed('users/' + caregiver, userProfile(caregiver, 'caregiver'));
     await seed('elderlyProfiles/' + userA + '/medications/medication-a', medication(userA));
+    await seed('elderlyProfiles/' + userA + '/medications/medication-inactive', medication(userA, {
+      name: 'Thuốc đã ngừng',
+      status: 'inactive',
+    }));
     await seed('elderlyProfiles/' + userA + '/medicationSchedules/schedule-a', medicationSchedule(userA));
 
     const ownerDB = firestoreAs(userA);
@@ -994,7 +998,22 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
 
     await assertSucceeds(setDoc(familyLinkRef(ownerDB), familyLink(userA, caregiver)));
     await assertSucceeds(getDoc(familyLinkRef(caregiverDB)));
-    await assertSucceeds(getDocs(medicationsCollection(caregiverDB, userA)));
+    const sharedMedicationDocs = await assertSucceeds(getDocs(medicationsCollection(caregiverDB, userA)));
+    expect(sharedMedicationDocs.size).toBe(2);
+    expect(sharedMedicationDocs.docs.map((snapshot) => snapshot.data())).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'Paracetamol',
+          strengthText: '500 mg',
+          directionsText: 'Nội dung do người dùng cung cấp',
+          status: 'active',
+        }),
+        expect.objectContaining({
+          name: 'Thuốc đã ngừng',
+          status: 'inactive',
+        }),
+      ]),
+    );
     await assertSucceeds(getDocs(medicationSchedulesCollection(caregiverDB, userA)));
     await assertSucceeds(getDoc(medicationReference(caregiverDB, userA)));
     await assertSucceeds(getDoc(medicationScheduleReference(caregiverDB, userA)));

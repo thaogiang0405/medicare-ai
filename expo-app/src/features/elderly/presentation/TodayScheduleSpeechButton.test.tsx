@@ -1,8 +1,15 @@
 /* eslint-disable import/first */
 
-jest.mock('expo-router', () => ({
-  useFocusEffect: jest.requireActual<typeof import('react')>('react').useEffect,
-}));
+jest.mock('expo-router', () => {
+  const React = jest.requireActual<typeof import('react')>('react');
+  return {
+    // Model an always-focused screen. Re-rendering with the same callback
+    // must not run focus cleanup and stop the current speech request.
+    useFocusEffect: function useMockFocusEffect(effect: import('react').EffectCallback) {
+      React.useEffect(effect, [effect]);
+    },
+  };
+});
 
 jest.mock('expo-speech', () => ({
   getAvailableVoicesAsync: jest.fn(),
@@ -89,6 +96,8 @@ describe('TodayScheduleSpeechButton', () => {
     const view = await render(<TodayScheduleSpeechButton message={message} />);
     await fireEvent.press(view.getByLabelText(play));
     await act(async () => { speak.mock.calls[0]?.[1]?.onStart?.(); });
+    expect(view.getByLabelText(stop)).toBeTruthy();
+    expect(stopSpeech).not.toHaveBeenCalled();
     await view.unmount();
     expect(stopSpeech).toHaveBeenCalledTimes(1);
   });

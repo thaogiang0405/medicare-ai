@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Share, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 
@@ -19,7 +19,7 @@ import { getReminderMessage, linkConversationMessage, type ReminderChoice } from
 
 type OpenPanel = 'schedule' | 'reminder' | 'link' | null;
 
-export default function CaregiverDashboardScreen() {
+function CaregiverDashboardContent() {
   const user = useSessionStore((state) => state.user);
   const signOut = useSessionStore((state) => state.signOut);
   const operationStatus = useSessionStore((state) => state.operationStatus);
@@ -31,14 +31,6 @@ export default function CaregiverDashboardScreen() {
   const [reminderChoice, setReminderChoice] = useState<ReminderChoice>('schedule');
   const [shareError, setShareError] = useState(false);
   const isSigningOut = operationStatus === 'loading';
-
-  // In-memory snapshots belong to this signed-in caregiver session only.
-  useEffect(() => {
-    setOpenPanel(null);
-    setImported(null);
-    setImportText('');
-    setImportError(false);
-  }, [user?.id]);
 
   const togglePanel = (panel: Exclude<OpenPanel, null>) => {
     setShareError(false);
@@ -223,6 +215,15 @@ export default function CaregiverDashboardScreen() {
       />
     </Screen>
   );
+}
+
+/**
+ * A changed authenticated UID remounts the presentation synchronously.
+ * Imported health text cannot remain visible across account switches.
+ */
+export default function CaregiverDashboardScreen() {
+  const accountId = useSessionStore((state) => state.user?.id ?? null);
+  return <CaregiverDashboardContent key={accountId ?? 'signed-out'} />;
 }
 
 const styles = StyleSheet.create({

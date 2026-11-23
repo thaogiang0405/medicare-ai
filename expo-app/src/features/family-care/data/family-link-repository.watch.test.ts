@@ -79,18 +79,20 @@ function recordsSnapshot(
 }
 
 const med = recordsSnapshot([
-  { id: 'medicine-1', fields: { name: 'Thuốc từ Firestore', status: 'active' } },
+  { id: 'medicine-1', fields: { ownerUid: elderlyUid, name: 'Thuốc từ Firestore', status: 'active' } },
 ]);
 const schedule = recordsSnapshot([
   {
     id: 'schedule-1',
     fields: {
+      ownerUid: elderlyUid,
       medicationId: 'medicine-1',
       localTime: '08:00',
       recurrence: 'daily',
       weekdays: [1, 2, 3, 4, 5, 6, 7],
       startDate: '2026-01-01',
       endDate: null,
+      timeZone: 'Asia/Ho_Chi_Minh',
       active: true,
     },
   },

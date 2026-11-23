@@ -1,6 +1,7 @@
 import { onSnapshot, collection, doc, getDoc, getDocs, limit, query, serverTimestamp, setDoc, updateDoc, type Unsubscribe } from 'firebase/firestore';
 
 import { getFirebaseAuth, getFirebaseFirestore } from '@/services/firebase';
+import { isValidMedicationScheduleDate } from '@/features/schedules/domain/medication-schedule-validation';
 
 export type FamilyLinkRecord = Readonly<{ caregiverUid: string; status: 'active' | 'revoked'; revision: number }>;
 export type CaregiverPlan = Readonly<{ time: string; medicationName: string }>;
@@ -42,7 +43,7 @@ export async function listOwnCaregiverLinks(ownerUid: string): Promise<FamilyLin
     const data = snapshot.data();
     if (data.ownerUid !== ownerUid || data.caregiverUid !== snapshot.id ||
       (data.status !== 'active' && data.status !== 'revoked') ||
-      !Number.isSafeInteger(data.revision)) {
+      !Number.isSafeInteger(data.revision) || data.revision < 1) {
       throw new Error('Dữ liệu liên kết không hợp lệ.');
     }
     return { caregiverUid: snapshot.id, status: data.status, revision: data.revision };
@@ -84,7 +85,7 @@ export async function revokeCaregiverLink(ownerUid: string, rawCaregiverUid: str
 }
 
 type RawMedication = { id: string; name: string; status: string };
-type RawSchedule = { medicationId: string; localTime: string; recurrence: string; weekdays: number[]; startDate: string; endDate: string | null; active: boolean };
+type RawSchedule = { medicationId: string; localTime: string; recurrence: string; weekdays: number[]; startDate: string; endDate: string | null; timeZone: string; active: boolean };
 
 /** Asia/Ho_Chi_Minh has UTC+07 and no DST in this app's date range. */
 export function millisecondsUntilNextVietnamDay(now = new Date()): number {
@@ -119,13 +120,23 @@ export function deriveCaregiverPlans(medications: readonly RawMedication[], sche
   const names = new Map(medications.filter((med) => med.status === 'active' && typeof med.name === 'string').map((med) => [med.id, med.name]));
   return schedules.flatMap((plan) => {
     const name = names.get(plan.medicationId);
-    if (!name || !plan.active || typeof plan.localTime !== 'string'
+    const validWeekdays = Array.isArray(plan.weekdays)
+      && plan.weekdays.every((day) => Number.isInteger(day) && day >= 1 && day <= 7)
+      && new Set(plan.weekdays).size === plan.weekdays.length;
+    const repeatsToday = validWeekdays && (
+      (plan.recurrence === 'daily'
+        && plan.weekdays.length === 7
+        && [1, 2, 3, 4, 5, 6, 7].every((day) => plan.weekdays.includes(day)))
+      || (plan.recurrence === 'weekly'
+        && plan.weekdays.length > 0
+        && plan.weekdays.includes(week))
+    );
+    if (!name || !plan.active || plan.timeZone !== 'Asia/Ho_Chi_Minh'
       || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(plan.localTime)
-      || typeof plan.startDate !== 'string'
-      || plan.startDate > today || (plan.endDate !== null && (typeof plan.endDate !== 'string' || plan.endDate < today))
-      || !Array.isArray(plan.weekdays)
-      || !((plan.recurrence === 'daily' && plan.weekdays.length === 7)
-        || (plan.recurrence === 'weekly' && plan.weekdays.includes(week)))) return [];
+      || !isValidMedicationScheduleDate(plan.startDate)
+      || plan.startDate > today
+      || (plan.endDate !== null && (!isValidMedicationScheduleDate(plan.endDate) || plan.endDate < today))
+      || !repeatsToday) return [];
     return [{ time: plan.localTime, medicationName: name }];
   }).sort((a, b) => a.time.localeCompare(b.time) || a.medicationName.localeCompare(b.medicationName));
 }
@@ -225,18 +236,32 @@ export function watchCaregiverPlans(
         if (!live || denied) return;
         if (medDocs.metadata.fromCache) { medications = null; onChange({ status: 'loading', plans: [] }); return; }
         if (medDocs.size > 100) { fail('Danh sách thuốc vượt giới hạn 100 mục của chế độ theo dõi này.'); return; }
-        medications = medDocs.docs.map((d) => ({ id: d.id, name: d.data().name, status: d.data().status }));
+        medications = medDocs.docs.flatMap((d) => {
+          const data = d.data();
+          if (data.ownerUid !== ownerUid || typeof data.name !== 'string'
+            || (data.status !== 'active' && data.status !== 'inactive')) return [];
+          return [{ id: d.id, name: data.name, status: data.status }];
+        });
         emit();
       }, () => fail('Không thể tiếp tục đọc danh sách thuốc được chia sẻ.')),
       onSnapshot(query(collection(root, 'elderlyProfiles', ownerUid, 'medicationSchedules'), limit(101)), { includeMetadataChanges: true }, (scheduleDocs) => {
         if (!live || denied) return;
         if (scheduleDocs.metadata.fromCache) { schedules = null; onChange({ status: 'loading', plans: [] }); return; }
         if (scheduleDocs.size > 100) { fail('Danh sách lịch vượt giới hạn 100 mục của chế độ theo dõi này.'); return; }
-        schedules = scheduleDocs.docs.map((d) => ({
-          medicationId: d.data().medicationId, localTime: d.data().localTime,
-          recurrence: d.data().recurrence, weekdays: d.data().weekdays,
-          startDate: d.data().startDate, endDate: d.data().endDate, active: d.data().active,
-        }));
+        schedules = scheduleDocs.docs.flatMap((d) => {
+          const data = d.data();
+          if (data.ownerUid !== ownerUid || typeof data.medicationId !== 'string'
+            || typeof data.localTime !== 'string' || typeof data.recurrence !== 'string'
+            || !Array.isArray(data.weekdays) || typeof data.startDate !== 'string'
+            || !(data.endDate === null || typeof data.endDate === 'string')
+            || typeof data.timeZone !== 'string' || typeof data.active !== 'boolean') return [];
+          return [{
+            medicationId: data.medicationId, localTime: data.localTime,
+            recurrence: data.recurrence, weekdays: data.weekdays,
+            startDate: data.startDate, endDate: data.endDate,
+            timeZone: data.timeZone, active: data.active,
+          }];
+        });
         emit();
       }, () => fail('Không thể tiếp tục đọc lịch thuốc được chia sẻ.')),
     ];

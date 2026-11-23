@@ -19,15 +19,21 @@ function FamilyCareDashboardContent() {
   const [result, setResult] = useState<CaregiverScheduleResult | null>(null);
   const [error, setError] = useState('');
   const unsubscribe = useRef<(() => void) | null>(null);
+  // Invalidates pending callbacks as soon as a link is replaced, disconnected,
+  // or this caregiver session unmounts.
+  const connectionGeneration = useRef(0);
   const isEnabled = isFamilyCareFeatureEnabled();
 
   useEffect(() => () => {
+    connectionGeneration.current += 1;
     unsubscribe.current?.();
     unsubscribe.current = null;
   }, []);
 
   const connect = () => {
     if (!isEnabled || !user || user.role !== 'caregiver') return;
+    connectionGeneration.current += 1;
+    const generation = connectionGeneration.current;
     unsubscribe.current?.();
     unsubscribe.current = null;
     setResult(null);
@@ -37,7 +43,9 @@ function FamilyCareDashboardContent() {
       const ownerUid = validateFamilyUid(ownerCode);
       // uid is a locator, never a grant. The listener is authorized by Rules.
       const stop = watchCaregiverPlans(user.id, ownerUid, (value) => {
-        setResult(value);
+        // Even a queued callback from an unsubscribed stream must not
+        // overwrite another family member's health information.
+        if (connectionGeneration.current === generation) setResult(value);
       });
       unsubscribe.current = stop;
       setConnectedCode(ownerUid);
@@ -47,6 +55,7 @@ function FamilyCareDashboardContent() {
   };
 
   const disconnect = () => {
+    connectionGeneration.current += 1;
     unsubscribe.current?.();
     unsubscribe.current = null;
     setConnectedCode(null);

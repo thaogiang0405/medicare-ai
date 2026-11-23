@@ -154,6 +154,46 @@ describe('Family Care: caregiver read-only linked schedule', () => {
     expect(view.queryByText('Lịch thuốc người thân · Chỉ xem')).toBeNull();
   });
 
+
+  it('ignores an old family member listener callback after switching to another profile', async () => {
+    const view = await render(<CaregiverDashboardScreen />);
+    await fireEvent.changeText(view.getByLabelText('Mã hồ sơ người cao tuổi'), 'elderly-123');
+    await fireEvent.press(view.getByLabelText('Xem lịch người thân'));
+    const staleCallback = deliver;
+    await act(async () => {
+      staleCallback?.({ status: 'ready', plans: [{ time: '08:00', medicationName: 'Medicine A' }] });
+    });
+    expect(view.getByText('08:00 · Medicine A')).toBeTruthy();
+
+    await fireEvent.changeText(view.getByLabelText('Mã hồ sơ người cao tuổi'), 'elderly-456');
+    await fireEvent.press(view.getByLabelText('Kết nối lại để tải dữ liệu mới'));
+    expect(watchCaregiverPlans).toHaveBeenLastCalledWith('caregiver-123', 'elderly-456', expect.any(Function));
+    expect(view.queryByText('08:00 · Medicine A')).toBeNull();
+
+    await act(async () => {
+      staleCallback?.({ status: 'ready', plans: [{ time: '12:00', medicationName: 'Private A' }] });
+    });
+    expect(view.queryByText('12:00 · Private A')).toBeNull();
+    await act(async () => {
+      deliver?.({ status: 'ready', plans: [{ time: '20:00', medicationName: 'Medicine B' }] });
+    });
+    expect(view.getByText('20:00 · Medicine B')).toBeTruthy();
+    expect(view.queryByText('12:00 · Private A')).toBeNull();
+  });
+
+  it('drops a queued Firestore callback after manual disconnect', async () => {
+    const view = await render(<CaregiverDashboardScreen />);
+    await fireEvent.changeText(view.getByLabelText('Mã hồ sơ người cao tuổi'), 'elderly-123');
+    await fireEvent.press(view.getByLabelText('Xem lịch người thân'));
+    const staleCallback = deliver;
+    await fireEvent.press(view.getByLabelText('Đóng lịch người thân'));
+    await act(async () => {
+      staleCallback?.({ status: 'ready', plans: [{ time: '08:00', medicationName: 'Sensitive Medicine' }] });
+    });
+    expect(view.queryByText('08:00 · Sensitive Medicine')).toBeNull();
+    expect(view.queryByText('Lịch thuốc người thân · Chỉ xem')).toBeNull();
+  });
+
   it('unsubscribes and discards previous caregiver data on account switch', async () => {
     const view = await render(<CaregiverDashboardScreen />);
     await fireEvent.changeText(view.getByLabelText('Mã hồ sơ người cao tuổi'), 'elderly-123');

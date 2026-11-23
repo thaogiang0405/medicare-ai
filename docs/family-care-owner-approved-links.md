@@ -17,9 +17,9 @@ UID là mã định danh để chỉ đúng hồ sơ, không phải bí mật ha
 ## Quyền truy cập
 
 - Owner elderly vẫn sở hữu và sửa thuốc/lịch của chính mình.
-- Caregiver chỉ đọc danh sách thuốc và lịch trong Firestore; UI hiển thị **cả các thuốc đang dùng chưa có mốc hôm nay**, cùng mốc giờ dự kiến của lịch trong ngày. Không có nút sửa, không báo đã uống, không hiển thị liều/hướng dẫn. Rules vẫn từ chối caregiver đọc DoseEvents/lịch sử, OCR, user profile khác, tạo/chỉnh sửa thuốc và lịch.
+- Caregiver có quyền **đọc toàn bộ document** trong các collection thuốc và lịch đã cấp. Điều này bao gồm hàm lượng, hướng dẫn dùng, và các bản ghi thuốc đã ngừng nếu đang lưu trong collection, mặc dù UI hiện chỉ trình bày **tên thuốc đang dùng** và lịch hôm nay. Firestore Rules **không thể che riêng từng field khi cho phép đọc document**. Không có nút sửa, không báo đã uống hoặc đọc DoseEvents. Cần xác minh đúng người nhận và xem lại phạm vi chia sẻ khi duyệt release. Rules vẫn từ chối caregiver đọc DoseEvents/lịch sử, OCR, user profile khác, tạo/chỉnh sửa thuốc và lịch.
 - Rules không cho caregiver tự tạo link, list link của chủ hồ sơ, cấp thêm quyền, hoặc tự phục hồi link đã revoked.
-- Dữ liệu đọc trực tuyến chỉ hiển thị sau khi listener nhận xác nhận server; khi quyền bị từ chối hoặc mất kết nối, UI ẩn dữ liệu đã hiển thị. Tính giờ theo Asia/Ho_Chi_Minh và **tự làm mới lịch dự kiến vào 00:00 giờ Việt Nam** khi màn hình vẫn đang mở. Khi thoát màn hình hoặc quyền bị thu hồi, listener/timer đều phải được ngắt.
+- Dữ liệu đọc trực tuyến chỉ hiển thị sau khi listener nhận xác nhận server; khi quyền bị từ chối hoặc mất kết nối, UI ẩn dữ liệu đã hiển thị. Tính giờ theo Asia/Ho_Chi_Minh và **tự làm mới lịch dự kiến vào 00:00 giờ Việt Nam** khi màn hình vẫn đang mở. Khi thoát màn hình hoặc quyền bị thu hồi, listener/timer đều phải được ngắt. Màn hình caregiver còn dùng generation token để bỏ qua callback tới muộn từ hồ sơ đã đóng/chuyển, tránh lẫn dữ liệu giữa hai người.
 
 ## Miễn phí và an toàn triển khai
 

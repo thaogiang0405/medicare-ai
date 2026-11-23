@@ -149,6 +149,31 @@ describe('ElderlyHomeScreen', () => {
     expect(view.queryByText('Đã uống')).toBeNull();
   });
 
+  it('offers manual sharing only for a fully loaded authenticated owner schedule', async () => {
+    const view = await render(<ElderlyHomeScreen />);
+    expect(view.getByLabelText('Chia sẻ lịch thuốc hôm nay')).toBeTruthy();
+
+    mockDashboard({ dashboardMode: 'demo' });
+    await view.rerender(<ElderlyHomeScreen />);
+    expect(view.queryByLabelText('Chia sẻ lịch thuốc hôm nay')).toBeNull();
+
+    mockDashboard({ isLoading: true });
+    await view.rerender(<ElderlyHomeScreen />);
+    expect(view.queryByLabelText('Chia sẻ lịch thuốc hôm nay')).toBeNull();
+
+    mockDashboard({ errorMessage: 'Không thể tải lịch.' });
+    await view.rerender(<ElderlyHomeScreen />);
+    expect(view.queryByLabelText('Chia sẻ lịch thuốc hôm nay')).toBeNull();
+
+    mockDashboard({ medicationSchedules: [] });
+    await view.rerender(<ElderlyHomeScreen />);
+    expect(view.queryByLabelText('Chia sẻ lịch thuốc hôm nay')).toBeNull();
+
+    mockDashboard({ user: { id: 'caregiver-a', displayName: 'Người khác', role: 'caregiver', isAuthenticated: true } });
+    await view.rerender(<ElderlyHomeScreen />);
+    expect(view.queryByLabelText('Chia sẻ lịch thuốc hôm nay')).toBeNull();
+  });
+
   it('keeps demo DoseEvents separate when either Firestore dependency is disabled', async () => {
     mockDashboard({
       dashboardMode: 'demo',

@@ -9,6 +9,8 @@ export type CaregiverScheduleResult = Readonly<{
   plans: readonly CaregiverPlan[];
   /** All currently active medicines, including ones without a dose today. */
   medicationNames?: readonly string[];
+  /** Vietnam-local calendar date used to compute the displayed plan. */
+  scheduleDate?: string;
   message?: string;
 }>;
 
@@ -84,6 +86,15 @@ export async function revokeCaregiverLink(ownerUid: string, rawCaregiverUid: str
 type RawMedication = { id: string; name: string; status: string };
 type RawSchedule = { medicationId: string; localTime: string; recurrence: string; weekdays: number[]; startDate: string; endDate: string | null; active: boolean };
 
+/** Asia/Ho_Chi_Minh has UTC+07 and no DST in this app's date range. */
+export function millisecondsUntilNextVietnamDay(now = new Date()): number {
+  const dayMs = 24 * 60 * 60 * 1000;
+  const offsetMs = 7 * 60 * 60 * 1000;
+  const vietNow = now.getTime() + offsetMs;
+  const elapsedDay = ((vietNow % dayMs) + dayMs) % dayMs;
+  return dayMs - elapsedDay + 100;
+}
+
 function currentVietnamDay(now = new Date()) {
   const fmt = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short' });
   const parts = fmt.formatToParts(now);
@@ -136,9 +147,16 @@ export function watchCaregiverPlans(
   let live = true;
   let denied = false;
   let childSubscriptions: Unsubscribe[] = [];
+  let midnightTimer: ReturnType<typeof setTimeout> | null = null;
   let medications: RawMedication[] | null = null;
   let schedules: RawSchedule[] | null = null;
 
+  const stopMidnightTimer = () => {
+    if (midnightTimer !== null) {
+      clearTimeout(midnightTimer);
+      midnightTimer = null;
+    }
+  };
   const clearChildren = () => {
     childSubscriptions.forEach((unsubscribe) => unsubscribe());
     childSubscriptions = [];
@@ -148,6 +166,7 @@ export function watchCaregiverPlans(
   const fail = (message: string) => {
     if (!live || denied) return;
     denied = true;
+    stopMidnightTimer();
     clearChildren();
     onChange({ status: 'revoked', plans: [], message });
   };
@@ -158,12 +177,27 @@ export function watchCaregiverPlans(
       return;
     }
     if (!medications || !schedules) return;
+    const now = new Date();
     onChange({
       status: 'ready',
-      plans: deriveCaregiverPlans(medications, schedules),
+      plans: deriveCaregiverPlans(medications, schedules, now),
       medicationNames: deriveCaregiverMedicationNames(medications),
+      scheduleDate: currentVietnamDay(now).today,
     });
   };
+
+  // Keep the displayed "today" anchored to the Vietnam-local date even
+  // if the caregiver leaves the screen open across midnight.
+  const scheduleNextDay = () => {
+    if (!live || denied) return;
+    midnightTimer = setTimeout(() => {
+      midnightTimer = null;
+      if (!live || denied) return;
+      emit();
+      scheduleNextDay();
+    }, millisecondsUntilNextVietnamDay());
+  };
+  scheduleNextDay();
 
   onChange({ status: 'loading', plans: [] });
   const unsubscribeLink = onSnapshot(linkRef(ownerUid, caregiverUid), { includeMetadataChanges: true }, (snapshot) => {
@@ -204,6 +238,7 @@ export function watchCaregiverPlans(
 
   return () => {
     live = false;
+    stopMidnightTimer();
     unsubscribeLink();
     clearChildren();
   };

@@ -7,10 +7,19 @@ jest.mock('@/services/firebase', () => ({
   getFirebaseFirestore: jest.fn(),
 }));
 
-import { deriveCaregiverMedicationNames, deriveCaregiverPlans, validateFamilyUid } from './family-link-repository';
+import { deriveCaregiverMedicationNames, deriveCaregiverPlans, millisecondsUntilNextVietnamDay, validateFamilyUid } from './family-link-repository';
 import { isFamilyCareFeatureEnabled } from '@/services/firebase/family-care-feature';
 
 describe('owner-approved Family Care client guardrails', () => {
+  it('rolls over the Vietnam-local calendar at 00:00, not device-local midnight', () => {
+    expect(millisecondsUntilNextVietnamDay(new Date('2026-11-23T12:00:00.000Z')))
+      .toBe(5 * 60 * 60 * 1000 + 100);
+    expect(millisecondsUntilNextVietnamDay(new Date('2026-11-23T16:59:59.999Z')))
+      .toBe(101);
+    expect(millisecondsUntilNextVietnamDay(new Date('2026-11-23T17:00:00.000Z')))
+      .toBe(24 * 60 * 60 * 1000 + 100);
+  });
+
   it('never interprets a profile code as a credential and rejects unsafe path identifiers', () => {
     expect(validateFamilyUid(' caregiver-123 ')).toBe('caregiver-123');
     for (const code of ['', 'a', '../user', 'user/a', 'user b', 'x'.repeat(129), '🤖']) {

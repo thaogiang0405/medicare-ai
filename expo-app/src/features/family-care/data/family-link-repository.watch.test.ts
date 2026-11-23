@@ -97,6 +97,10 @@ const schedule = recordsSnapshot([
 ]);
 
 describe('Family Care Firestore watcher fail-closed behavior', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   beforeEach(() => {
     jest.clearAllMocks();
     authUid = caregiverUid;
@@ -213,6 +217,30 @@ describe('Family Care Firestore watcher fail-closed behavior', () => {
     emit(schedulesPath, schedule);
     expect(received.at(-1)?.status).toBe('revoked');
     expect(received.at(-1)?.plans).toEqual([]);
+    close();
+  });
+
+  it('updates a weekly schedule automatically when Vietnam crosses midnight', () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-11-23T16:59:59.900Z')); // Monday 23:59:59.900 in Vietnam
+    const mondayOnly = recordsSnapshot([{
+      id: 'weekly-monday',
+      fields: {
+        medicationId: 'medicine-1', localTime: '08:00',
+        recurrence: 'weekly', weekdays: [1],
+        startDate: '2026-01-01', endDate: null, active: true,
+      },
+    }]);
+    const close = watchCaregiverPlans(caregiverUid, elderlyUid, (state) => received.push(state));
+    emit(linkPath, linkSnapshot(true));
+    emit(medicationsPath, med);
+    emit(schedulesPath, mondayOnly);
+    expect(received.at(-1)?.scheduleDate).toBe('2026-11-23');
+    expect(received.at(-1)?.plans).toHaveLength(1);
+
+    jest.advanceTimersByTime(250);
+    expect(received.at(-1)?.scheduleDate).toBe('2026-11-24');
+    expect(received.at(-1)?.plans).toHaveLength(0);
     close();
   });
 

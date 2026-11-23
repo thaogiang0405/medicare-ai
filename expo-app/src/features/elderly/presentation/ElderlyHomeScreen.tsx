@@ -14,6 +14,8 @@ import {
 } from '@/components/medicare';
 import { medicareColors, medicareSpacing, medicareTypography } from '@/constants/medicare-theme';
 import { medicationScheduleRecurrenceLabel } from '@/features/schedules/presentation/medication-schedule-utils';
+import { isFamilyCareFeatureEnabled } from '@/services/firebase/family-care-feature';
+import { FamilyLinkOwnerPanel } from '@/features/family-care/presentation/FamilyLinkOwnerPanel';
 import { isPrescriptionOcrFeatureEnabled } from '@/features/prescriptions';
 import { useSessionStore } from '@/store';
 import type { PersistedDoseResponseStatus } from '@/types/domain';
@@ -338,12 +340,16 @@ export default function ElderlyHomeScreen() {
           onPress={() => router.push('/elderly/reminder-settings')}
           title="Cài đặt nhắc lịch"
         />
-        <ActionCard
-          description="Liên kết gia đình chưa được triển khai."
-          icon={<Text style={styles.icon}>⌂</Text>}
-          onPress={() => showDeferredFeature('Liên hệ người thân')}
-          title="Liên hệ người thân"
-        />
+        {isFamilyCareFeatureEnabled() && user?.role === 'elderly' && user.id ? (
+          <FamilyLinkOwnerPanel key={user.id} ownerUid={user.id} />
+        ) : (
+          <ActionCard
+            description="Liên kết gia đình trực tuyến chưa bật. Cần kiểm thử và phê duyệt Firebase Security Rules trước khi sử dụng."
+            icon={<Text style={styles.icon}>⌂</Text>}
+            onPress={() => showDeferredFeature('Liên hệ người thân')}
+            title="Liên hệ người thân"
+          />
+        )}
       </View>
       <SecondaryButton
         accessibilityHint="Đăng xuất và xóa trạng thái phiên trong bộ nhớ"

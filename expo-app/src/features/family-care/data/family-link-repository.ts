@@ -1,4 +1,4 @@
-import { onSnapshot, collection, doc, getDoc, getDocs, limit, query, serverTimestamp, setDoc, updateDoc, type Unsubscribe } from 'firebase/firestore';
+import { onSnapshot, collection, doc, getDoc, getDocs, limit, query, serverTimestamp, setDoc, updateDoc, where, type Unsubscribe } from 'firebase/firestore';
 
 import { getFirebaseAuth, getFirebaseFirestore } from '@/services/firebase';
 import { isValidMedicationScheduleDate } from '@/features/schedules/domain/medication-schedule-validation';
@@ -236,7 +236,7 @@ export function watchCaregiverPlans(
     const root = getFirebaseFirestore();
     const generation = ++childGeneration;
     const subscriptions: Unsubscribe[] = [
-      onSnapshot(query(collection(root, 'elderlyProfiles', ownerUid, 'medications'), limit(101)), { includeMetadataChanges: true }, (medDocs) => {
+      onSnapshot(query(collection(root, 'elderlyProfiles', ownerUid, 'medications'), where('status', '==', 'active'), limit(101)), { includeMetadataChanges: true }, (medDocs) => {
         if (!live || denied || generation !== childGeneration) return;
         if (medDocs.metadata.fromCache) { medications = null; onChange({ status: 'loading', plans: [] }); return; }
         if (medDocs.size > 100) { fail('Danh sách thuốc vượt giới hạn 100 mục của chế độ theo dõi này.'); return; }
@@ -250,7 +250,7 @@ export function watchCaregiverPlans(
       }, () => {
         if (generation === childGeneration) fail('Không thể tiếp tục đọc danh sách thuốc được chia sẻ.');
       }),
-      onSnapshot(query(collection(root, 'elderlyProfiles', ownerUid, 'medicationSchedules'), limit(101)), { includeMetadataChanges: true }, (scheduleDocs) => {
+      onSnapshot(query(collection(root, 'elderlyProfiles', ownerUid, 'medicationSchedules'), where('active', '==', true), limit(101)), { includeMetadataChanges: true }, (scheduleDocs) => {
         if (!live || denied || generation !== childGeneration) return;
         if (scheduleDocs.metadata.fromCache) { schedules = null; onChange({ status: 'loading', plans: [] }); return; }
         if (scheduleDocs.size > 100) { fail('Danh sách lịch vượt giới hạn 100 mục của chế độ theo dõi này.'); return; }

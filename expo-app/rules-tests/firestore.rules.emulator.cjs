@@ -998,7 +998,10 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
 
     await assertSucceeds(setDoc(familyLinkRef(ownerDB), familyLink(userA, caregiver)));
     await assertSucceeds(getDoc(familyLinkRef(caregiverDB)));
-    const sharedMedicationDocs = await assertSucceeds(getDocs(medicationsCollection(caregiverDB, userA)));
+    const sharedMedicationDocs = await assertSucceeds(getDocs(query(
+      medicationsCollection(caregiverDB, userA),
+      where('status', '==', 'active'),
+    )));
     expect(sharedMedicationDocs.size).toBe(2);
     expect(sharedMedicationDocs.docs.map((snapshot) => snapshot.data())).toEqual(
       expect.arrayContaining([
@@ -1014,9 +1017,15 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
         }),
       ]),
     );
-    await assertSucceeds(getDocs(medicationSchedulesCollection(caregiverDB, userA)));
+    await assertSucceeds(getDocs(query(
+      medicationSchedulesCollection(caregiverDB, userA),
+      where('active', '==', true),
+    )));
     await assertSucceeds(getDoc(medicationReference(caregiverDB, userA)));
     await assertSucceeds(getDoc(medicationScheduleReference(caregiverDB, userA)));
+    await assertFails(getDoc(medicationReference(caregiverDB, userA, 'medication-inactive')));
+    await assertFails(getDocs(medicationsCollection(caregiverDB, userA)));
+    await assertFails(getDocs(medicationSchedulesCollection(caregiverDB, userA)));
 
     await assertFails(getDoc(familyLinkRef(unrelatedDB)));
     await assertFails(getDocs(medicationsCollection(unrelatedDB, userA)));

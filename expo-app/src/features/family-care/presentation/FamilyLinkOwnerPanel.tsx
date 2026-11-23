@@ -86,7 +86,7 @@ export function FamilyLinkOwnerPanel({ ownerUid }: Readonly<{ ownerUid: string }
     }
     Alert.alert(
       'Đồng ý cấp quyền xem?',
-      'Chỉ đồng ý sau khi xác minh người nhận ngoài đời. Tài khoản người chăm sóc có quyền đọc TOÀN BỘ bản ghi thuốc và lịch trong Firestore (bao gồm hàm lượng, hướng dẫn, thuốc ngừng sử dụng nếu đã lưu), dù giao diện hiện chỉ hiện tên và giờ dự kiến. Dữ liệu có thể được lưu lại bên ngoài app. Người này không được sửa thuốc hoặc báo đã uống.',
+      'Chỉ đồng ý sau khi xác minh người nhận ngoài đời. Tài khoản người chăm sóc có quyền đọc TOÀN BỘ trường trong các bản ghi thuốc và lịch ĐANG HOẠT ĐỘNG trên Firestore (bao gồm hàm lượng và hướng dẫn dùng). Rules chặn các thuốc/lịch đã ngừng hoạt động. Giao diện hiện chỉ hiển thị tên và giờ dự kiến; dữ liệu đã xem vẫn có thể được lưu lại bên ngoài app. Người này không được sửa thuốc hoặc báo đã uống.',
       [
         { text: 'Hủy', style: 'cancel' },
         {

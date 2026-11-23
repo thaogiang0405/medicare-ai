@@ -11,6 +11,7 @@ jest.mock('firebase/firestore', () => ({
   collection: jest.fn(),
   doc: jest.fn(),
   query: jest.fn(),
+  where: jest.fn(),
   limit: jest.fn(),
   getDoc: jest.fn(),
   getDocs: jest.fn(),
@@ -20,7 +21,7 @@ jest.mock('firebase/firestore', () => ({
 }));
 
 import {
-  collection, doc, limit, onSnapshot, query,
+  collection, doc, limit, onSnapshot, query, where,
 } from 'firebase/firestore';
 import { getFirebaseAuth, getFirebaseFirestore } from '@/services/firebase';
 import {
@@ -123,6 +124,7 @@ describe('Family Care Firestore watcher fail-closed behavior', () => {
     }));
     (query as unknown as jest.Mock).mockImplementation((reference: { path: string }) => reference);
     (limit as unknown as jest.Mock).mockImplementation((number: number) => number);
+    (where as unknown as jest.Mock).mockImplementation((...args: unknown[]) => args);
     (onSnapshot as unknown as jest.Mock).mockImplementation((
       reference: { path: string },
       _options: unknown,
@@ -150,6 +152,8 @@ describe('Family Care Firestore watcher fail-closed behavior', () => {
     emit(linkPath, linkSnapshot(true));
     expect(observed.has(medicationsPath)).toBe(true);
     expect(observed.has(schedulesPath)).toBe(true);
+    expect(where).toHaveBeenCalledWith('status', '==', 'active');
+    expect(where).toHaveBeenCalledWith('active', '==', true);
     close();
     expect(stops.get(linkPath)).toHaveBeenCalledTimes(1);
     expect(stops.get(medicationsPath)).toHaveBeenCalledTimes(1);

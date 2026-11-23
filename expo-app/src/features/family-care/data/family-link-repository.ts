@@ -106,7 +106,7 @@ function isReadableActiveSchedule(ownerUid: string, data: Record<string, unknown
     || data.medicationId.length < 1 || data.medicationId.length > 150
     || data.medicationId.includes('/')
     || typeof data.localTime !== 'string'
-    || !/^(?:[01]\\d|2[0-3]):[0-5]\\d$/.test(data.localTime)
+    || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(data.localTime)
     || typeof data.startDate !== 'string'
     || !isValidMedicationScheduleDate(data.startDate)
     || !(data.endDate === null || (typeof data.endDate === 'string'

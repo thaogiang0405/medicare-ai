@@ -1006,20 +1006,14 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
       medicationsCollection(caregiverDB, userA),
       where('status', '==', 'active'),
     )));
-    expect(sharedMedicationDocs.size).toBe(2);
-    expect(sharedMedicationDocs.docs.map((snapshot) => snapshot.data())).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          name: 'Paracetamol',
-          strengthText: '500 mg',
-          directionsText: 'Nội dung do người dùng cung cấp',
-          status: 'active',
-        }),
-        expect.objectContaining({
-          name: 'Thuốc đã ngừng',
-          status: 'inactive',
-        }),
-      ]),
+    expect(sharedMedicationDocs.size).toBe(1);
+    expect(sharedMedicationDocs.docs[0]?.data()).toEqual(
+      expect.objectContaining({
+        name: 'Paracetamol',
+        strengthText: '500 mg',
+        directionsText: 'Nội dung do người dùng cung cấp',
+        status: 'active',
+      }),
     );
     const sharedScheduleDocs = await assertSucceeds(getDocs(query(
       medicationSchedulesCollection(caregiverDB, userA),

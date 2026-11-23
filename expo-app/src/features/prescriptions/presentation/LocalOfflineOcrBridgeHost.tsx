@@ -142,7 +142,15 @@ export function LocalOfflineOcrBridgeHost({ onEngineStatusChange }: LocalOffline
     const unregister = registerLocalOfflineOcrPort(port);
     return () => {
       unregister();
-      port.cancelActivePage();
+      // Do not call port.cancelActivePage() during WebView unmount: that
+      // updates React job state after the native view has started unloading,
+      // which can race with Expo DOM's injected-props bridge.
+      const pending = pendingRef.current;
+      pendingRef.current = null;
+      if (pending) {
+        pending.removeAbortListener();
+        pending.reject(cancellationError());
+      }
     };
   }, [port]);
 
@@ -154,7 +162,7 @@ export function LocalOfflineOcrBridgeHost({ onEngineStatusChange }: LocalOffline
       style={styles.hiddenHost}
     >
       <LocalOfflineOcrDom
-        dom={{ matchContents: false }}
+        dom={{ matchContents: false, useExpoDOMWebView: false }}
         job={job}
         onCancelled={onCancelled}
         onEngineError={onEngineError}

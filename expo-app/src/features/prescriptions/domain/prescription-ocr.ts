@@ -77,6 +77,8 @@ export type PrescriptionOcrProgress = Readonly<{
 export type PrescriptionOcrExecutionOptions = Readonly<{
   /** Cancels the active local worker without retaining its image/text payload. */
   signal?: AbortSignal;
+  /** Choose safe package-label reading only for the packaging screen. */
+  sourceMode?: 'prescription' | 'packaging';
   onProgress?: (progress: PrescriptionOcrProgress) => void;
 }>;
 

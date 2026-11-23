@@ -17,6 +17,7 @@ import { ImageManipulator } from 'expo-image-manipulator';
 
 import {
   deleteTemporaryPrescriptionImages,
+  cropPrescriptionImageToNameBand,
   preparePrescriptionImage,
   prescriptionImageMaximumDimension,
 } from './prescription-image-preparation';
@@ -24,6 +25,7 @@ import {
 function mockNativeImage({ byteSize = 2048, base64 = 'YWJj' }: { byteSize?: number; base64?: string } = {}) {
   const saveAsync = jest.fn(async () => ({ uri: 'file:///cache/ocr-page.jpg', width: 1200, height: 1600 }));
   jest.mocked(ImageManipulator.manipulate).mockReturnValue({
+    crop: jest.fn(),
     renderAsync: jest.fn(async () => ({ saveAsync })),
   } as unknown as ReturnType<typeof ImageManipulator.manipulate>);
   jest.mocked(File).mockImplementation(() => ({
@@ -56,6 +58,26 @@ describe('prescription image preparation', () => {
       height: 1600,
       base64: 'YWJj',
     });
+  });
+
+  it('crops a user-tapped name band locally without uploading image data', async () => {
+    mockNativeImage();
+    const original = await preparePrescriptionImage({ uri: 'file:///picker/original.jpg' });
+    const cropped = await cropPrescriptionImageToNameBand(original, 0.35);
+    expect(ImageManipulator.manipulate).toHaveBeenLastCalledWith(original.uri);
+    const calls = jest.mocked(ImageManipulator.manipulate).mock.results;
+    const imageContext = calls[calls.length - 1]?.value;
+    expect(imageContext.crop).toHaveBeenCalledWith({ originX: 0, originY: 440, width: 1200, height: 240 });
+    expect(cropped).toMatchObject({ mimeType: 'image/jpeg', byteSize: 2048 });
+    expect(cropped.qualityWarnings.join(' ')).toContain('đầy đủ tên thuốc');
+  });
+
+  it('refuses out-of-bounds tap positions before manipulating images', async () => {
+    mockNativeImage();
+    const original = await preparePrescriptionImage({ uri: 'file:///picker/original.jpg' });
+    const count = jest.mocked(ImageManipulator.manipulate).mock.calls.length;
+    await expect(cropPrescriptionImageToNameBand(original, 1.5)).rejects.toThrow('Vị trí');
+    expect(jest.mocked(ImageManipulator.manipulate).mock.calls).toHaveLength(count);
   });
 
   it('rejects a page that remains larger than the upload ceiling after optimization', async () => {

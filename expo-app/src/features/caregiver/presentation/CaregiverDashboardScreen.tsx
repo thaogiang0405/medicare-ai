@@ -131,6 +131,14 @@ function FamilyCareDashboardContent() {
                     message="Các mốc sau đến từ dữ liệu thuốc và lịch trên Firebase. Không thể suy đoán người thân đã uống hay bỏ qua từ việc không có phản hồi."
                     tone="information"
                   />
+                  {result.medicationNames && result.medicationNames.length > 0 ? (
+                    <View style={styles.section}>
+                      <Text accessibilityRole="header" style={styles.heading}>Danh sách thuốc đang dùng</Text>
+                      {result.medicationNames.map((name, index) => (
+                        <Text key={name + ':' + index} style={styles.detail}>• {name}</Text>
+                      ))}
+                    </View>
+                  ) : null}
                   {result.plans.length === 0 ? <Text style={styles.detail}>Hôm nay chưa có lịch thuốc đang hoạt động.</Text> : null}
                   {result.plans.map((entry, index) => (
                     <View key={entry.time + ':' + index} style={styles.scheduleRow}>

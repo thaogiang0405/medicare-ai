@@ -158,6 +158,7 @@ describe('Family Care Firestore watcher fail-closed behavior', () => {
 
     emit(schedulesPath, schedule);
     expect(received.at(-1)?.status).toBe('ready');
+    expect(received.at(-1)?.medicationNames).toEqual(['Thuốc từ Firestore']);
     expect(received.at(-1)?.plans).toEqual([
       { time: '08:00', medicationName: 'Thuốc từ Firestore' },
     ]);

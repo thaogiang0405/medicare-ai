@@ -106,10 +106,13 @@ describe('Family Care: caregiver read-only linked schedule', () => {
           { time: '08:00', medicationName: 'Metformin' },
           { time: '20:15', medicationName: 'Thuốc do người dùng nhập' },
         ],
+        medicationNames: ['Metformin', 'Thuốc chưa có lịch hôm nay'],
       });
     });
     expect(view.getByText('08:00 · Metformin')).toBeTruthy();
     expect(view.getByText('20:15 · Thuốc do người dùng nhập')).toBeTruthy();
+    expect(view.getByText('Danh sách thuốc đang dùng')).toBeTruthy();
+    expect(view.getByText('• Thuốc chưa có lịch hôm nay')).toBeTruthy();
     expect(view.getByText('Lịch dự kiến, không phải xác nhận y tế')).toBeTruthy();
     expect(view.queryByLabelText('Đã uống')).toBeNull();
     expect(view.queryByLabelText('Chỉnh sửa thuốc')).toBeNull();

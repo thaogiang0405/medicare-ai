@@ -7,7 +7,7 @@ jest.mock('@/services/firebase', () => ({
   getFirebaseFirestore: jest.fn(),
 }));
 
-import { deriveCaregiverPlans, validateFamilyUid } from './family-link-repository';
+import { deriveCaregiverMedicationNames, deriveCaregiverPlans, validateFamilyUid } from './family-link-repository';
 import { isFamilyCareFeatureEnabled } from '@/services/firebase/family-care-feature';
 
 describe('owner-approved Family Care client guardrails', () => {
@@ -22,6 +22,16 @@ describe('owner-approved Family Care client guardrails', () => {
     expect(isFamilyCareFeatureEnabled('')).toBe(false);
     expect(isFamilyCareFeatureEnabled('false')).toBe(false);
     expect(isFamilyCareFeatureEnabled(' true ')).toBe(true);
+  });
+
+  it('lists active medicines even when a medicine has no planned dose today', () => {
+    expect(deriveCaregiverMedicationNames([
+      { id: 'a', name: '  Metformin  ', status: 'active' },
+      { id: 'b', name: 'Metformin', status: 'active' },
+      { id: 'c', name: 'Acetaminophen', status: 'active' },
+      { id: 'd', name: 'Inactive medicine', status: 'inactive' },
+      { id: 'e', name: '   ', status: 'active' },
+    ])).toEqual(['Acetaminophen', 'Metformin']);
   });
 
   it('displays only currently active owner medicines and matching daily/weekly plans', () => {

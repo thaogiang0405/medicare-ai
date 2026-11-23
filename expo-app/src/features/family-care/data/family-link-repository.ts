@@ -4,7 +4,13 @@ import { getFirebaseAuth, getFirebaseFirestore } from '@/services/firebase';
 
 export type FamilyLinkRecord = Readonly<{ caregiverUid: string; status: 'active' | 'revoked'; revision: number }>;
 export type CaregiverPlan = Readonly<{ time: string; medicationName: string }>;
-export type CaregiverScheduleResult = Readonly<{ status: 'loading' | 'ready' | 'revoked' | 'error'; plans: readonly CaregiverPlan[]; message?: string }>;
+export type CaregiverScheduleResult = Readonly<{
+  status: 'loading' | 'ready' | 'revoked' | 'error';
+  plans: readonly CaregiverPlan[];
+  /** All currently active medicines, including ones without a dose today. */
+  medicationNames?: readonly string[];
+  message?: string;
+}>;
 
 // Exchanging these UIDs is an MVP pairing procedure, NOT a shareable
 // credential. Access is authorized by Firebase Rules on every Firestore read.
@@ -87,6 +93,15 @@ function currentVietnamDay(now = new Date()) {
   return { today, week };
 }
 
+/** Pure read-only list: do not expose dose strength or instructions. */
+export function deriveCaregiverMedicationNames(medications: readonly RawMedication[]): string[] {
+  const names = medications
+    .filter((medicine) => medicine.status === 'active' && typeof medicine.name === 'string')
+    .map((medicine) => medicine.name.trim())
+    .filter((name) => name.length > 0);
+  return [...new Set(names)].sort((a, b) => a.localeCompare(b, 'vi'));
+}
+
 /** A pure formatter for a caregiver's read-only, planned medicine times. */
 export function deriveCaregiverPlans(medications: readonly RawMedication[], schedules: readonly RawSchedule[], now = new Date()): CaregiverPlan[] {
   const { today, week } = currentVietnamDay(now);
@@ -143,7 +158,11 @@ export function watchCaregiverPlans(
       return;
     }
     if (!medications || !schedules) return;
-    onChange({ status: 'ready', plans: deriveCaregiverPlans(medications, schedules) });
+    onChange({
+      status: 'ready',
+      plans: deriveCaregiverPlans(medications, schedules),
+      medicationNames: deriveCaregiverMedicationNames(medications),
+    });
   };
 
   onChange({ status: 'loading', plans: [] });

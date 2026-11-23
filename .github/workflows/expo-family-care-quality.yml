@@ -68,7 +68,13 @@ jobs:
           for (const [name, item] of Object.entries(audit.vulnerabilities ?? {})) {
             const via = (item.via ?? []).map((entry) => typeof entry === 'string'
               ? entry
-              : `${entry.name}: ${entry.title ?? entry.url ?? 'advisory'}`);
+              : {
+                name: entry.name,
+                title: entry.title,
+                url: entry.url,
+                range: entry.range,
+                severity: entry.severity,
+              });
             console.log(JSON.stringify({
               package: name,
               severity: item.severity,

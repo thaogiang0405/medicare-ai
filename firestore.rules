@@ -594,10 +594,15 @@ service cloud.firestore {
     // A profile role from the UI never grants access; the canonical M2.3
     // `/users/{uid}` document is checked for every operation.
     match /elderlyProfiles/{uid}/medications/{medicationId} {
-      // Caregivers may read only active medication documents. Queries must
-      // constrain status=active; owner reads remain unrestricted.
-      allow get, list: if hasValidElderlyProfile(uid)
+      // Direct caregiver gets validate the full document schema. List queries
+      // also bind ownerUid/status so Firestore can prove every result is in-scope;
+      // the client validates the exact DTO and fails closed on malformed rows.
+      allow get: if hasValidElderlyProfile(uid)
         || (hasActiveFamilyReadLink(uid) && isActiveOwnedMedicationData(uid, resource.data));
+      allow list: if hasValidElderlyProfile(uid)
+        || (hasActiveFamilyReadLink(uid)
+          && resource.data.ownerUid == uid
+          && resource.data.status == 'active');
       allow create: if isValidMedicationCreate(uid);
       allow update: if isValidMedicationUpdate(uid);
       allow delete: if false;
@@ -606,11 +611,15 @@ service cloud.firestore {
     // M3.3: schedules use the same elderly-owner boundary as medications.
     // They never grant notification, DoseEvent, or caregiver access.
     match /elderlyProfiles/{uid}/medicationSchedules/{scheduleId} {
-      // Caregivers may read only active schedule documents. Queries must
-      // constrain active=true; owner reads remain unrestricted.
-      allow get, list: if hasValidElderlyProfile(uid)
+      // Direct caregiver gets validate the full schedule schema. List queries
+      // bind ownerUid/active; the client validates every row before display.
+      allow get: if hasValidElderlyProfile(uid)
         || (hasActiveFamilyReadLink(uid)
           && hasValidMedicationScheduleSchema(resource.data)
+          && resource.data.ownerUid == uid
+          && resource.data.active == true);
+      allow list: if hasValidElderlyProfile(uid)
+        || (hasActiveFamilyReadLink(uid)
           && resource.data.ownerUid == uid
           && resource.data.active == true);
       allow create: if isValidMedicationScheduleCreate(uid);

@@ -105,6 +105,65 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/users/$(uid)).data.onboardingCompleted == true;
     }
 
+    // Owner-approved read-only family link; no Cloud Functions or invite authority.
+    function verifiedCaregiver(caregiverUid) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(caregiverUid))
+        && hasValidUserProfileSchema(get(/databases/$(database)/documents/users/$(caregiverUid)).data)
+        && get(/databases/$(database)/documents/users/$(caregiverUid)).data.uid == caregiverUid
+        && get(/databases/$(database)/documents/users/$(caregiverUid)).data.primaryRole == 'caregiver'
+        && get(/databases/$(database)/documents/users/$(caregiverUid)).data.roles.caregiver == true;
+    }
+
+    function validFamilyLink(data, ownerUid, caregiverUid) {
+      return data.keys().hasAll(['ownerUid', 'caregiverUid', 'status', 'scopes', 'revision', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['ownerUid', 'caregiverUid', 'status', 'scopes', 'revision', 'createdAt', 'updatedAt'])
+        && data.ownerUid == ownerUid
+        && data.caregiverUid == caregiverUid
+        && data.status in ['active', 'revoked']
+        && data.scopes is map
+        && data.scopes.keys().hasAll(['medicationsRead', 'schedulesRead'])
+        && data.scopes.keys().hasOnly(['medicationsRead', 'schedulesRead'])
+        && data.scopes.medicationsRead == true
+        && data.scopes.schedulesRead == true
+        && data.revision is int && data.revision >= 1
+        && data.createdAt is timestamp && data.updatedAt is timestamp;
+    }
+
+    function validOwnerGrant(ownerUid, caregiverUid) {
+      return hasValidElderlyProfile(ownerUid)
+        && caregiverUid != ownerUid
+        && verifiedCaregiver(caregiverUid)
+        && validFamilyLink(request.resource.data, ownerUid, caregiverUid)
+        && request.resource.data.status == 'active'
+        && request.resource.data.revision == 1
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    function validOwnerRevoke(ownerUid, caregiverUid) {
+      return hasValidElderlyProfile(ownerUid)
+        && validFamilyLink(resource.data, ownerUid, caregiverUid)
+        && validFamilyLink(request.resource.data, ownerUid, caregiverUid)
+        && resource.data.status == 'active'
+        && request.resource.data.status == 'revoked'
+        && request.resource.data.revision == resource.data.revision + 1
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'revision', 'updatedAt']);
+    }
+
+    function hasActiveFamilyReadLink(ownerUid) {
+      return signedIn() && request.auth.uid != ownerUid
+        && verifiedCaregiver(request.auth.uid)
+        && exists(/databases/$(database)/documents/elderlyProfiles/$(ownerUid)/caregiverLinks/$(request.auth.uid))
+        && validFamilyLink(
+          get(/databases/$(database)/documents/elderlyProfiles/$(ownerUid)/caregiverLinks/$(request.auth.uid)).data,
+          ownerUid, request.auth.uid
+        )
+        && get(/databases/$(database)/documents/elderlyProfiles/$(ownerUid)/caregiverLinks/$(request.auth.uid)).data.status == 'active';
+    }
+
     function hasExactMedicationFields(data) {
       return data.keys().hasAll([
           'ownerUid',
@@ -507,9 +566,8 @@ service cloud.firestore {
       }
     }
 
-    // A role selected by the client is not a health-data authorization grant.
-    // These surfaces remain closed until their schema, server workflow, and
-    // emulator coverage are approved in a later milestone.
+    // A UI role cannot grant health-data rights. Only the separately checked
+    // owner-created caregiverLinks record can allow narrow read access.
     match /caregiverProfiles/{document=**} {
       allow read, write: if false;
     }
@@ -518,11 +576,25 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Only the owner may grant/revoke a link; caregivers can only get
+    // their active link by exact path. Lists are reserved for the owner.
+    match /elderlyProfiles/{uid}/caregiverLinks/{caregiverUid} {
+      allow get: if hasValidElderlyProfile(uid)
+        || (signedIn() && request.auth.uid == caregiverUid
+          && verifiedCaregiver(caregiverUid)
+          && validFamilyLink(resource.data, uid, caregiverUid)
+          && resource.data.status == 'active');
+      allow list: if hasValidElderlyProfile(uid);
+      allow create: if validOwnerGrant(uid, caregiverUid);
+      allow update: if validOwnerRevoke(uid, caregiverUid);
+      allow delete: if false;
+    }
+
     // M3.2: an elderly owner may access only their own medication records.
     // A profile role from the UI never grants access; the canonical M2.3
     // `/users/{uid}` document is checked for every operation.
     match /elderlyProfiles/{uid}/medications/{medicationId} {
-      allow get, list: if hasValidElderlyProfile(uid);
+      allow get, list: if hasValidElderlyProfile(uid) || hasActiveFamilyReadLink(uid);
       allow create: if isValidMedicationCreate(uid);
       allow update: if isValidMedicationUpdate(uid);
       allow delete: if false;
@@ -531,7 +603,7 @@ service cloud.firestore {
     // M3.3: schedules use the same elderly-owner boundary as medications.
     // They never grant notification, DoseEvent, or caregiver access.
     match /elderlyProfiles/{uid}/medicationSchedules/{scheduleId} {
-      allow get, list: if hasValidElderlyProfile(uid);
+      allow get, list: if hasValidElderlyProfile(uid) || hasActiveFamilyReadLink(uid);
       allow create: if isValidMedicationScheduleCreate(uid);
       allow update: if isValidMedicationScheduleUpdate(uid);
       allow delete: if false;

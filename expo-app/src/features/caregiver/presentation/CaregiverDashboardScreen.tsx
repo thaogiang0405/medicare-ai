@@ -101,7 +101,7 @@ function CaregiverDashboardContent() {
         <Text accessibilityRole="header" style={styles.sectionTitle}>Thao tác nhanh</Text>
         <ActionCard
           accessibilityHint="Nhập và xem bản chia sẻ lịch thật, không đọc tài khoản khác trên Firebase"
-          description="Dán bản lịch do người cao tuổi đã gửi, xem tên và giờ dự kiến."
+          description="Nhận tin nhắn qua Zalo/Messenger hoặc ứng dụng khác, rồi dán để xem lịch."
           icon={<Text style={styles.icon}>◷</Text>}
           onPress={() => togglePanel('schedule')}
           title={openPanel === 'schedule' ? 'Ẩn bản lịch đã chia sẻ' : 'Theo dõi lịch thuốc'}
@@ -128,19 +128,19 @@ function CaregiverDashboardContent() {
             ) : (
               <>
                 <Text style={styles.profileDescription}>
-                  Người cao tuổi mở Lịch thuốc hôm nay → Chia sẻ lịch thuốc hôm nay → đồng ý → gửi tin nhắn. Sao chép toàn bộ bản lịch vào ô dưới đây.
+                  Người cao tuổi mở Lịch thuốc hôm nay → Chia sẻ lịch thuốc hôm nay → đồng ý → chọn Zalo, Messenger hoặc ứng dụng có trong bảng chia sẻ. Trên điện thoại người nhận, sao chép toàn bộ tin nhắn lịch thuốc rồi dán vào ô bên dưới.
                 </Text>
                 <TextField
                   autoCapitalize="none"
                   autoCorrect={false}
-                  errorMessage={importError ? 'Bản chia sẻ chưa đúng định dạng hoặc bị cắt. Hãy yêu cầu gửi lại toàn bộ nội dung.' : undefined}
+                  errorMessage={importError ? 'Tin nhắn lịch thuốc chưa đầy đủ hoặc sai định dạng. Hãy sao chép toàn bộ tin nhắn lịch thuốc và thử lại.' : undefined}
                   helperText="Bản lịch chỉ được giữ tạm trong màn hình này; không ghi lên Firebase hay bộ nhớ lâu dài."
                   label="Dán bản chia sẻ lịch thuốc"
                   maxLength={8192}
                   multiline
                   numberOfLines={6}
                   onChangeText={(value) => { setImportText(value); setImportError(false); }}
-                  placeholder="MEDICARE-AI-LICH-THUOC-V1..."
+                  placeholder="LỊCH THUỐC DỰ KIẾN - MediCare AI"
                   style={styles.pasteInput}
                   value={importText}
                 />

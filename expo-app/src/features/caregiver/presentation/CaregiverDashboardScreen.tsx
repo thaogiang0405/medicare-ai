@@ -1,35 +1,78 @@
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Share, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 
-import {
-  ActionCard,
-  AppHeader,
-  DemoModeBanner,
-  SafetyNotice,
-  Screen,
-  SecondaryButton,
-  StatusBadge,
-} from '@/components/medicare';
+import { AppHeader, SafetyNotice, Screen, SecondaryButton, TextField } from '@/components/medicare';
 import { medicareColors, medicareRadius, medicareSpacing, medicareTypography } from '@/constants/medicare-theme';
+import { watchCaregiverPlans, type CaregiverScheduleResult, validateFamilyUid } from '@/features/family-care/data/family-link-repository';
+import { getFirebaseAuth } from '@/services/firebase';
+import { isFamilyCareFeatureEnabled } from '@/services/firebase/family-care-feature';
 import { useSessionStore } from '@/store';
 
-function showDeferredFeature(feature: string) {
-  Alert.alert('Chưa có trong lộ trình hiện tại', `${feature} sẽ được xây dựng ở milestone phù hợp.`);
-}
-
-export default function CaregiverDashboardScreen() {
+function FamilyCareDashboardContent() {
   const user = useSessionStore((state) => state.user);
   const signOut = useSessionStore((state) => state.signOut);
   const operationStatus = useSessionStore((state) => state.operationStatus);
   const authErrorMessage = useSessionStore((state) => state.errorMessage);
-  const isSigningOut = operationStatus === 'loading';
+  const [ownerCode, setOwnerCode] = useState('');
+  const [connectedCode, setConnectedCode] = useState<string | null>(null);
+  const [result, setResult] = useState<CaregiverScheduleResult | null>(null);
+  const [error, setError] = useState('');
+  const unsubscribe = useRef<(() => void) | null>(null);
+  const isEnabled = isFamilyCareFeatureEnabled();
+
+  useEffect(() => () => {
+    unsubscribe.current?.();
+    unsubscribe.current = null;
+  }, []);
+
+  const connect = () => {
+    if (!isEnabled || !user || user.role !== 'caregiver') return;
+    unsubscribe.current?.();
+    unsubscribe.current = null;
+    setResult(null);
+    setConnectedCode(null);
+    setError('');
+    try {
+      const ownerUid = validateFamilyUid(ownerCode);
+      // uid is a locator, never a grant. The listener is authorized by Rules.
+      const stop = watchCaregiverPlans(user.id, ownerUid, (value) => {
+        setResult(value);
+      });
+      unsubscribe.current = stop;
+      setConnectedCode(ownerUid);
+    } catch {
+      setError('Không thể đọc lịch. Kiểm tra mã, đăng nhập và quyền được chủ hồ sơ cấp.');
+    }
+  };
+
+  const disconnect = () => {
+    unsubscribe.current?.();
+    unsubscribe.current = null;
+    setConnectedCode(null);
+    setResult(null);
+    setOwnerCode('');
+    setError('');
+  };
+
+  const shareCaregiverUid = async () => {
+    if (!isEnabled || !user || user.role !== 'caregiver' || getFirebaseAuth().currentUser?.uid !== user.id) return;
+    try {
+      await Share.share({
+        message: `MediCare AI - mã tài khoản người chăm sóc của tôi: ${user.id}\nChỉ cấp quyền nếu bạn biết và tin tưởng tôi. Mã này không phải mật khẩu; bạn phải chủ động chấp thuận trong MediCare AI.`,
+      });
+    } catch {
+      setError('Không thể mở bảng chia sẻ. Hãy thử lại trên điện thoại.');
+    }
+  };
 
   const handleSignOut = async () => {
+    disconnect();
     try {
       await signOut();
       router.replace('/login');
     } catch {
-      // The session store exposes a safe localized error below.
+      setError('Không thể đăng xuất. Hãy thử lại.');
     }
   };
 
@@ -39,124 +82,98 @@ export default function CaregiverDashboardScreen() {
         right={<Text style={styles.roleLabel}>Người chăm sóc</Text>}
         title={`Chào ${user?.displayName ?? 'bạn'}`}
       />
-      <DemoModeBanner
-        description="Vai trò đã được kiểm tra từ hồ sơ của chính bạn. Hồ sơ và trạng thái dưới đây là dữ liệu giả lập; chưa có liên kết chăm sóc, đồng bộ hay quyền dữ liệu sức khỏe."
-        title="Chế độ trình diễn"
-      />
       {authErrorMessage ? (
-        <SafetyNotice message={authErrorMessage} title="Không thể hoàn tất phiên đăng nhập" tone="error" />
+        <SafetyNotice title="Không thể hoàn tất phiên đăng nhập" message={authErrorMessage} tone="error" />
       ) : null}
-      <SafetyNotice
-        message="“Chưa phản hồi” không đồng nghĩa người dùng chưa uống thuốc. Hãy liên hệ nhẹ nhàng khi cần."
-        title="Hiểu đúng trạng thái"
-        tone="warning"
-      />
-      <View style={styles.section}>
-        <Text accessibilityRole="header" style={styles.sectionTitle}>
-          Hồ sơ được chia sẻ
-        </Text>
-        <View accessibilityRole="summary" style={styles.profileCard}>
-          <View style={styles.avatar}>
-            <Text accessibilityElementsHidden style={styles.avatarText}>MH</Text>
+      {isEnabled ? (
+        <>
+          <SafetyNotice
+            title="Liên kết hồ sơ thật"
+            message="Chỉ xem được dữ liệu sau khi người cao tuổi xác nhận cấp quyền trên tài khoản của họ. Bạn không thể chỉnh sửa thuốc hoặc tự báo đã uống."
+            tone="information"
+          />
+          <View style={styles.section}>
+            <Text accessibilityRole="header" style={styles.heading}>Bước 1 · Gửi mã người chăm sóc</Text>
+            <Text selectable style={styles.code}>{user?.id ?? ''}</Text>
+            <SecondaryButton label="Chia sẻ mã người chăm sóc" onPress={() => void shareCaregiverUid()} />
+            <Text style={styles.detail}>Người cao tuổi nhập mã trên, kiểm tra đúng người rồi chọn đồng ý cấp quyền xem.</Text>
           </View>
-          <View style={styles.profileCopy}>
-            <Text style={styles.profileName}>Hồ sơ minh họa</Text>
-            <Text style={styles.profileDescription}>Dữ liệu trình diễn · Không phải hồ sơ người dùng khác</Text>
+          <View style={styles.section}>
+            <Text accessibilityRole="header" style={styles.heading}>Bước 2 · Mở lịch đã được cấp quyền</Text>
+            <TextField
+              label="Mã hồ sơ người cao tuổi"
+              autoCapitalize="none"
+              autoCorrect={false}
+              maxLength={128}
+              placeholder="Dán mã hồ sơ do người cao tuổi gửi"
+              value={ownerCode}
+              onChangeText={(value) => { setOwnerCode(value); setError(''); }}
+            />
+            <SecondaryButton label={connectedCode ? 'Kết nối lại để tải dữ liệu mới' : 'Xem lịch người thân'} disabled={!ownerCode.trim()} onPress={connect} />
+            {connectedCode ? <SecondaryButton label="Đóng lịch người thân" onPress={disconnect} /> : null}
+            {error ? <SafetyNotice title="Không thể kết nối" message={error} tone="error" /> : null}
           </View>
-          <StatusBadge label="Chưa phản hồi" status="unanswered" />
-        </View>
-      </View>
-      <View style={styles.section}>
-        <Text accessibilityRole="header" style={styles.sectionTitle}>
-          Thao tác nhanh
-        </Text>
-        <ActionCard
-          description="Màn hình theo dõi chi tiết chưa được triển khai."
-          icon={<Text style={styles.icon}>◷</Text>}
-          onPress={() => showDeferredFeature('Theo dõi lịch thuốc')}
-          title="Theo dõi lịch thuốc"
+          {result ? (
+            <View style={styles.section}>
+              <Text accessibilityRole="header" style={styles.heading}>Lịch thuốc người thân · Chỉ xem</Text>
+              {result.status === 'loading' ? (
+                <Text style={styles.detail}>Đang kiểm tra quyền và tải thuốc, lịch thuốc…</Text>
+              ) : result.status === 'revoked' || result.status === 'error' ? (
+                <SafetyNotice
+                  title="Không có quyền xem"
+                  message={result.message ?? 'Quyền đã bị thu hồi hoặc kết nối không còn hợp lệ.'}
+                  tone="warning"
+                />
+              ) : (
+                <>
+                  <SafetyNotice
+                    title="Lịch dự kiến, không phải xác nhận y tế"
+                    message="Các mốc sau đến từ dữ liệu thuốc và lịch trên Firebase. Không thể suy đoán người thân đã uống hay bỏ qua từ việc không có phản hồi."
+                    tone="information"
+                  />
+                  {result.plans.length === 0 ? <Text style={styles.detail}>Hôm nay chưa có lịch thuốc đang hoạt động.</Text> : null}
+                  {result.plans.map((entry, index) => (
+                    <View key={entry.time + ':' + index} style={styles.scheduleRow}>
+                      <Text style={styles.medication}>{entry.time} · {entry.medicationName}</Text>
+                    </View>
+                  ))}
+                </>
+              )}
+            </View>
+          ) : null}
+        </>
+      ) : (
+        <SafetyNotice
+          title="Liên kết hồ sơ chưa được kích hoạt"
+          message="Cần kiểm thử Security Rules trên Firebase Emulator và được chủ dự án phê duyệt triển khai trước khi bật Family Care. Không hiển thị lịch minh họa như dữ liệu thật."
+          tone="information"
         />
-        <ActionCard
-          description="Thông báo và chăm sóc từ xa sẽ được bổ sung sau."
-          icon={<Text style={styles.icon}>♥</Text>}
-          onPress={() => showDeferredFeature('Nhắc người thân')}
-          title="Nhắc người thân"
-        />
-        <ActionCard
-          description="Luồng xin cấp quyền chưa được tích hợp."
-          icon={<Text style={styles.icon}>⌁</Text>}
-          onPress={() => showDeferredFeature('Liên kết hồ sơ')}
-          title="Liên kết hồ sơ"
-        />
-      </View>
+      )}
       <SecondaryButton
-        accessibilityHint="Đăng xuất và xóa trạng thái phiên trong bộ nhớ"
-        disabled={isSigningOut}
-        label={isSigningOut ? 'Đang đăng xuất…' : 'Đăng xuất'}
+        disabled={operationStatus === 'loading'}
+        label={operationStatus === 'loading' ? 'Đang đăng xuất…' : 'Đăng xuất'}
         onPress={() => void handleSignOut()}
       />
     </Screen>
   );
 }
 
+export default function CaregiverDashboardScreen() {
+  const uid = useSessionStore((state) => state.user?.id ?? null);
+  // Remount to clear sensitive caregiver data synchronously on UID switch.
+  return <FamilyCareDashboardContent key={uid ?? 'signed-out'} />;
+}
+
 const styles = StyleSheet.create({
-  content: {
-    gap: medicareSpacing.xl,
+  content: { gap: medicareSpacing.xl },
+  roleLabel: { color: medicareColors.primary, fontSize: medicareTypography.caption, fontWeight: '700' },
+  heading: { color: medicareColors.text, fontSize: medicareTypography.subheading, fontWeight: '800' },
+  section: { gap: medicareSpacing.md },
+  detail: { color: medicareColors.textMuted, fontSize: medicareTypography.bodySmall, lineHeight: 22 },
+  code: { color: medicareColors.text, fontSize: medicareTypography.bodySmall, lineHeight: 22 },
+  scheduleRow: {
+    borderWidth: 1, borderColor: medicareColors.border, borderRadius: medicareRadius.md,
+    padding: medicareSpacing.md, backgroundColor: medicareColors.surfaceElevated,
   },
-  roleLabel: {
-    color: medicareColors.primary,
-    fontSize: medicareTypography.caption,
-    fontWeight: '700',
-  },
-  section: {
-    gap: medicareSpacing.md,
-  },
-  sectionTitle: {
-    color: medicareColors.text,
-    fontSize: medicareTypography.subheading,
-    fontWeight: '800',
-    lineHeight: 29,
-  },
-  profileCard: {
-    minHeight: 102,
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: medicareSpacing.sm,
-    padding: medicareSpacing.md,
-    borderRadius: medicareRadius.lg,
-    borderColor: medicareColors.border,
-    borderWidth: 1,
-    backgroundColor: medicareColors.surfaceElevated,
-  },
-  avatar: {
-    width: 52,
-    height: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 26,
-    backgroundColor: medicareColors.primaryContainer,
-  },
-  avatarText: {
-    color: medicareColors.primary,
-    fontSize: medicareTypography.label,
-    fontWeight: '800',
-  },
-  profileCopy: {
-    flex: 1,
-    gap: medicareSpacing.xxs,
-  },
-  profileName: {
-    color: medicareColors.text,
-    fontSize: medicareTypography.label,
-    fontWeight: '800',
-  },
-  profileDescription: {
-    color: medicareColors.textMuted,
-    fontSize: medicareTypography.bodySmall,
-    lineHeight: 22,
-  },
-  icon: {
-    color: medicareColors.primary,
-    fontSize: 28,
-  },
+  medication: { color: medicareColors.text, fontSize: medicareTypography.label, fontWeight: '700' },
 });

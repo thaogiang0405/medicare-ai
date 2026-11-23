@@ -1,4 +1,4 @@
-import { onSnapshot, collection, doc, getDoc, getDocs, limit, query, serverTimestamp, setDoc, updateDoc, where, type Unsubscribe } from 'firebase/firestore';
+import { onSnapshot, collection, doc, getDocsFromServer, limit, query, runTransaction, serverTimestamp, setDoc, where, type Unsubscribe } from 'firebase/firestore';
 
 import { getFirebaseAuth, getFirebaseFirestore } from '@/services/firebase';
 import { isValidMedicationScheduleDate } from '@/features/schedules/domain/medication-schedule-validation';
@@ -37,7 +37,8 @@ function linkRef(ownerUid: string, caregiverUid: string) {
 
 export async function listOwnCaregiverLinks(ownerUid: string): Promise<FamilyLinkRecord[]> {
   checkSession(ownerUid);
-  const docs = await getDocs(collection(getFirebaseFirestore(), 'elderlyProfiles', ownerUid, 'caregiverLinks'));
+  // Do not treat an offline cached grant as the current authority.
+  const docs = await getDocsFromServer(collection(getFirebaseFirestore(), 'elderlyProfiles', ownerUid, 'caregiverLinks'));
   checkSession(ownerUid);
   return docs.docs.map((snapshot) => {
     const data = snapshot.data();
@@ -70,16 +71,25 @@ export async function revokeCaregiverLink(ownerUid: string, rawCaregiverUid: str
   checkSession(ownerUid);
   const caregiverUid = validateFamilyUid(rawCaregiverUid);
   const reference = linkRef(ownerUid, caregiverUid);
-  const current = await getDoc(reference);
-  checkSession(ownerUid);
-  if (!current.exists()) throw new Error('Không tìm thấy liên kết để thu hồi.');
-  if (current.data().status !== 'active') return;
-  const revision = current.data().revision;
-  if (!Number.isSafeInteger(revision)) throw new Error('Phiên bản liên kết không hợp lệ.');
-  await updateDoc(reference, {
-    status: 'revoked',
-    revision: revision + 1,
-    updatedAt: serverTimestamp(),
+  // Revocation must be confirmed by the server. A Firestore transaction
+  // re-reads the current revision and fails offline rather than queuing a
+  // sensitive permission change or overwriting a concurrent update.
+  await runTransaction(getFirebaseFirestore(), async (transaction) => {
+    const current = await transaction.get(reference);
+    checkSession(ownerUid);
+    if (!current.exists()) throw new Error('Không tìm thấy liên kết để thu hồi.');
+    const data = current.data();
+    if (data.status === 'revoked') return; // repeat revoke is idempotent
+    if (data.status !== 'active' || !Number.isSafeInteger(data.revision)
+      || data.revision < 1 || data.revision >= Number.MAX_SAFE_INTEGER
+      || data.ownerUid !== ownerUid || data.caregiverUid !== caregiverUid) {
+      throw new Error('Liên kết cần thu hồi không hợp lệ.');
+    }
+    transaction.update(reference, {
+      status: 'revoked',
+      revision: data.revision + 1,
+      updatedAt: serverTimestamp(),
+    });
   });
   checkSession(ownerUid);
 }

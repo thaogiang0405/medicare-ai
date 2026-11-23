@@ -13,18 +13,19 @@ jest.mock('firebase/firestore', () => ({
   query: jest.fn(),
   where: jest.fn(),
   limit: jest.fn(),
-  getDoc: jest.fn(),
-  getDocs: jest.fn(),
+  getDocsFromServer: jest.fn(),
+  runTransaction: jest.fn(),
   setDoc: jest.fn(),
-  updateDoc: jest.fn(),
   serverTimestamp: jest.fn(),
 }));
 
 import {
-  collection, doc, limit, onSnapshot, query, where,
+  collection, doc, getDocsFromServer, limit, onSnapshot, query, runTransaction, serverTimestamp, where,
 } from 'firebase/firestore';
 import { getFirebaseAuth, getFirebaseFirestore } from '@/services/firebase';
 import {
+  listOwnCaregiverLinks,
+  revokeCaregiverLink,
   watchCaregiverPlans,
   type CaregiverScheduleResult,
 } from './family-link-repository';
@@ -137,6 +138,80 @@ describe('Family Care Firestore watcher fail-closed behavior', () => {
       stops.set(reference.path, unsubscribe);
       return unsubscribe;
     });
+  });
+
+  it('loads the elderly owner link list from server, not offline cached grants', async () => {
+    authUid = elderlyUid;
+    (getDocsFromServer as unknown as jest.Mock).mockResolvedValue({
+      docs: [{ id: caregiverUid, data: () => ({
+        ownerUid: elderlyUid, caregiverUid, status: 'active', revision: 1,
+      }) }],
+    });
+    await expect(listOwnCaregiverLinks(elderlyUid)).resolves.toEqual([
+      { caregiverUid, status: 'active', revision: 1 },
+    ]);
+    expect(getDocsFromServer).toHaveBeenCalledTimes(1);
+
+    (getDocsFromServer as unknown as jest.Mock).mockRejectedValueOnce(new Error('network unavailable'));
+    await expect(listOwnCaregiverLinks(elderlyUid)).rejects.toThrow('network unavailable');
+  });
+
+  it('revokes with a server transaction using the latest revision and is idempotent', async () => {
+    authUid = elderlyUid;
+    const update = jest.fn();
+    const get = jest.fn().mockResolvedValue({
+      exists: () => true,
+      data: () => ({
+        ownerUid: elderlyUid, caregiverUid, status: 'active', revision: 3,
+      }),
+    });
+    (serverTimestamp as unknown as jest.Mock).mockReturnValue('server-clock');
+    (runTransaction as unknown as jest.Mock).mockImplementation(
+      (_database: unknown, callback: (transaction: { get: typeof get; update: typeof update }) => Promise<void>) =>
+        callback({ get, update }),
+    );
+    await expect(revokeCaregiverLink(elderlyUid, caregiverUid)).resolves.toBeUndefined();
+    expect(update).toHaveBeenCalledWith(
+      { path: linkPath },
+      { status: 'revoked', revision: 4, updatedAt: 'server-clock' },
+    );
+
+    get.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({
+        ownerUid: elderlyUid, caregiverUid, status: 'revoked', revision: 4,
+      }),
+    });
+    update.mockClear();
+    await expect(revokeCaregiverLink(elderlyUid, caregiverUid)).resolves.toBeUndefined();
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('does not queue permission revocation when Firestore cannot reach the server', async () => {
+    authUid = elderlyUid;
+    (runTransaction as unknown as jest.Mock).mockRejectedValueOnce(new Error('offline'));
+    await expect(revokeCaregiverLink(elderlyUid, caregiverUid)).rejects.toThrow('offline');
+  });
+
+  it('stops revocation if the Firebase Auth account changes during the transaction', async () => {
+    authUid = elderlyUid;
+    const update = jest.fn();
+    (runTransaction as unknown as jest.Mock).mockImplementation(
+      async (_database: unknown, callback: (transaction: {
+        get: () => Promise<unknown>;
+        update: typeof update;
+      }) => Promise<void>) => callback({
+        get: async () => {
+          authUid = caregiverUid;
+          return { exists: () => true, data: () => ({
+            ownerUid: elderlyUid, caregiverUid, status: 'active', revision: 1,
+          }) };
+        },
+        update,
+      }),
+    );
+    await expect(revokeCaregiverLink(elderlyUid, caregiverUid)).rejects.toThrow('Phiên đăng nhập đã thay đổi');
+    expect(update).not.toHaveBeenCalled();
   });
 
   it('does not observe medication or schedule documents until the approved link arrives from server', () => {

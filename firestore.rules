@@ -597,7 +597,7 @@ service cloud.firestore {
       // Caregivers may read only active medication documents. Queries must
       // constrain status=active; owner reads remain unrestricted.
       allow get, list: if hasValidElderlyProfile(uid)
-        || (hasActiveFamilyReadLink(uid) && resource.data.status == 'active');
+        || (hasActiveFamilyReadLink(uid) && isActiveOwnedMedicationData(uid, resource.data));
       allow create: if isValidMedicationCreate(uid);
       allow update: if isValidMedicationUpdate(uid);
       allow delete: if false;
@@ -609,7 +609,10 @@ service cloud.firestore {
       // Caregivers may read only active schedule documents. Queries must
       // constrain active=true; owner reads remain unrestricted.
       allow get, list: if hasValidElderlyProfile(uid)
-        || (hasActiveFamilyReadLink(uid) && resource.data.active == true);
+        || (hasActiveFamilyReadLink(uid)
+          && hasValidMedicationScheduleSchema(resource.data)
+          && resource.data.ownerUid == uid
+          && resource.data.active == true);
       allow create: if isValidMedicationScheduleCreate(uid);
       allow update: if isValidMedicationScheduleUpdate(uid);
       allow delete: if false;

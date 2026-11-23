@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Share, View } from 'react-native';
 
 import { SafetyNotice, SecondaryButton } from '@/components/medicare';
@@ -12,6 +12,13 @@ export function ShareTodayScheduleButton({ message }: Readonly<{ message: string
   const [reviewing, setReviewing] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [error, setError] = useState(false);
+
+  // Require a fresh review when the daily schedule changes while this screen
+  // remains mounted; consent to share an earlier version is not transferable.
+  useEffect(() => {
+    setReviewing(false);
+    setError(false);
+  }, [message]);
 
   const openShare = async () => {
     if (!reviewing || sharing) return;

@@ -11,6 +11,12 @@ jest.mock('@/services/firebase/family-care-feature', () => ({
   isFamilyCareFeatureEnabled: () => false,
 }));
 
+// The family-link panel is feature-gated off here; do not import its
+// Firebase/AsyncStorage runtime while exercising the elderly dashboard.
+jest.mock('@/features/family-care/presentation/FamilyLinkOwnerPanel', () => ({
+  FamilyLinkOwnerPanel: () => null,
+}));
+
 jest.mock('./TodayScheduleSpeechButton', () => ({
   TodayScheduleSpeechButton: () => null,
 }));

@@ -160,7 +160,7 @@ export default function ElderlyHomeScreen() {
         <Text accessibilityRole="header" style={styles.sectionTitle}>
           Lịch thuốc hôm nay
         </Text>
-        {todaySpeech ? <TodayScheduleSpeechButton key={user?.id} message={todaySpeech} /> : null}
+        {todaySpeech ? <TodayScheduleSpeechButton key={`${user?.id ?? 'anonymous'}:${todaySpeech}`} message={todaySpeech} /> : null}
         {isLoading ? <ActivityIndicator color={medicareColors.primary} size="large" /> : null}
         {!isLoading && !errorMessage && usesFirestoreSchedules && medicationSchedules.length === 0 ? (
           <SafetyNotice

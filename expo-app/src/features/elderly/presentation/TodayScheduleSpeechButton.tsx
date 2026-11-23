@@ -36,7 +36,7 @@ export function TodayScheduleSpeechButton({ message }: Readonly<{ message: strin
       subscription.remove();
       stop();
     };
-  }, [message, stop]));
+  }, [stop]));
 
   const toggleSpeech = async () => {
     if (active.current !== null) {

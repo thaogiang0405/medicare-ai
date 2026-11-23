@@ -1,3 +1,12 @@
+/* eslint-disable import/first */
+
+// These are pure validation/formatting tests. Avoid initializing Firebase Auth
+// and its native AsyncStorage persistence in a Jest environment.
+jest.mock('@/services/firebase', () => ({
+  getFirebaseAuth: jest.fn(),
+  getFirebaseFirestore: jest.fn(),
+}));
+
 import { deriveCaregiverPlans, validateFamilyUid } from './family-link-repository';
 import { isFamilyCareFeatureEnabled } from '@/services/firebase/family-care-feature';
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Share, View } from 'react-native';
 
 import { SafetyNotice, SecondaryButton } from '@/components/medicare';
@@ -9,16 +9,12 @@ import { medicareSpacing } from '@/constants/medicare-theme';
  * loaded or displayed, and never interpret a native Share result as delivery.
  */
 export function ShareTodayScheduleButton({ message }: Readonly<{ message: string }>) {
-  const [reviewing, setReviewing] = useState(false);
+  // Consent applies to exactly the current snapshot. A changed message
+  // automatically hides the share action without effect-time state updates.
+  const [reviewedMessage, setReviewedMessage] = useState<string | null>(null);
+  const reviewing = reviewedMessage === message;
   const [sharing, setSharing] = useState(false);
   const [error, setError] = useState(false);
-
-  // Require a fresh review when the daily schedule changes while this screen
-  // remains mounted; consent to share an earlier version is not transferable.
-  useEffect(() => {
-    setReviewing(false);
-    setError(false);
-  }, [message]);
 
   const openShare = async () => {
     if (!reviewing || sharing) return;
@@ -37,7 +33,7 @@ export function ShareTodayScheduleButton({ message }: Readonly<{ message: string
     <View style={{ gap: medicareSpacing.sm }}>
       <SecondaryButton
         label={reviewing ? 'Ẩn phần chia sẻ lịch thuốc' : 'Chia sẻ lịch thuốc hôm nay'}
-        onPress={() => { setReviewing((current) => !current); setError(false); }}
+        onPress={() => { setReviewedMessage(reviewing ? null : message); setError(false); }}
       />
       {reviewing ? (
         <>

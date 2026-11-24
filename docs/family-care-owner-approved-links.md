@@ -10,7 +10,7 @@
 2. Người cao tuổi đăng nhập tài khoản role elderly, dán UID người chăm sóc trong mục "Liên kết người chăm sóc". Xác minh danh tính bên ngoài ứng dụng và bấm "Xem và xác nhận cấp quyền", sau đó "Tôi đồng ý cấp quyền".
 3. Rules kiểm tra tài khoản elderly là chủ hồ sơ và UID đích có role caregiver thực. Chỉ chủ hồ sơ được tạo document liên kết tại elderlyProfiles/{elderlyUid}/caregiverLinks/{caregiverUid}, với scope medicationsRead=true và schedulesRead=true.
 4. Sau khi cấp quyền thành công, người cao tuổi bấm "Gửi mã hồ sơ của tôi cho người chăm sóc". Caregiver nhập UID elderly trong "Mã hồ sơ người cao tuổi" rồi bấm "Xem lịch người thân". Màn hình có listener Firestore cho thuốc/lịch đang hoạt động của đúng chủ hồ sơ đã cấp quyền.
-5. Người cao tuổi có thể bấm "Thu hồi quyền". Rules dừng cho phép caregiver đọc tiếp. Link cùng cặp UID đã revoked không thể bật lại trong MVP (chủ hồ sơ cũng không thể xóa). Dữ liệu từng xem/chụp màn hình bên ngoài không thể thu hồi.
+5. Người cao tuổi có thể bấm "Thu hồi quyền". Caregiver vẫn chỉ đọc được metadata của chính link (UID, scope, trạng thái, revision, timestamp) để listener nhận sự kiện `revoked`; Rules chặn đọc mới thuốc/lịch. Link cùng cặp UID đã revoked không thể bật lại trong MVP (chủ hồ sơ cũng không thể xóa). Dữ liệu từng xem/chụp màn hình bên ngoài không thể thu hồi.
 
 UID là mã định danh để chỉ đúng hồ sơ, không phải bí mật hay bằng chứng nhận dạng. Cần xác minh đúng người ở bước cấp quyền. Không có tính năng gửi yêu cầu tự động hoặc liên kết bằng QR/mã ngắn; đó là các phần UX sau.
 

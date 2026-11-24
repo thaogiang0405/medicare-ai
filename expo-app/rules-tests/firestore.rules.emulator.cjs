@@ -1180,19 +1180,21 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
     await assertFails(getDoc(medicationScheduleReference(caregiverDB, userA, 'misfiled')));
     await assertFails(getDoc(medicationScheduleReference(caregiverDB, userA, 'extra-field')));
 
-    // A list query is not a field projection: every returned document is
-    // transferred in full. Reject a query that could return an extra-field
-    // document instead of relying only on the caregiver UI to hide it.
-    await assertFails(getDocs(query(
+    // Firestore list rules can constrain owner/status but cannot project
+    // individual fields. The extra-field row is transferred in full; the
+    // caregiver client must fail closed and the owner must review the scope.
+    const listedMedications = await assertSucceeds(getDocs(query(
       medicationsCollection(caregiverDB, userA),
       where('ownerUid', '==', userA),
       where('status', '==', 'active'),
     )));
-    await assertFails(getDocs(query(
+    expect(listedMedications.docs.map((snapshot) => snapshot.id).sort()).toEqual(['extra-field']);
+    const listedSchedules = await assertSucceeds(getDocs(query(
       medicationSchedulesCollection(caregiverDB, userA),
       where('ownerUid', '==', userA),
       where('active', '==', true),
     )));
+    expect(listedSchedules.docs.map((snapshot) => snapshot.id).sort()).toEqual(['extra-field']);
   });
 
   it('denies caregiver self-approval, spoofed target roles and extra privilege fields', async () => {

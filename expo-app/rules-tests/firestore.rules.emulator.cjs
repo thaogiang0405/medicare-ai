@@ -1041,7 +1041,7 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
     await assertFails(getDocs(doseEventsCollection(caregiverDB, userA)));
   });
 
-  it('streams owner schedule edits to the approved caregiver and blocks new reads after revoke', async () => {
+  it('streams owner schedule edits and delivers a live revoke event before health listeners stop', async () => {
     await seed('users/' + userA, userProfile(userA));
     await seed('users/' + caregiver, userProfile(caregiver, 'caregiver'));
     await seed('elderlyProfiles/' + userA + '/medications/medication-a', medication(userA));
@@ -1049,6 +1049,7 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
     const ownerDB = firestoreAs(userA);
     const caregiverDB = firestoreAs(caregiver);
     const link = familyLinkRef(ownerDB);
+    const caregiverLink = familyLinkRef(caregiverDB);
     const scheduleQuery = query(
       medicationSchedulesCollection(caregiverDB, userA),
       where('ownerUid', '==', userA),
@@ -1057,44 +1058,69 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
 
     await assertSucceeds(setDoc(link, familyLink(userA, caregiver)));
     const observedTimes = new Set();
-    const waiters = new Map();
-    let listenerError = null;
-    let permissionDeniedTimeout;
-    let resolvePermissionDenied;
-    let rejectPermissionDenied;
-    const permissionDenied = new Promise((resolve, reject) => {
-      resolvePermissionDenied = resolve;
-      rejectPermissionDenied = reject;
-      permissionDeniedTimeout = setTimeout(() => {
-        reject(new Error('Timed out awaiting caregiver listener permission-denied after revoke'));
-      }, 8000);
-    });
-    const stop = onSnapshot(scheduleQuery, { includeMetadataChanges: true }, (snapshot) => {
+    const timeWaiters = new Map();
+    let scheduleListenerError = null;
+    const stopSchedule = onSnapshot(scheduleQuery, { includeMetadataChanges: true }, (snapshot) => {
       if (snapshot.metadata.fromCache || snapshot.size !== 1) return;
       const time = snapshot.docs[0].data().localTime;
       observedTimes.add(time);
-      const pending = waiters.get(time);
+      const pending = timeWaiters.get(time);
       if (pending) {
-        waiters.delete(time);
+        timeWaiters.delete(time);
         pending.resolve();
       }
     }, (error) => {
-      listenerError = error;
-      clearTimeout(permissionDeniedTimeout);
-      if (error.code === 'permission-denied') resolvePermissionDenied(error);
-      else rejectPermissionDenied(error);
-      for (const pending of waiters.values()) pending.reject(error);
-      waiters.clear();
+      scheduleListenerError = error;
+      for (const pending of timeWaiters.values()) pending.reject(error);
+      timeWaiters.clear();
     });
+
+    const observedLinkStatuses = new Set();
+    const linkWaiters = new Map();
+    let linkListenerError = null;
+    let scheduleListenerStoppedByRevoke = false;
+    const stopLink = onSnapshot(caregiverLink, { includeMetadataChanges: true }, (snapshot) => {
+      if (snapshot.metadata.fromCache || !snapshot.exists()) return;
+      const status = snapshot.data().status;
+      observedLinkStatuses.add(status);
+      const pending = linkWaiters.get(status);
+      if (pending) {
+        linkWaiters.delete(status);
+        pending.resolve();
+      }
+      if (status === 'revoked' && !scheduleListenerStoppedByRevoke) {
+        stopSchedule();
+        scheduleListenerStoppedByRevoke = true;
+      }
+    }, (error) => {
+      linkListenerError = error;
+      for (const pending of linkWaiters.values()) pending.reject(error);
+      linkWaiters.clear();
+    });
+
     const waitForTime = (time) => {
       if (observedTimes.has(time)) return Promise.resolve();
-      if (listenerError) return Promise.reject(listenerError);
+      if (scheduleListenerError) return Promise.reject(scheduleListenerError);
       return new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
-          waiters.delete(time);
+          timeWaiters.delete(time);
           reject(new Error('Timed out awaiting caregiver Firestore schedule: ' + time));
         }, 8000);
-        waiters.set(time, {
+        timeWaiters.set(time, {
+          resolve: () => { clearTimeout(timeout); resolve(); },
+          reject: (error) => { clearTimeout(timeout); reject(error); },
+        });
+      });
+    };
+    const waitForLinkStatus = (status) => {
+      if (observedLinkStatuses.has(status)) return Promise.resolve();
+      if (linkListenerError) return Promise.reject(linkListenerError);
+      return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          linkWaiters.delete(status);
+          reject(new Error('Timed out awaiting caregiver link status: ' + status));
+        }, 8000);
+        linkWaiters.set(status, {
           resolve: () => { clearTimeout(timeout); resolve(); },
           reject: (error) => { clearTimeout(timeout); reject(error); },
         });
@@ -1102,6 +1128,7 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
     };
 
     try {
+      await waitForLinkStatus('active');
       await waitForTime('08:00');
       await assertSucceeds(updateDoc(medicationScheduleReference(ownerDB, userA), {
         localTime: '09:45',
@@ -1112,18 +1139,23 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
       await assertSucceeds(updateDoc(link, {
         status: 'revoked', revision: 2, updatedAt: serverTimestamp(),
       }));
-      const deniedError = await permissionDenied;
-      expect(deniedError.code).toBe('permission-denied');
+      await waitForLinkStatus('revoked');
+      expect(scheduleListenerStoppedByRevoke).toBe(true);
     } finally {
-      clearTimeout(permissionDeniedTimeout);
-      stop();
-      for (const pending of waiters.values()) {
-        pending.reject(new Error('Caregiver Firestore listener stopped'));
+      stopLink();
+      stopSchedule();
+      for (const pending of timeWaiters.values()) {
+        pending.reject(new Error('Caregiver schedule listener stopped'));
       }
-      waiters.clear();
+      for (const pending of linkWaiters.values()) {
+        pending.reject(new Error('Caregiver link listener stopped'));
+      }
+      timeWaiters.clear();
+      linkWaiters.clear();
     }
 
-    await assertFails(getDoc(familyLinkRef(caregiverDB)));
+    const revokedLink = await assertSucceeds(getDoc(caregiverLink));
+    expect(revokedLink.data().status).toBe('revoked');
     await assertFails(getDoc(medicationScheduleReference(caregiverDB, userA)));
     await assertFails(getDocs(scheduleQuery));
     await assertFails(getDocs(query(
@@ -1147,7 +1179,8 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
     await assertSucceeds(updateDoc(ref, {
       status: 'revoked', revision: 2, updatedAt: serverTimestamp(),
     }));
-    await assertFails(getDoc(familyLinkRef(caregiverDB)));
+    const revokedLink = await assertSucceeds(getDoc(familyLinkRef(caregiverDB)));
+    expect(revokedLink.data().status).toBe('revoked');
     await assertFails(getDocs(medicationsCollection(caregiverDB, userA)));
     await assertFails(getDocs(medicationSchedulesCollection(caregiverDB, userA)));
     await assertFails(updateDoc(ref, {

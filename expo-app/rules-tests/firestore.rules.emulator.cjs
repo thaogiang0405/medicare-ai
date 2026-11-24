@@ -13,6 +13,7 @@ const {
   deleteDoc,
   getDoc,
   getDocs,
+  onSnapshot,
   orderBy,
   query,
   runTransaction,
@@ -1038,6 +1039,85 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
     await assertFails(updateDoc(medicationReference(caregiverDB, userA), { name: 'Not mine', updatedAt: serverTimestamp() }));
     await assertFails(updateDoc(medicationScheduleReference(caregiverDB, userA), { active: false, updatedAt: serverTimestamp() }));
     await assertFails(getDocs(doseEventsCollection(caregiverDB, userA)));
+  });
+
+  it('streams owner schedule edits to the approved caregiver and blocks new reads after revoke', async () => {
+    await seed('users/' + userA, userProfile(userA));
+    await seed('users/' + caregiver, userProfile(caregiver, 'caregiver'));
+    await seed('elderlyProfiles/' + userA + '/medications/medication-a', medication(userA));
+    await seed('elderlyProfiles/' + userA + '/medicationSchedules/schedule-a', medicationSchedule(userA));
+    const ownerDB = firestoreAs(userA);
+    const caregiverDB = firestoreAs(caregiver);
+    const link = familyLinkRef(ownerDB);
+    const scheduleQuery = query(
+      medicationSchedulesCollection(caregiverDB, userA),
+      where('ownerUid', '==', userA),
+      where('active', '==', true),
+    );
+
+    await assertSucceeds(setDoc(link, familyLink(userA, caregiver)));
+    const observedTimes = new Set();
+    const waiters = new Map();
+    let listenerError = null;
+    const stop = onSnapshot(scheduleQuery, { includeMetadataChanges: true }, (snapshot) => {
+      if (snapshot.metadata.fromCache || snapshot.size !== 1) return;
+      const time = snapshot.docs[0].data().localTime;
+      observedTimes.add(time);
+      const pending = waiters.get(time);
+      if (pending) {
+        waiters.delete(time);
+        pending.resolve();
+      }
+    }, (error) => {
+      listenerError = error;
+      for (const pending of waiters.values()) pending.reject(error);
+      waiters.clear();
+    });
+    const waitForTime = (time) => {
+      if (observedTimes.has(time)) return Promise.resolve();
+      if (listenerError) return Promise.reject(listenerError);
+      return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          waiters.delete(time);
+          reject(new Error('Timed out awaiting caregiver Firestore schedule: ' + time));
+        }, 8000);
+        waiters.set(time, {
+          resolve: () => { clearTimeout(timeout); resolve(); },
+          reject: (error) => { clearTimeout(timeout); reject(error); },
+        });
+      });
+    };
+
+    try {
+      await waitForTime('08:00');
+      await assertSucceeds(updateDoc(medicationScheduleReference(ownerDB, userA), {
+        localTime: '09:45',
+        revision: 2,
+        updatedAt: serverTimestamp(),
+      }));
+      await waitForTime('09:45');
+    } finally {
+      stop();
+      for (const pending of waiters.values()) {
+        pending.reject(new Error('Caregiver Firestore listener stopped'));
+      }
+      waiters.clear();
+    }
+
+    await assertSucceeds(updateDoc(link, {
+      status: 'revoked', revision: 2, updatedAt: serverTimestamp(),
+    }));
+    await assertFails(getDoc(familyLinkRef(caregiverDB)));
+    await assertFails(getDoc(medicationScheduleReference(caregiverDB, userA)));
+    await assertFails(getDocs(scheduleQuery));
+    await assertFails(getDocs(query(
+      medicationsCollection(caregiverDB, userA),
+      where('ownerUid', '==', userA),
+      where('status', '==', 'active'),
+    )));
+    // The owner retains their own plan after removing caregiver permissions.
+    const ownerSchedule = await assertSucceeds(getDoc(medicationScheduleReference(ownerDB, userA)));
+    expect(ownerSchedule.data().localTime).toBe('09:45');
   });
 
   it('revokes caregiver access and disallows reactivation or owner deletion', async () => {

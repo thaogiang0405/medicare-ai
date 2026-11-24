@@ -45,6 +45,10 @@ jobs:
         working-directory: expo-app
         run: node --test scripts/verify-firebase-rn-bundle.test.mjs
 
+      - name: Test Family Care staging environment safety guard
+        working-directory: expo-app
+        run: node --test scripts/check-family-care-staging.test.mjs
+
       - name: Export Expo Android and iOS bundles and audit Firebase React Native transport
         working-directory: expo-app
         run: |

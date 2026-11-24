@@ -601,8 +601,7 @@ service cloud.firestore {
         || (hasActiveFamilyReadLink(uid) && isActiveOwnedMedicationData(uid, resource.data));
       allow list: if hasValidElderlyProfile(uid)
         || (hasActiveFamilyReadLink(uid)
-          && resource.data.ownerUid == uid
-          && resource.data.status == 'active');
+          && isActiveOwnedMedicationData(uid, resource.data));
       allow create: if isValidMedicationCreate(uid);
       allow update: if isValidMedicationUpdate(uid);
       allow delete: if false;
@@ -620,6 +619,7 @@ service cloud.firestore {
           && resource.data.active == true);
       allow list: if hasValidElderlyProfile(uid)
         || (hasActiveFamilyReadLink(uid)
+          && hasValidMedicationScheduleSchema(resource.data)
           && resource.data.ownerUid == uid
           && resource.data.active == true);
       allow create: if isValidMedicationScheduleCreate(uid);

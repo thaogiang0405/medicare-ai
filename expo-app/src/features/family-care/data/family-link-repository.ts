@@ -56,6 +56,11 @@ export async function approveCaregiverLink(ownerUid: string, rawCaregiverUid: st
   checkSession(ownerUid);
   const caregiverUid = validateFamilyUid(rawCaregiverUid);
   if (caregiverUid === ownerUid) throw new Error('Không thể tự liên kết với tài khoản của mình.');
+  // Firestore list queries return complete documents. Before granting a new
+  // caregiver, inspect every active record from the server and refuse to share
+  // legacy/imported rows with unexpected fields or malformed values.
+  await verifyOwnerShareableRecords(ownerUid);
+  checkSession(ownerUid);
   await setDoc(linkRef(ownerUid, caregiverUid), {
     ownerUid, caregiverUid, status: 'active',
     scopes: { medicationsRead: true, schedulesRead: true },
@@ -102,17 +107,51 @@ type RawSchedule = { medicationId: string; localTime: string; recurrence: string
  * A corrupted active row must never be silently omitted: that could make a
  * partially loaded plan look complete to a family member.
  */
+const medicationShareFields = [
+  'ownerUid', 'name', 'strengthText', 'directionsText', 'status',
+  'createdAt', 'updatedAt', 'revision',
+] as const;
+const scheduleShareFields = [
+  'ownerUid', 'medicationId', 'recurrence', 'localTime', 'weekdays',
+  'startDate', 'endDate', 'timeZone', 'active', 'revision',
+  'createdAt', 'updatedAt',
+] as const;
+
+function hasExactFields(data: Record<string, unknown>, fields: readonly string[]): boolean {
+  const actual = Object.keys(data);
+  return actual.length === fields.length
+    && fields.every((field) => Object.prototype.hasOwnProperty.call(data, field));
+}
+
+function isFirestoreTimestamp(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null) return false;
+  const timestamp = value as { seconds?: unknown; nanoseconds?: unknown; toDate?: unknown };
+  return Number.isInteger(timestamp.seconds)
+    && Number.isInteger(timestamp.nanoseconds)
+    && typeof timestamp.toDate === 'function';
+}
+
 function isReadableActiveMedication(ownerUid: string, data: Record<string, unknown>): boolean {
-  return data.ownerUid === ownerUid
+  return hasExactFields(data, medicationShareFields)
+    && data.ownerUid === ownerUid
     && data.status === 'active'
     && typeof data.name === 'string'
     && data.name.length >= 1 && data.name.length <= 120
-    && data.name.trim().length > 0;
+    && data.name.trim().length > 0
+    && typeof data.strengthText === 'string'
+    && data.strengthText.length <= 80
+    && typeof data.directionsText === 'string'
+    && data.directionsText.length <= 500
+    && Number.isSafeInteger(data.revision)
+    && Number(data.revision) >= 1
+    && isFirestoreTimestamp(data.createdAt)
+    && isFirestoreTimestamp(data.updatedAt);
 }
 
 function isReadableActiveSchedule(ownerUid: string, data: Record<string, unknown>): boolean {
   const weekdays = data.weekdays;
-  if (data.ownerUid !== ownerUid || data.active !== true
+  if (!hasExactFields(data, scheduleShareFields)
+    || data.ownerUid !== ownerUid || data.active !== true
     || typeof data.medicationId !== 'string'
     || data.medicationId.length < 1 || data.medicationId.length > 150
     || data.medicationId.includes('/')
@@ -126,10 +165,39 @@ function isReadableActiveSchedule(ownerUid: string, data: Record<string, unknown
     || !Array.isArray(weekdays)
     || !weekdays.every((day: unknown) => Number.isInteger(day)
       && typeof day === 'number' && day >= 1 && day <= 7)
-    || new Set(weekdays).size !== weekdays.length) return false;
+    || new Set(weekdays).size !== weekdays.length
+    || !Number.isSafeInteger(data.revision) || Number(data.revision) < 1
+    || !isFirestoreTimestamp(data.createdAt)
+    || !isFirestoreTimestamp(data.updatedAt)) return false;
   return (data.recurrence === 'daily' && weekdays.length === 7
     && [1, 2, 3, 4, 5, 6, 7].every((day) => weekdays.includes(day)))
     || (data.recurrence === 'weekly' && weekdays.length > 0);
+}
+
+async function verifyOwnerShareableRecords(ownerUid: string): Promise<void> {
+  const database = getFirebaseFirestore();
+  const [medications, schedules] = await Promise.all([
+    getDocsFromServer(query(
+      collection(database, 'elderlyProfiles', ownerUid, 'medications'),
+      where('status', '==', 'active'),
+      limit(101),
+    )),
+    getDocsFromServer(query(
+      collection(database, 'elderlyProfiles', ownerUid, 'medicationSchedules'),
+      where('active', '==', true),
+      limit(101),
+    )),
+  ]);
+  checkSession(ownerUid);
+  if (medications.size > 100 || schedules.size > 100) {
+    throw new Error('Dữ liệu đang hoạt động vượt giới hạn chia sẻ 100 mục.');
+  }
+  if (medications.docs.some((snapshot) => !isReadableActiveMedication(ownerUid, snapshot.data()))) {
+    throw new Error('Có bản ghi thuốc đang hoạt động ngoài cấu trúc chia sẻ an toàn. Hãy kiểm tra trước khi cấp quyền.');
+  }
+  if (schedules.docs.some((snapshot) => !isReadableActiveSchedule(ownerUid, snapshot.data()))) {
+    throw new Error('Có lịch thuốc đang hoạt động ngoài cấu trúc chia sẻ an toàn. Hãy kiểm tra trước khi cấp quyền.');
+  }
 }
 
 /** Asia/Ho_Chi_Minh has UTC+07 and no DST in this app's date range. */

@@ -582,8 +582,10 @@ service cloud.firestore {
       allow get: if hasValidElderlyProfile(uid)
         || (signedIn() && request.auth.uid == caregiverUid
           && verifiedCaregiver(caregiverUid)
-          && validFamilyLink(resource.data, uid, caregiverUid)
-          && resource.data.status == 'active');
+          // Keep this metadata-only read available after revocation so the
+          // caregiver listener receives the revoke event and stops health
+          // subscriptions. Health collection reads still require active status.
+          && validFamilyLink(resource.data, uid, caregiverUid));
       allow list: if hasValidElderlyProfile(uid);
       allow create: if validOwnerGrant(uid, caregiverUid);
       allow update: if validOwnerRevoke(uid, caregiverUid);

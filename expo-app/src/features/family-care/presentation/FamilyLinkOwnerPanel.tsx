@@ -102,7 +102,7 @@ export function FamilyLinkOwnerPanel({ ownerUid }: Readonly<{ ownerUid: string }
             setBusy(true);
             void approveCaregiverLink(ownerUid, caregiverUid)
               .then(async () => { setTarget(''); await refresh(); })
-              .catch(() => updateError('Không thể cấp quyền. Mã phải thuộc tài khoản Người chăm sóc hợp lệ và chưa từng bị thu hồi.'))
+              .catch(() => updateError('Không thể cấp quyền. Kiểm tra UID người chăm sóc, kết nối và cấu trúc các thuốc/lịch đang hoạt động trước khi thử lại.'))
               .finally(() => setBusy(false));
           },
         },

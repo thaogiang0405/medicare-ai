@@ -20,10 +20,11 @@ jest.mock('firebase/firestore', () => ({
 }));
 
 import {
-  collection, doc, getDocsFromServer, limit, onSnapshot, query, runTransaction, serverTimestamp, where,
+  collection, doc, getDocsFromServer, limit, onSnapshot, query, runTransaction, serverTimestamp, setDoc, where,
 } from 'firebase/firestore';
 import { getFirebaseAuth, getFirebaseFirestore } from '@/services/firebase';
 import {
+  approveCaregiverLink,
   listOwnCaregiverLinks,
   revokeCaregiverLink,
   watchCaregiverPlans,
@@ -80,24 +81,42 @@ function recordsSnapshot(
   };
 }
 
+const fakeTimestamp = () => ({
+  seconds: 1_700_000_000,
+  nanoseconds: 0,
+  toDate: () => new Date('2023-11-14T22:13:20.000Z'),
+});
+const medicationData = (overrides: Record<string, unknown> = {}) => ({
+  ownerUid: elderlyUid,
+  name: 'Thuốc từ Firestore',
+  strengthText: '500 mg',
+  directionsText: 'Theo chỉ định',
+  status: 'active',
+  createdAt: fakeTimestamp(),
+  updatedAt: fakeTimestamp(),
+  revision: 1,
+  ...overrides,
+});
+const scheduleData = (overrides: Record<string, unknown> = {}) => ({
+  ownerUid: elderlyUid,
+  medicationId: 'medicine-1',
+  localTime: '08:00',
+  recurrence: 'daily',
+  weekdays: [1, 2, 3, 4, 5, 6, 7],
+  startDate: '2026-01-01',
+  endDate: null,
+  timeZone: 'Asia/Ho_Chi_Minh',
+  active: true,
+  revision: 1,
+  createdAt: fakeTimestamp(),
+  updatedAt: fakeTimestamp(),
+  ...overrides,
+});
 const med = recordsSnapshot([
-  { id: 'medicine-1', fields: { ownerUid: elderlyUid, name: 'Thuốc từ Firestore', status: 'active' } },
+  { id: 'medicine-1', fields: medicationData() },
 ]);
 const schedule = recordsSnapshot([
-  {
-    id: 'schedule-1',
-    fields: {
-      ownerUid: elderlyUid,
-      medicationId: 'medicine-1',
-      localTime: '08:00',
-      recurrence: 'daily',
-      weekdays: [1, 2, 3, 4, 5, 6, 7],
-      startDate: '2026-01-01',
-      endDate: null,
-      timeZone: 'Asia/Ho_Chi_Minh',
-      active: true,
-    },
-  },
+  { id: 'schedule-1', fields: scheduleData() },
 ]);
 
 describe('Family Care Firestore watcher fail-closed behavior', () => {
@@ -138,6 +157,59 @@ describe('Family Care Firestore watcher fail-closed behavior', () => {
       stops.set(reference.path, unsubscribe);
       return unsubscribe;
     });
+  });
+
+  it('blocks caregiver approval when an active medication has unexpected fields', async () => {
+    authUid = elderlyUid;
+    (getDocsFromServer as unknown as jest.Mock)
+      .mockResolvedValueOnce({
+        size: 1,
+        docs: [{ id: 'medicine-1', data: () => medicationData({ internalNote: 'not approved for sharing' }) }],
+      })
+      .mockResolvedValueOnce({ size: 0, docs: [] });
+
+    await expect(approveCaregiverLink(elderlyUid, caregiverUid))
+      .rejects.toThrow('cấu trúc chia sẻ an toàn');
+    expect(setDoc).not.toHaveBeenCalled();
+  });
+
+  it('blocks caregiver approval when an active schedule has unexpected fields', async () => {
+    authUid = elderlyUid;
+    (getDocsFromServer as unknown as jest.Mock)
+      .mockResolvedValueOnce({ size: 0, docs: [] })
+      .mockResolvedValueOnce({
+        size: 1,
+        docs: [{ id: 'schedule-1', data: () => scheduleData({ privateNote: 'not approved for sharing' }) }],
+      });
+
+    await expect(approveCaregiverLink(elderlyUid, caregiverUid))
+      .rejects.toThrow('cấu trúc chia sẻ an toàn');
+    expect(setDoc).not.toHaveBeenCalled();
+  });
+
+  it('checks all active owner records from the server before creating a caregiver link', async () => {
+    authUid = elderlyUid;
+    (getDocsFromServer as unknown as jest.Mock)
+      .mockResolvedValueOnce({
+        size: 1,
+        docs: [{ id: 'medicine-1', data: () => medicationData() }],
+      })
+      .mockResolvedValueOnce({
+        size: 1,
+        docs: [{ id: 'schedule-1', data: () => scheduleData() }],
+      });
+
+    await expect(approveCaregiverLink(elderlyUid, caregiverUid)).resolves.toBeUndefined();
+    expect(getDocsFromServer).toHaveBeenCalledTimes(2);
+    expect(setDoc).toHaveBeenCalledWith(
+      { path: linkPath },
+      expect.objectContaining({
+        ownerUid: elderlyUid,
+        caregiverUid,
+        status: 'active',
+        revision: 1,
+      }),
+    );
   });
 
   it('loads the elderly owner link list from server, not offline cached grants', async () => {
@@ -263,8 +335,8 @@ describe('Family Care Firestore watcher fail-closed behavior', () => {
     expect(received.at(-1)?.status).toBe('ready');
 
     emit(medicationsPath, recordsSnapshot([
-      { id: 'medicine-1', fields: { ownerUid: elderlyUid, name: 'Thuốc từ Firestore', status: 'active' } },
-      { id: 'invalid', fields: { ownerUid: 'another-owner', name: 'Unknown', status: 'active' } },
+      { id: 'medicine-1', fields: medicationData() },
+      { id: 'invalid', fields: medicationData({ ownerUid: 'another-owner', name: 'Unknown' }) },
     ]));
     expect(received.at(-1)).toMatchObject({ status: 'error', plans: [], message: expect.any(String) });
     expect(stops.get(medicationsPath)).toHaveBeenCalledTimes(1);
@@ -281,11 +353,7 @@ describe('Family Care Firestore watcher fail-closed behavior', () => {
 
     emit(schedulesPath, recordsSnapshot([
       { id: 'invalid', fields: {
-        ownerUid: elderlyUid, medicationId: 'medicine-1',
-        localTime: '09:00', recurrence: 'daily',
-        weekdays: [1, 2, 3, 4, 5, 6, 7],
-        startDate: '2026-02-30', endDate: null,
-        timeZone: 'Asia/Ho_Chi_Minh', active: true,
+        ...scheduleData({ localTime: '09:00', startDate: '2026-02-30' }),
       } },
     ]));
     expect(received.at(-1)).toMatchObject({ status: 'error', plans: [], message: expect.any(String) });
@@ -347,13 +415,7 @@ describe('Family Care Firestore watcher fail-closed behavior', () => {
     jest.setSystemTime(new Date('2026-11-23T16:59:59.900Z')); // Monday 23:59:59.900 in Vietnam
     const mondayOnly = recordsSnapshot([{
       id: 'weekly-monday',
-      fields: {
-        ownerUid: elderlyUid,
-        medicationId: 'medicine-1', localTime: '08:00',
-        recurrence: 'weekly', weekdays: [1],
-        startDate: '2026-01-01', endDate: null,
-        timeZone: 'Asia/Ho_Chi_Minh', active: true,
-      },
+      fields: scheduleData({ recurrence: 'weekly', weekdays: [1] }),
     }]);
     const close = watchCaregiverPlans(caregiverUid, elderlyUid, (state) => received.push(state));
     emit(linkPath, linkSnapshot(true));

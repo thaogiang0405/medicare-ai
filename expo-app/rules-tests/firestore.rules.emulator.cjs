@@ -1059,6 +1059,16 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
     const observedTimes = new Set();
     const waiters = new Map();
     let listenerError = null;
+    let permissionDeniedTimeout;
+    let resolvePermissionDenied;
+    let rejectPermissionDenied;
+    const permissionDenied = new Promise((resolve, reject) => {
+      resolvePermissionDenied = resolve;
+      rejectPermissionDenied = reject;
+      permissionDeniedTimeout = setTimeout(() => {
+        reject(new Error('Timed out awaiting caregiver listener permission-denied after revoke'));
+      }, 8000);
+    });
     const stop = onSnapshot(scheduleQuery, { includeMetadataChanges: true }, (snapshot) => {
       if (snapshot.metadata.fromCache || snapshot.size !== 1) return;
       const time = snapshot.docs[0].data().localTime;
@@ -1070,6 +1080,9 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
       }
     }, (error) => {
       listenerError = error;
+      clearTimeout(permissionDeniedTimeout);
+      if (error.code === 'permission-denied') resolvePermissionDenied(error);
+      else rejectPermissionDenied(error);
       for (const pending of waiters.values()) pending.reject(error);
       waiters.clear();
     });
@@ -1096,7 +1109,13 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
         updatedAt: serverTimestamp(),
       }));
       await waitForTime('09:45');
+      await assertSucceeds(updateDoc(link, {
+        status: 'revoked', revision: 2, updatedAt: serverTimestamp(),
+      }));
+      const deniedError = await permissionDenied;
+      expect(deniedError.code).toBe('permission-denied');
     } finally {
+      clearTimeout(permissionDeniedTimeout);
       stop();
       for (const pending of waiters.values()) {
         pending.reject(new Error('Caregiver Firestore listener stopped'));
@@ -1104,9 +1123,6 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
       waiters.clear();
     }
 
-    await assertSucceeds(updateDoc(link, {
-      status: 'revoked', revision: 2, updatedAt: serverTimestamp(),
-    }));
     await assertFails(getDoc(familyLinkRef(caregiverDB)));
     await assertFails(getDoc(medicationScheduleReference(caregiverDB, userA)));
     await assertFails(getDocs(scheduleQuery));

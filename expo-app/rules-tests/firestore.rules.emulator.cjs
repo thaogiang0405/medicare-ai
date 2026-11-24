@@ -1157,7 +1157,7 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
     await assertFails(setDoc(ref, familyLink(userA, caregiver)));
   });
 
-  it('denies caregiver reads of malformed or cross-owner active health documents', async () => {
+  it('denies malformed direct gets and documents full-document list-query behavior', async () => {
     await seed('users/' + userA, userProfile(userA));
     await seed('users/' + caregiver, userProfile(caregiver, 'caregiver'));
     const ownerDB = firestoreAs(userA);

@@ -713,12 +713,12 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    match /{path=**}/caregiverLinks/{caregiverUid} {
-      // The equality filter on caregiverUid is provable for collection-group
-      // queries. Link creation validates the full schema and owner role; the
-      // returned documents contain link metadata only, never health records.
-      allow list: if signedIn() && request.auth.uid == caregiverUid
-        && verifiedCaregiver(caregiverUid) && resource.data.caregiverUid == caregiverUid;
+    match /{path=**}/caregiverLinks/{linkId} {
+      // The query is scoped by the caregiverUid field, not by the document ID.
+      // Link creation validates the full schema and owner role; results expose
+      // link metadata only, never health records.
+      allow list: if signedIn() && verifiedCaregiver(request.auth.uid)
+        && resource.data.caregiverUid == request.auth.uid;
     }
 
     // M3.2: an elderly owner may access only their own medication records.

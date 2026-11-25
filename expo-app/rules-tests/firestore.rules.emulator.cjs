@@ -1070,6 +1070,10 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
     }));
     expect((await assertSucceeds(getDoc(ownerLink))).data().status).toBe('pending');
     await assertFails(getDoc(medicationReference(caregiverDB, userA)));
+    await assertFails(updateDoc(ownerLink, {
+      status: 'active', revision: 2, updatedAt: serverTimestamp(),
+      scopes: { medicationsRead: false, schedulesRead: true },
+    }));
     await assertSucceeds(runTransaction(ownerDB, async (transaction) => {
       const linkSnapshot = await transaction.get(ownerLink);
       const inviteSnapshot = await transaction.get(invitation);

@@ -199,7 +199,10 @@ export async function revokeCaregiverLink(ownerUid: string, rawCaregiverUid: str
 
 /** Caregivers discover only link metadata whose caregiverUid matches their own UID. */
 export function watchCaregiverConnections(caregiverUid: string, onChange: (result: CaregiverConnectionsResult) => void): () => void {
-  checkSession(caregiverUid);
+  if (getFirebaseAuth().currentUser?.uid !== caregiverUid) {
+    onChange({ status: 'error', connections: [], message: 'Phiên đăng nhập đã thay đổi.' });
+    return () => undefined;
+  }
   let live = true;
   onChange({ status: 'loading', connections: [] });
   const connectionsQuery = query(collectionGroup(getFirebaseFirestore(), 'caregiverLinks'), where('caregiverUid', '==', caregiverUid));

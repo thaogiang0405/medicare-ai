@@ -57,18 +57,14 @@ function FamilyCareDashboardContent() {
     if (!isEnabled || !caregiverUid) return;
     let live = true;
     const generation = ++connectionGeneration.current;
-    try {
-      const stop = watchCaregiverConnections(caregiverUid, (value) => {
-        if (live && connectionGeneration.current === generation) setConnectionResult(value);
-      });
-      connectionStop.current = stop;
-      return () => {
-        live = false; connectionGeneration.current += 1; stop();
-        if (connectionStop.current === stop) connectionStop.current = null;
-      };
-    } catch {
-      setConnectionResult({ status: 'error', connections: [], message: 'Không thể tải danh sách liên kết. Kiểm tra đăng nhập và cấu hình Firebase.' });
-    }
+    const stop = watchCaregiverConnections(caregiverUid, (value) => {
+      if (live && connectionGeneration.current === generation) setConnectionResult(value);
+    });
+    connectionStop.current = stop;
+    return () => {
+      live = false; connectionGeneration.current += 1; stop();
+      if (connectionStop.current === stop) connectionStop.current = null;
+    };
   }, [isEnabled, caregiverUid]);
 
   const submitInvite = async () => {

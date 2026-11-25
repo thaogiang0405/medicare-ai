@@ -190,6 +190,7 @@ service cloud.firestore {
     // This avoids circular getAfter() evaluation between the two documents.
     function validCaregiverInviteClaim(inviteCode) {
       return verifiedCaregiver(request.auth.uid) && validFamilyInvite(resource.data, inviteCode)
+        && resource.data.ownerUid != request.auth.uid
         && resource.data.status == 'open' && resource.data.expiresAt > request.time
         && request.resource.data.status == 'claimed'
         && request.resource.data.claimedByUid == request.auth.uid

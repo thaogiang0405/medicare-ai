@@ -98,6 +98,7 @@ export async function requestCaregiverLink(caregiverUid: string, rawCode: string
       throw new Error('Mã mời đã được sử dụng bởi tài khoản khác hoặc không còn hợp lệ.');
     }
     const ownerUid = inviteData.ownerUid;
+    if (ownerUid === caregiverUid) throw new Error('Không thể kết nối tài khoản với chính mình.');
     const linkReference = linkRef(ownerUid, caregiverUid);
     const caregiverProfileRef = doc(database, 'users', caregiverUid);
     const [existingLink, caregiverProfile] = await Promise.all([

@@ -1012,7 +1012,7 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
     };
   }
 
-  it('creates a one-time invite, atomically claims it as pending, and grants health reads only after owner approval', async () => {
+  it('claims a one-time invite, creates a pending link, and grants health reads only after owner approval', async () => {
     await seed('users/' + userA, userProfile(userA));
     await seed('users/' + caregiver, userProfile(caregiver, 'caregiver'));
     await seed('elderlyProfiles/' + userA + '/medications/medication-a', medication(userA));
@@ -1026,6 +1026,12 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
     await assertSucceeds(setDoc(invitation, familyInvite(userA)));
     await assertSucceeds(getDoc(caregiverInvitation));
     await assertFails(getDoc(medicationReference(caregiverDB, userA)));
+    await assertFails(runTransaction(caregiverDB, async (transaction) => {
+      await transaction.get(caregiverInvitation);
+      await transaction.get(caregiverLink);
+      await transaction.get(userProfileReference(caregiverDB, caregiver));
+      transaction.set(caregiverLink, pendingFamilyLink(userA, caregiver));
+    }));
 
     await assertSucceeds(runTransaction(caregiverDB, async (transaction) => {
       const inviteSnapshot = await transaction.get(caregiverInvitation);

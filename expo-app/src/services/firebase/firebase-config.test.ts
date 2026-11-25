@@ -5,7 +5,19 @@ describe('createFirebaseConfig', () => {
     expect(() => createFirebaseConfig({})).toThrow(FirebaseConfigurationError);
 
     try {
-      createFirebaseConfig({});
+      createFirebaseConfig({  it('allows Firebase Storage bucket to be omitted when the app only uses Auth and Firestore', () => {
+    const config = createFirebaseConfig({
+      apiKey: 'synthetic-api-key',
+      authDomain: 'medicare-ai-staging.firebaseapp.com',
+      projectId: 'medicare-ai-staging',
+      messagingSenderId: '318128431668',
+      appId: '1:318128431668:web:synthetic-web-app-id',
+    });
+
+    expect(config.projectId).toBe('medicare-ai-staging');
+    expect(config.storageBucket).toBeUndefined();
+  });
+});
     } catch (error) {
       expect(error).toBeInstanceOf(FirebaseConfigurationError);
       expect((error as FirebaseConfigurationError).missingVariables).toContain(

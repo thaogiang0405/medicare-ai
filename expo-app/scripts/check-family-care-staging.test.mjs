@@ -9,7 +9,6 @@ const fixture = {
   EXPO_PUBLIC_FIREBASE_API_KEY: 'synthetic-api-key',
   EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN: staging + '.firebaseapp.com',
   EXPO_PUBLIC_FIREBASE_PROJECT_ID: staging,
-  EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET: staging + '.firebasestorage.app',
   EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: '318128431668',
   EXPO_PUBLIC_FIREBASE_APP_ID: '1:318128431668:web:synthetic-web-app-id',
   EXPO_PUBLIC_FIRESTORE_USER_PROFILES_ENABLED: 'true',
@@ -66,16 +65,24 @@ test('requires all four related Firestore and Family Care routing flags', () => 
   }
 });
 
-test('rejects missing config and Web App identities pointing to other projects', () => {
+test('rejects missing required config and Web App identities pointing to other projects', () => {
   const changed = {
     ...fixture, EXPO_PUBLIC_FIREBASE_API_KEY: ' ',
     EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN: 'other-project.firebaseapp.com',
-    EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET: 'other-project.appspot.com',
   };
   const issues = validateFamilyCareStagingEnv(changed, staging, production).join(' ');
   assert.match(issues, /EXPO_PUBLIC_FIREBASE_API_KEY/);
   assert.match(issues, /Auth domain/);
-  assert.match(issues, /Storage bucket/);
+});
+
+test('allows Storage bucket to be omitted because Family Care does not use Firebase Storage', () => {
+  const { EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET: _unused, ...withoutBucket } = fixture;
+  assert.deepEqual(validateFamilyCareStagingEnv(withoutBucket, staging, production), []);
+});
+
+test('still rejects a Storage bucket that explicitly points to another project', () => {
+  const changed = { ...fixture, EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET: 'other-project.appspot.com' };
+  assert.match(validateFamilyCareStagingEnv(changed, staging, production).join(' '), /Storage bucket/);
 });
 
 test('blocks the emulator project and project IDs not designated staging/test', () => {

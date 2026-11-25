@@ -1,14 +1,15 @@
 # Firebase boundary (Migration 2.2–2.3)
 
-MediCare AI Expo dùng Firebase JavaScript SDK modular với Firebase Web App chính
-thức trong project `medicare-ai-cf804`. Cấu hình client nằm trong `.env` cục bộ
-đã bị Git ignore; `.env.example` chỉ giữ tên biến, không giữ giá trị.
+MediCare AI Expo dùng Firebase JavaScript SDK modular. Project được chọn qua
+cấu hình `.env` cục bộ đã bị Git ignore; Family Care QA chỉ dùng project
+`medicare-ai-staging`, không dùng Production.
 
 ## Vai trò các file
 
 - `firebase-config.ts`: đọc trực tiếp các biến `EXPO_PUBLIC_FIREBASE_*`, kiểm
-  tra sáu giá trị bắt buộc và ném lỗi rõ ràng nếu cấu hình thiếu. Không có giá
-  trị dự phòng hoặc project giả.
+  tra năm giá trị bắt buộc và ném lỗi rõ ràng nếu cấu hình thiếu. `storageBucket`
+  là tùy chọn vì app hiện không dùng Firebase Storage. Không có giá trị dự phòng
+  hoặc project giả.
 - `firebase-app.ts`: khởi tạo `firebase/app` bằng `getApps()` / `getApp()` /
   `initializeApp()` để Fast Refresh không tạo default app trùng lặp.
 - `firebase-auth-boundary.ts`: khởi tạo Firebase Auth một lần với

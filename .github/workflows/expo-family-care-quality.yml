@@ -10,6 +10,8 @@ on:
       - "firebase.json"
       - "firestore.rules"
       - "firestore.indexes.json"
+      - "docs/family-care-owner-approved-links.md"
+      - "docs/firestore-data-model.md"
       - ".github/workflows/expo-family-care-quality.yml"
 permissions:
   contents: read

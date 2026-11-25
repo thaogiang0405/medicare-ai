@@ -170,7 +170,7 @@ describe('Family Care Firestore watcher fail-closed behavior', () => {
       ownerDisplayName: 'Người cao tuổi',
       inviteCode: newCode,
       status: 'open',
-      expiresAt: new Timestamp(),
+      expiresAt: new Timestamp(1, 0),
       claimedByUid: null,
       claimedAt: null,
     };

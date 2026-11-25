@@ -40,7 +40,7 @@ export function SecondaryButton({
         style,
       ]}
       testID={testID}>
-      <Text maxFontSizeMultiplier={1.35} style={[styles.label, disabled && styles.disabledLabel]}>
+      <Text maxFontSizeMultiplier={1.25} style={[styles.label, disabled && styles.disabledLabel]}>
         {label}
       </Text>
     </Pressable>

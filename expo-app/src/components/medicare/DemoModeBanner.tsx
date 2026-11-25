@@ -16,10 +16,10 @@ export type DemoModeBannerProps = {
 export function DemoModeBanner({ title, description }: DemoModeBannerProps) {
   return (
     <View accessibilityRole="summary" style={styles.container}>
-      <Text maxFontSizeMultiplier={1.5} style={styles.title}>
+      <Text maxFontSizeMultiplier={1.3} style={styles.title}>
         {title}
       </Text>
-      <Text maxFontSizeMultiplier={1.5} style={styles.description}>
+      <Text maxFontSizeMultiplier={1.3} style={styles.description}>
         {description}
       </Text>
     </View>

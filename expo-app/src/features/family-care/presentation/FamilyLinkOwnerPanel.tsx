@@ -9,6 +9,19 @@ import {
   rejectPendingCaregiverLink, revokeCaregiverLink, type FamilyLinkRecord,
 } from '../data/family-link-repository';
 
+function friendlyFamilyCareError(cause: unknown, fallback: string): string {
+  const value = cause as { code?: unknown; message?: unknown } | null;
+  const code = typeof value?.code === 'string' ? value.code : '';
+  const message = typeof value?.message === 'string' ? value.message : '';
+  if (code === 'permission-denied' || /missing or insufficient permissions/i.test(message)) {
+    return 'Firebase đang từ chối thao tác. Hãy kiểm tra đúng dự án Firebase và triển khai Firestore Security Rules mới nhất.';
+  }
+  if (code === 'unavailable') {
+    return 'Firebase tạm thời không kết nối được. Hãy kiểm tra mạng rồi thử lại.';
+  }
+  return message || fallback;
+}
+
 export function FamilyLinkOwnerPanel({ ownerUid }: Readonly<{ ownerUid: string }>) {
   const sessionUser = useSessionStore((state) => state.user);
   const sessionUid = sessionUser?.id;
@@ -73,7 +86,7 @@ export function FamilyLinkOwnerPanel({ ownerUid }: Readonly<{ ownerUid: string }
         updateError('Đã tạo mã mời. Bạn có thể sao chép mã đang hiển thị bên dưới để gửi cho người chăm sóc.');
       }
     } catch (cause) {
-      updateError(cause instanceof Error ? cause.message : 'Không thể tạo mã kết nối. Hãy thử lại khi có mạng.');
+      updateError(friendlyFamilyCareError(cause, 'Không thể tạo mã kết nối. Hãy thử lại khi có mạng.'));
     } finally { setBusy(false); }
   };
 
@@ -88,7 +101,7 @@ export function FamilyLinkOwnerPanel({ ownerUid }: Readonly<{ ownerUid: string }
         { text: 'Tôi đồng ý cấp quyền', onPress: () => {
           setBusy(true);
           void approvePendingCaregiverLink(ownerUid, link.caregiverUid).then(refresh)
-            .catch((cause) => updateError(cause instanceof Error ? cause.message : 'Không thể cấp quyền. Hãy tải lại yêu cầu và thử lại.'))
+            .catch((cause) => updateError(friendlyFamilyCareError(cause, 'Không thể cấp quyền. Hãy tải lại yêu cầu và thử lại.')))
             .finally(() => setBusy(false));
         } },
       ],
@@ -104,7 +117,7 @@ export function FamilyLinkOwnerPanel({ ownerUid }: Readonly<{ ownerUid: string }
         { text: 'Từ chối yêu cầu', style: 'destructive', onPress: () => {
           setBusy(true);
           void rejectPendingCaregiverLink(ownerUid, link.caregiverUid).then(refresh)
-            .catch((cause) => updateError(cause instanceof Error ? cause.message : 'Không thể từ chối yêu cầu. Hãy thử lại.'))
+            .catch((cause) => updateError(friendlyFamilyCareError(cause, 'Không thể từ chối yêu cầu. Hãy thử lại.')))
             .finally(() => setBusy(false));
         } },
       ],
@@ -114,13 +127,13 @@ export function FamilyLinkOwnerPanel({ ownerUid }: Readonly<{ ownerUid: string }
   const revoke = (caregiverUid: string) => {
     if (!authorizedOwner || busy) return;
     Alert.alert('Thu hồi quyền xem?',
-      'Người chăm sóc sẽ mất quyền đọc dữ liệu mới ngay khi Firebase áp dụng thay đổi. Không thể thu hồi thông tin họ đã xem trước đó. Liên kết đã thu hồi không thể kích hoạt lại trong bản thử nghiệm này.',
+      'Người chăm sóc sẽ mất quyền đọc dữ liệu mới ngay khi Firebase áp dụng thay đổi. Nếu muốn kết nối lại, bạn có thể tạo mã mới và duyệt yêu cầu mới. Thông tin họ đã xem trước đó không thể thu hồi.',
       [
         { text: 'Giữ liên kết', style: 'cancel' },
         { text: 'Thu hồi quyền', style: 'destructive', onPress: () => {
           setBusy(true);
           void revokeCaregiverLink(ownerUid, caregiverUid).then(refresh)
-            .catch(() => updateError('Không thể thu hồi quyền. Hãy thử lại khi có mạng.'))
+            .catch((cause) => updateError(friendlyFamilyCareError(cause, 'Không thể thu hồi quyền. Hãy thử lại khi có mạng.')))
             .finally(() => setBusy(false));
         } },
       ],
@@ -130,9 +143,9 @@ export function FamilyLinkOwnerPanel({ ownerUid }: Readonly<{ ownerUid: string }
   if (!authorizedOwner) return null;
   return (
     <View style={styles.container}>
-      <Text accessibilityRole="header" style={styles.heading}>Liên kết người chăm sóc</Text>
-      <SafetyNotice title="Chỉ cần chia sẻ một mã" message="Tạo mã kết nối và gửi cho người chăm sóc. Mã chỉ dùng một lần, hết hạn sau khoảng 24 giờ và KHÔNG tự cấp quyền xem. Người chăm sóc gửi yêu cầu; bạn phải kiểm tra tên tài khoản rồi chủ động đồng ý." tone="information" />
-      <SafetyNotice title="Phạm vi quyền xem" message="Sau khi bạn đồng ý, người chăm sóc có thể đọc toàn bộ trường trong các bản ghi thuốc và lịch ĐANG HOẠT ĐỘNG trên Firebase, kể cả hàm lượng và hướng dẫn dùng. Rules chặn thuốc/lịch đã ngừng hoạt động và lịch sử uống thuốc. Giao diện chỉ hiển thị tên thuốc và giờ dự kiến; dữ liệu đã xem vẫn có thể được lưu bên ngoài ứng dụng." tone="warning" />
+      <Text accessibilityRole="header" maxFontSizeMultiplier={1.25} style={styles.heading}>Liên kết người chăm sóc</Text>
+      <SafetyNotice title="Kết nối an toàn" message="Mã chỉ dùng một lần, có hiệu lực khoảng 24 giờ. Người chăm sóc gửi yêu cầu; bạn xác minh danh tính và duyệt trước khi cấp quyền." tone="information" />
+      <SafetyNotice title="Quyền truy cập" message="Sau khi duyệt, người chăm sóc có thể đọc thuốc và lịch đang hoạt động trên Firebase, gồm hàm lượng và hướng dẫn dùng. Họ không thể chỉnh sửa hoặc xem lịch sử uống thuốc." tone="warning" />
       <PrimaryButton disabled={busy} label={busy ? 'Đang tạo mã…' : 'Tạo và chia sẻ mã kết nối'} onPress={() => void createAndShareInvite()} />
       {inviteCode ? <View style={styles.codeCard}>
         <Text style={styles.codeLabel}>MÃ KẾT NỐI CỦA BẠN</Text>
@@ -140,7 +153,7 @@ export function FamilyLinkOwnerPanel({ ownerUid }: Readonly<{ ownerUid: string }
         {inviteExpiresAt ? <Text style={styles.expiry}>Hết hạn: {inviteExpiresAt.toLocaleString('vi-VN')}</Text> : null}
       </View> : null}
       {visibleError ? <SafetyNotice title="Chưa hoàn tất" message={visibleError} tone="error" /> : null}
-      <SecondaryButton disabled={busy} label="Tải lại yêu cầu kết nối" onPress={() => void refresh()} />
+      <SecondaryButton disabled={busy} label="Tải lại danh sách" onPress={() => void refresh()} />
       {!hasLoadedLinks ? <Text style={{ color: medicareColors.textMuted }}>Danh sách yêu cầu chưa được tải.</Text> : null}
       {hasLoadedLinks && visibleLinks.length === 0 ? <Text style={{ color: medicareColors.textMuted }}>Chưa có yêu cầu hoặc người chăm sóc được liên kết.</Text> : null}
       {visibleLinks.map((link) => <View key={link.caregiverUid} style={styles.linkCard}>
@@ -155,7 +168,7 @@ export function FamilyLinkOwnerPanel({ ownerUid }: Readonly<{ ownerUid: string }
           <Text style={{ color: medicareColors.textMuted }}>Đang có quyền xem thuốc và lịch đang hoạt động.</Text>
           <SecondaryButton disabled={busy} label={'Thu hồi quyền của ' + link.caregiverUid} onPress={() => revoke(link.caregiverUid)} />
         </> : null}
-        {link.status === 'revoked' ? <Text style={{ color: medicareColors.textMuted }}>Đã thu hồi quyền.</Text> : null}
+        {link.status === 'revoked' ? <Text style={{ color: medicareColors.textMuted }}>Đã thu hồi quyền. Có thể kết nối lại bằng mã mới và xác nhận lại.</Text> : null}
         {link.status === 'rejected' ? <Text style={{ color: medicareColors.textMuted }}>Đã từ chối yêu cầu.</Text> : null}
       </View>)}
     </View>

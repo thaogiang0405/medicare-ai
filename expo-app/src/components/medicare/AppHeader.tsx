@@ -42,11 +42,11 @@ export function AppHeader({
         </Pressable>
       ) : null}
       <View style={styles.copy}>
-        <Text maxFontSizeMultiplier={1.5} style={styles.title}>
+        <Text maxFontSizeMultiplier={1.25} style={styles.title}>
           {title}
         </Text>
         {subtitle ? (
-          <Text maxFontSizeMultiplier={1.5} style={styles.subtitle}>
+          <Text maxFontSizeMultiplier={1.25} style={styles.subtitle}>
             {subtitle}
           </Text>
         ) : null}
@@ -84,15 +84,15 @@ const styles = StyleSheet.create({
   },
   title: {
     color: medicareColors.text,
-    fontSize: medicareTypography.subheading,
+    fontSize: 21,
     fontWeight: '800',
-    letterSpacing: -0.4,
-    lineHeight: 29,
+    letterSpacing: -0.3,
+    lineHeight: 27,
   },
   subtitle: {
     color: medicareColors.textMuted,
-    fontSize: medicareTypography.bodySmall,
-    lineHeight: 23,
+    fontSize: 15,
+    lineHeight: 21,
   },
   right: {
     marginLeft: 'auto',

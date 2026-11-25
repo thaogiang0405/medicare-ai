@@ -49,7 +49,7 @@ export function PrimaryButton({
       testID={testID}>
       {loading ? <ActivityIndicator color={medicareColors.onPrimary} /> : null}
       {!loading && icon ? <View style={styles.icon}>{icon}</View> : null}
-      <Text maxFontSizeMultiplier={1.35} style={[styles.label, unavailable && styles.disabledLabel]}>
+      <Text maxFontSizeMultiplier={1.25} style={[styles.label, unavailable && styles.disabledLabel]}>
         {label}
       </Text>
     </Pressable>

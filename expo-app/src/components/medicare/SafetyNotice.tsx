@@ -22,10 +22,10 @@ export function SafetyNotice({ title, message, tone = 'warning', style }: Safety
 
   return (
     <View accessibilityRole="alert" style={[styles.container, palette.container, style]}>
-      <Text maxFontSizeMultiplier={1.5} style={[styles.title, palette.text]}>
+      <Text maxFontSizeMultiplier={1.3} style={[styles.title, palette.text]}>
         {title}
       </Text>
-      <Text maxFontSizeMultiplier={1.5} style={[styles.message, palette.text]}>
+      <Text maxFontSizeMultiplier={1.3} style={[styles.message, palette.text]}>
         {message}
       </Text>
     </View>

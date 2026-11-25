@@ -43,10 +43,10 @@ export function ActionCard({
       testID={testID}>
       {icon ? <View style={styles.icon}>{icon}</View> : null}
       <View style={styles.copy}>
-        <Text maxFontSizeMultiplier={1.45} style={styles.title}>
+        <Text maxFontSizeMultiplier={1.3} style={styles.title}>
           {title}
         </Text>
-        <Text maxFontSizeMultiplier={1.5} style={styles.description}>
+        <Text maxFontSizeMultiplier={1.3} style={styles.description}>
           {description}
         </Text>
       </View>

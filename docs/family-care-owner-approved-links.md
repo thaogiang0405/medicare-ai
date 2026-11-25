@@ -51,7 +51,7 @@ Trong Firebase Console của `medicare-ai-staging`, xác nhận project dùng g�
 
        node scripts/check-family-care-staging.mjs --project medicare-ai-staging
 
-   Script chỉ kiểm tra project ID được nhập tường minh có khớp `.env`, chặn project production đã biết, xác nhận tên staging/test, các trường Web App config, Firebase authDomain/Storage bucket cùng project, bốn flag bắt buộc và phát hiện `.env.local` / `.env.development*` hoặc shell ghi đè cấu hình. Nó **không kết nối Firebase, không xác minh Rules đã deploy, không kiểm tra tài khoản và không deploy bất kỳ tài nguyên nào**.
+   Script chỉ chấp nhận project ID đã duyệt `medicare-ai-staging`, kiểm tra ID khớp `.env`, chặn project production đã biết, xác nhận Firebase Auth domain/Storage bucket, Messaging Sender ID `318128431668`, Web App ID bắt đầu bằng `1:318128431668:web:`, bốn flag bắt buộc và phát hiện `.env.local` / `.env.development*` hoặc shell ghi đè cấu hình. Nó **không kết nối Firebase, không xác minh Rules đã deploy, không kiểm tra tài khoản và không deploy bất kỳ tài nguyên nào**.
 3. Sau khi preflight PASS và chủ dự án đã duyệt toàn bộ `firestore.rules` cùng `firestore.indexes.json`, chạy lệnh sau ngay trong `expo-app/` để deploy **chỉ Firestore Rules và Indexes lên Staging**:
 
        npx firebase-tools@15.34.1 --config ../firebase.json deploy --only firestore:rules,firestore:indexes --project medicare-ai-staging

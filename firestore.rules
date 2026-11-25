@@ -207,8 +207,10 @@ service cloud.firestore {
     // own transition rule also requires the matching invite post-state.
     function validOwnerInviteDecision(inviteCode) {
       let ownerUid = resource.data.ownerUid;
-      return hasValidElderlyProfile(ownerUid) && request.auth.uid == ownerUid
-        && validFamilyInvite(resource.data, inviteCode) && resource.data.status == 'claimed'
+      // Invite creation and caregiver claim already validate the full schema.
+      // The owner may now change only the decision state and timestamp.
+      return ownsUser(ownerUid) && request.auth.uid == ownerUid
+        && resource.data.inviteCode == inviteCode && resource.data.status == 'claimed'
         && request.resource.data.ownerUid == resource.data.ownerUid
         && request.resource.data.ownerDisplayName == resource.data.ownerDisplayName
         && request.resource.data.inviteCode == resource.data.inviteCode
@@ -239,9 +241,10 @@ service cloud.firestore {
     }
 
     function validOwnerLinkDecision(ownerUid, caregiverUid) {
-      return hasValidElderlyProfile(ownerUid)
-        && validFamilyLink(resource.data, ownerUid, caregiverUid)
-        && validFamilyLink(request.resource.data, ownerUid, caregiverUid)
+      // A pending link can only be created after a valid caregiver claim.
+      // Here the owner changes its state; all link metadata remains immutable.
+      return ownsUser(ownerUid)
+        && resource.data.ownerUid == ownerUid && resource.data.caregiverUid == caregiverUid
         && resource.data.status == 'pending'
         && request.resource.data.status in ['active', 'rejected']
         && request.resource.data.revision == resource.data.revision + 1
@@ -681,7 +684,7 @@ service cloud.firestore {
 
     match /familyInvites/{inviteCode} {
       allow get: if validFamilyInvite(resource.data, inviteCode)
-        && (hasValidElderlyProfile(resource.data.ownerUid)
+        && (ownsUser(resource.data.ownerUid)
           || (verifiedCaregiver(request.auth.uid)
             && ((resource.data.status == 'open' && resource.data.expiresAt > request.time)
               || (resource.data.status == 'claimed' && resource.data.claimedByUid == request.auth.uid))));

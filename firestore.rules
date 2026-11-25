@@ -240,20 +240,35 @@ service cloud.firestore {
     }
 
     function validCaregiverReconnect(ownerUid, caregiverUid) {
+      let ownerProfile = get(/databases/$(database)/documents/users/$(ownerUid)).data;
+      let caregiverProfile = get(/databases/$(database)/documents/users/$(caregiverUid)).data;
       let inviteCode = request.resource.data.inviteCode;
       let invitationPath = /databases/$(database)/documents/familyInvites/$(inviteCode);
-      return signedIn() && request.auth.uid == caregiverUid
-        && verifiedCaregiver(caregiverUid) && verifiedElderly(ownerUid) && caregiverUid != ownerUid
-        && validFamilyLink(resource.data, ownerUid, caregiverUid)
-        && validFamilyLink(request.resource.data, ownerUid, caregiverUid)
+      return signedIn() && request.auth.uid == caregiverUid && caregiverUid != ownerUid
+        && hasValidUserProfileSchema(ownerProfile)
+        && ownerProfile.uid == ownerUid
+        && ownerProfile.primaryRole == 'elderly'
+        && ownerProfile.roles.elderly == true
+        && ownerProfile.roles.caregiver == false
+        && ownerProfile.onboardingCompleted == true
+        && hasValidUserProfileSchema(caregiverProfile)
+        && caregiverProfile.uid == caregiverUid
+        && caregiverProfile.primaryRole == 'caregiver'
+        && caregiverProfile.roles.caregiver == true
+        && caregiverProfile.roles.elderly == false
+        && caregiverProfile.onboardingCompleted == true
+        && resource.data.ownerUid == ownerUid
+        && resource.data.caregiverUid == caregiverUid
         && resource.data.status in ['revoked', 'rejected']
-        && request.resource.data.status == 'pending'
+        && resource.data.revision is int
+        && resource.data.revision >= 1
+        && validFamilyLink(request.resource.data, ownerUid, caregiverUid)
         && request.resource.data.revision == resource.data.revision + 1
         && request.resource.data.createdAt == resource.data.createdAt
         && request.resource.data.updatedAt == request.time
         && (!('inviteCode' in resource.data) || request.resource.data.inviteCode != resource.data.inviteCode)
-        && request.resource.data.ownerDisplayName == get(/databases/$(database)/documents/users/$(ownerUid)).data.displayName
-        && request.resource.data.caregiverDisplayName == get(/databases/$(database)/documents/users/$(caregiverUid)).data.displayName
+        && request.resource.data.ownerDisplayName == ownerProfile.displayName
+        && request.resource.data.caregiverDisplayName == caregiverProfile.displayName
         && exists(invitationPath)
         && validFamilyInvite(get(invitationPath).data, inviteCode)
         && get(invitationPath).data.ownerUid == ownerUid

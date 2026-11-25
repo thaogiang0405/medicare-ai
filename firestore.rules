@@ -239,9 +239,6 @@ service cloud.firestore {
     }
 
     function validOwnerLinkDecision(ownerUid, caregiverUid) {
-      let inviteCode = resource.data.inviteCode;
-      let invitationPath = /databases/$(database)/documents/familyInvites/$(inviteCode);
-      let invitation = get(invitationPath);
       return hasValidElderlyProfile(ownerUid)
         && validFamilyLink(resource.data, ownerUid, caregiverUid)
         && validFamilyLink(request.resource.data, ownerUid, caregiverUid)
@@ -250,12 +247,7 @@ service cloud.firestore {
         && request.resource.data.revision == resource.data.revision + 1
         && request.resource.data.createdAt == resource.data.createdAt
         && request.resource.data.updatedAt == request.time
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'revision', 'updatedAt'])
-        && validFamilyInvite(invitation.data, inviteCode)
-        && invitation.data.ownerUid == ownerUid
-        && invitation.data.claimedByUid == caregiverUid
-        && ((request.resource.data.status == 'active' && invitation.data.status == 'consumed')
-          || (request.resource.data.status == 'rejected' && invitation.data.status == 'rejected'));
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'revision', 'updatedAt']);
     }
 
     function validOwnerRevoke(ownerUid, caregiverUid) {

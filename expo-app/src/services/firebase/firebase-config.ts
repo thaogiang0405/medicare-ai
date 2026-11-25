@@ -71,7 +71,8 @@ export function createFirebaseConfig(environment: FirebasePublicEnvironment): Fi
     apiKey: config.apiKey!,
     authDomain: config.authDomain!,
     projectId: config.projectId!,
-    ...(config.storageBucket ? { storageBucket: config.storageBucket } : {}),    messagingSenderId: config.messagingSenderId!,
+    ...(config.storageBucket ? { storageBucket: config.storageBucket } : {}),
+    messagingSenderId: config.messagingSenderId!,
     appId: config.appId!,
     ...(config.measurementId ? { measurementId: config.measurementId } : {}),
   };

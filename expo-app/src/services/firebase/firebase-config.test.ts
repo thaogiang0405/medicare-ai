@@ -5,7 +5,16 @@ describe('createFirebaseConfig', () => {
     expect(() => createFirebaseConfig({})).toThrow(FirebaseConfigurationError);
 
     try {
-      createFirebaseConfig({  it('allows Firebase Storage bucket to be omitted when the app only uses Auth and Firestore', () => {
+      createFirebaseConfig({});
+    } catch (error) {
+      expect(error).toBeInstanceOf(FirebaseConfigurationError);
+      expect((error as FirebaseConfigurationError).missingVariables).toContain(
+        'EXPO_PUBLIC_FIREBASE_PROJECT_ID',
+      );
+    }
+  });
+
+  it('allows Firebase Storage bucket to be omitted when the app only uses Auth and Firestore', () => {
     const config = createFirebaseConfig({
       apiKey: 'synthetic-api-key',
       authDomain: 'medicare-ai-staging.firebaseapp.com',
@@ -16,13 +25,5 @@ describe('createFirebaseConfig', () => {
 
     expect(config.projectId).toBe('medicare-ai-staging');
     expect(config.storageBucket).toBeUndefined();
-  });
-});
-    } catch (error) {
-      expect(error).toBeInstanceOf(FirebaseConfigurationError);
-      expect((error as FirebaseConfigurationError).missingVariables).toContain(
-        'EXPO_PUBLIC_FIREBASE_PROJECT_ID',
-      );
-    }
   });
 });

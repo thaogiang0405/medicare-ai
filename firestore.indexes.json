@@ -1,51 +1,77 @@
 {
   "indexes": [
     {
-      "collectionGroup": "caregiverLinks",
-      "queryScope": "COLLECTION_GROUP",
-      "fields": [
-        { "fieldPath": "caregiverUid", "order": "ASCENDING" }
-      ]
-    },
-    {
       "collectionGroup": "doseEvents",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
-        { "fieldPath": "status", "order": "ASCENDING" },
-        { "fieldPath": "scheduledAt", "order": "ASCENDING" }
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "scheduledAt",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "doseEvents",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "scheduledLocalDate", "order": "DESCENDING" },
-        { "fieldPath": "scheduledLocalTime", "order": "DESCENDING" },
-        { "fieldPath": "__name__", "order": "DESCENDING" }
+        {
+          "fieldPath": "scheduledLocalDate",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "scheduledLocalTime",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "medications",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
-        { "fieldPath": "isActive", "order": "ASCENDING" },
-        { "fieldPath": "updatedAt", "order": "DESCENDING" }
+        {
+          "fieldPath": "isActive",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "updatedAt",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "medicationSchedules",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
-        { "fieldPath": "active", "order": "ASCENDING" },
-        { "fieldPath": "nextOccurrenceAt", "order": "ASCENDING" }
+        {
+          "fieldPath": "active",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "nextOccurrenceAt",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "notifications",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
-        { "fieldPath": "deliveryState", "order": "ASCENDING" },
-        { "fieldPath": "scheduledFor", "order": "ASCENDING" }
+        {
+          "fieldPath": "deliveryState",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "scheduledFor",
+          "order": "ASCENDING"
+        }
       ]
     }
   ],

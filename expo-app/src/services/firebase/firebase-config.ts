@@ -15,7 +15,7 @@ type FirebasePublicEnvironment = Partial<
 >;
 
 const firebaseEnvironmentVariableNames: Record<
-  FirebaseRequiredConfigField | 'measurementId',
+  FirebaseRequiredConfigField | 'storageBucket' | 'measurementId',
   string
 > = {
   apiKey: 'EXPO_PUBLIC_FIREBASE_API_KEY',

@@ -37,24 +37,5 @@
       "port": 8080
     },
     "singleProjectMode": true
-  },
-  "flutter": {
-    "platforms": {
-      "android": {
-        "default": {
-          "projectId": "medicare-ai-cf804",
-          "appId": "1:354989416256:android:37d5c3468947b13902e4a5",
-          "fileOutput": "android/app/google-services.json"
-        }
-      },
-      "dart": {
-        "lib/firebase_options.dart": {
-          "projectId": "medicare-ai-cf804",
-          "configurations": {
-            "android": "1:354989416256:android:37d5c3468947b13902e4a5"
-          }
-        }
-      }
-    }
   }
 }

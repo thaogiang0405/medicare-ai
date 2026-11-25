@@ -1392,26 +1392,86 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
     expect(ownerSchedule.data().localTime).toBe('09:45');
   });
 
-  it('revokes caregiver access and disallows reactivation or owner deletion', async () => {
+  it('revokes caregiver access, then requires a fresh invite and owner approval to reconnect', async () => {
     await seed('users/' + userA, userProfile(userA));
     await seed('users/' + caregiver, userProfile(caregiver, 'caregiver'));
     await seed('elderlyProfiles/' + userA + '/medications/medication-a', medication(userA));
     await seed('elderlyProfiles/' + userA + '/medicationSchedules/schedule-a', medicationSchedule(userA));
     const ownerDB = firestoreAs(userA), caregiverDB = firestoreAs(caregiver);
-    const ref = familyLinkRef(ownerDB);
-    await seed('elderlyProfiles/' + userA + '/caregiverLinks/' + caregiver, familyLink(userA, caregiver));
-    await assertSucceeds(updateDoc(ref, {
+    const ownerLink = familyLinkRef(ownerDB);
+    const caregiverLink = familyLinkRef(caregiverDB);
+    const newCode = 'NewInviteCode1234567';
+    const ownerInvite = doc(ownerDB, 'familyInvites', newCode);
+    const caregiverInvite = doc(caregiverDB, 'familyInvites', newCode);
+
+    await seed('elderlyProfiles/' + userA + '/caregiverLinks/' + caregiver,
+      pendingFamilyLink(userA, caregiver, familyInviteCode, { status: 'active' }));
+    await assertSucceeds(updateDoc(ownerLink, {
       status: 'revoked', revision: 2, updatedAt: serverTimestamp(),
     }));
-    const revokedLink = await assertSucceeds(getDoc(familyLinkRef(caregiverDB)));
-    expect(revokedLink.data().status).toBe('revoked');
+    expect((await assertSucceeds(getDoc(caregiverLink))).data().status).toBe('revoked');
     await assertFails(getDocs(medicationsCollection(caregiverDB, userA)));
     await assertFails(getDocs(medicationSchedulesCollection(caregiverDB, userA)));
-    await assertFails(updateDoc(ref, {
+
+    await assertFails(updateDoc(caregiverLink, {
+      status: 'pending', revision: 3, updatedAt: serverTimestamp(),
+    }));
+    await assertFails(updateDoc(ownerLink, {
       status: 'active', revision: 3, updatedAt: serverTimestamp(),
     }));
-    await assertFails(deleteDoc(ref));
-    await assertFails(setDoc(ref, familyLink(userA, caregiver)));
+
+    await assertSucceeds(setDoc(ownerInvite, familyInvite(userA, newCode)));
+    await assertSucceeds(getDoc(caregiverInvite));
+    await assertSucceeds(runTransaction(caregiverDB, async (transaction) => {
+      await transaction.get(caregiverInvite);
+      transaction.update(caregiverInvite, {
+        status: 'claimed', claimedByUid: caregiver, claimedAt: serverTimestamp(), updatedAt: serverTimestamp(),
+      });
+    }));
+    await assertSucceeds(runTransaction(caregiverDB, async (transaction) => {
+      const inviteSnapshot = await transaction.get(caregiverInvite);
+      const existingLink = await transaction.get(caregiverLink);
+      const caregiverProfile = await transaction.get(userProfileReference(caregiverDB, caregiver));
+      expect(inviteSnapshot.data().status).toBe('claimed');
+      expect(inviteSnapshot.data().claimedByUid).toBe(caregiver);
+      expect(existingLink.data().status).toBe('revoked');
+      expect(caregiverProfile.data().primaryRole).toBe('caregiver');
+      transaction.update(caregiverLink, {
+        ownerDisplayName: 'Người dùng kiểm thử',
+        caregiverDisplayName: 'Người dùng kiểm thử',
+        inviteCode: newCode,
+        status: 'pending',
+        revision: 3,
+        updatedAt: serverTimestamp(),
+      });
+    }));
+    expect((await assertSucceeds(getDoc(ownerLink))).data().status).toBe('pending');
+    await assertFails(getDoc(medicationReference(caregiverDB, userA)));
+    await assertFails(getDocs(medicationSchedulesCollection(caregiverDB, userA)));
+
+    await assertSucceeds(runTransaction(ownerDB, async (transaction) => {
+      await transaction.get(ownerLink);
+      await transaction.get(ownerInvite);
+      transaction.update(ownerInvite, { status: 'consumed', updatedAt: serverTimestamp() });
+    }));
+    await assertSucceeds(runTransaction(ownerDB, async (transaction) => {
+      const linkSnapshot = await transaction.get(ownerLink);
+      const inviteSnapshot = await transaction.get(ownerInvite);
+      expect(linkSnapshot.data().status).toBe('pending');
+      expect(linkSnapshot.data().revision).toBe(3);
+      expect(inviteSnapshot.data().status).toBe('consumed');
+      transaction.update(ownerLink, {
+        status: 'active', revision: 4, updatedAt: serverTimestamp(),
+      });
+    }));
+    expect((await assertSucceeds(getDoc(caregiverLink))).data().status).toBe('active');
+    await assertSucceeds(getDoc(medicationReference(caregiverDB, userA)));
+    await assertSucceeds(getDocs(query(
+      medicationSchedulesCollection(caregiverDB, userA),
+      where('ownerUid', '==', userA),
+      where('active', '==', true),
+    )));
+    await assertFails(deleteDoc(ownerLink));
   });
 
   it('denies malformed direct gets and documents full-document list-query behavior', async () => {

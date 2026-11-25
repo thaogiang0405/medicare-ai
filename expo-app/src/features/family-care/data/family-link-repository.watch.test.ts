@@ -16,16 +16,20 @@ jest.mock('firebase/firestore', () => ({
   getDocsFromServer: jest.fn(),
   runTransaction: jest.fn(),
   serverTimestamp: jest.fn(),
+  Timestamp: class MockTimestamp {
+    toMillis() { return Date.now() + 60 * 60 * 1000; }
+  },
 }));
 
 import {
-  collection, doc, getDocsFromServer, limit, onSnapshot, query, runTransaction, serverTimestamp, where,
+  collection, doc, getDocsFromServer, limit, onSnapshot, query, runTransaction, serverTimestamp, Timestamp, where,
 } from 'firebase/firestore';
 import { getFirebaseAuth, getFirebaseFirestore } from '@/services/firebase';
 import {
   approvePendingCaregiverLink,
   listOwnCaregiverLinks,
   revokeCaregiverLink,
+  requestCaregiverLink,
   watchCaregiverPlans,
   type CaregiverScheduleResult,
 } from './family-link-repository';
@@ -156,6 +160,89 @@ describe('Family Care Firestore watcher fail-closed behavior', () => {
       stops.set(reference.path, unsubscribe);
       return unsubscribe;
     });
+  });
+
+  it('reopens a revoked link as pending only after the same caregiver claims a fresh invite', async () => {
+    const newCode = 'NewInviteCode1234567';
+    const invitePath = 'familyInvites/' + newCode;
+    const inviteData: Record<string, unknown> = {
+      ownerUid: elderlyUid,
+      ownerDisplayName: 'Người cao tuổi',
+      inviteCode: newCode,
+      status: 'open',
+      expiresAt: new Timestamp(),
+      claimedByUid: null,
+      claimedAt: null,
+    };
+    const existingLink: Record<string, unknown> = {
+      ownerUid: elderlyUid,
+      caregiverUid,
+      ownerDisplayName: 'Người cao tuổi',
+      caregiverDisplayName: 'Người chăm sóc',
+      inviteCode: 'OldInviteCode1234567',
+      status: 'revoked',
+      scopes: { medicationsRead: true, schedulesRead: true },
+      revision: 4,
+      createdAt: fakeTimestamp(),
+      updatedAt: fakeTimestamp(),
+    };
+    const caregiverProfile = {
+      uid: caregiverUid,
+      primaryRole: 'caregiver',
+      roles: { elderly: false, caregiver: true },
+      onboardingCompleted: true,
+      displayName: 'Người chăm sóc',
+    };
+    const state = new Map<string, Record<string, unknown>>([
+      [invitePath, inviteData],
+      [linkPath, existingLink],
+      ['users/' + caregiverUid, caregiverProfile],
+    ]);
+    const updates: { path: string; fields: Record<string, unknown> }[] = [];
+    (serverTimestamp as unknown as jest.Mock).mockReturnValue('server-clock');
+    (runTransaction as unknown as jest.Mock).mockImplementation(async (
+      _database: unknown,
+      callback: (transaction: {
+        get: (reference: { path: string }) => Promise<{ exists: () => boolean; data: () => Record<string, unknown> }>;
+        update: (reference: { path: string }, fields: Record<string, unknown>) => void;
+      }) => Promise<void>,
+    ) => callback({
+      get: async (reference) => {
+        const value = state.get(reference.path);
+        return { exists: () => Boolean(value), data: () => value ?? {} };
+      },
+      update: (reference, fields) => {
+        updates.push({ path: reference.path, fields });
+        const value = state.get(reference.path);
+        if (value) Object.assign(value, fields);
+      },
+    }));
+
+    await expect(requestCaregiverLink(caregiverUid, newCode)).resolves.toBeUndefined();
+
+    expect(runTransaction).toHaveBeenCalledTimes(2);
+    expect(updates).toHaveLength(2);
+    expect(updates[0]).toEqual({
+      path: invitePath,
+      fields: {
+        status: 'claimed',
+        claimedByUid: caregiverUid,
+        claimedAt: 'server-clock',
+        updatedAt: 'server-clock',
+      },
+    });
+    expect(updates[1]).toEqual({
+      path: linkPath,
+      fields: {
+        ownerDisplayName: 'Người cao tuổi',
+        caregiverDisplayName: 'Người chăm sóc',
+        inviteCode: newCode,
+        status: 'pending',
+        revision: 5,
+        updatedAt: 'server-clock',
+      },
+    });
+    expect(updates[1].fields).not.toHaveProperty('createdAt');
   });
 
   it('blocks owner approval when an active medication has unexpected fields', async () => {

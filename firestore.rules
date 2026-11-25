@@ -239,6 +239,31 @@ service cloud.firestore {
         && get(invitationPath).data.claimedByUid == caregiverUid;
     }
 
+    function validCaregiverReconnect(ownerUid, caregiverUid) {
+      let inviteCode = request.resource.data.inviteCode;
+      let invitationPath = /databases/$(database)/documents/familyInvites/$(inviteCode);
+      return signedIn() && request.auth.uid == caregiverUid
+        && verifiedCaregiver(caregiverUid) && verifiedElderly(ownerUid) && caregiverUid != ownerUid
+        && validFamilyLink(resource.data, ownerUid, caregiverUid)
+        && validFamilyLink(request.resource.data, ownerUid, caregiverUid)
+        && resource.data.status in ['revoked', 'rejected']
+        && request.resource.data.status == 'pending'
+        && request.resource.data.revision == resource.data.revision + 1
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time
+        && (!('inviteCode' in resource.data) || request.resource.data.inviteCode != resource.data.inviteCode)
+        && request.resource.data.ownerDisplayName == get(/databases/$(database)/documents/users/$(ownerUid)).data.displayName
+        && request.resource.data.caregiverDisplayName == get(/databases/$(database)/documents/users/$(caregiverUid)).data.displayName
+        && exists(invitationPath)
+        && validFamilyInvite(get(invitationPath).data, inviteCode)
+        && get(invitationPath).data.ownerUid == ownerUid
+        && get(invitationPath).data.status == 'claimed'
+        && get(invitationPath).data.claimedByUid == caregiverUid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'revision', 'updatedAt', 'inviteCode', 'ownerDisplayName', 'caregiverDisplayName'
+        ]);
+    }
+
     function validOwnerLinkDecision(ownerUid, caregiverUid) {
       // A pending link can only be created after a valid caregiver claim.
       // Here the owner changes its state; all link metadata remains immutable.
@@ -704,7 +729,9 @@ service cloud.firestore {
             || validFamilyLink(resource.data, uid, caregiverUid)));
       allow list: if hasValidElderlyProfile(uid);
       allow create: if validCaregiverRequest(uid, caregiverUid);
-      allow update: if validOwnerLinkDecision(uid, caregiverUid) || validOwnerRevoke(uid, caregiverUid);
+      allow update: if validOwnerLinkDecision(uid, caregiverUid)
+        || validOwnerRevoke(uid, caregiverUid)
+        || validCaregiverReconnect(uid, caregiverUid);
       allow delete: if false;
     }
 

@@ -105,17 +105,32 @@ export async function requestCaregiverLink(caregiverUid: string, rawCode: string
       transaction.get(linkReference), transaction.get(caregiverProfileRef),
     ]);
     checkSession(caregiverUid);
-    if (existingLink.exists()) {
-      const current = existingLink.data();
-      if (current.inviteCode === code && current.status === 'pending'
-        && current.ownerUid === ownerUid && current.caregiverUid === caregiverUid) return;
-      throw new Error('Hai tài khoản đã có yêu cầu hoặc liên kết trước đó.');
-    }
     if (!caregiverProfile.exists() || caregiverProfile.data().uid !== caregiverUid
       || caregiverProfile.data().primaryRole !== 'caregiver' || caregiverProfile.data().roles?.caregiver !== true
       || caregiverProfile.data().roles?.elderly !== false || caregiverProfile.data().onboardingCompleted !== true
       || typeof caregiverProfile.data().displayName !== 'string') {
       throw new Error('Chỉ tài khoản người chăm sóc đã hoàn tất hồ sơ mới gửi được yêu cầu.');
+    }
+    if (existingLink.exists()) {
+      const current = existingLink.data();
+      if (current.inviteCode === code && current.status === 'pending'
+        && current.ownerUid === ownerUid && current.caregiverUid === caregiverUid) return;
+      if (current.ownerUid === ownerUid && current.caregiverUid === caregiverUid
+        && (current.status === 'revoked' || current.status === 'rejected')
+        && current.inviteCode !== code
+        && Number.isSafeInteger(current.revision) && current.revision >= 1
+        && current.revision < Number.MAX_SAFE_INTEGER) {
+        transaction.update(linkReference, {
+          ownerDisplayName: inviteData.ownerDisplayName,
+          caregiverDisplayName: caregiverProfile.data().displayName,
+          inviteCode: code,
+          status: 'pending',
+          revision: current.revision + 1,
+          updatedAt: serverTimestamp(),
+        });
+        return;
+      }
+      throw new Error('Tài khoản này đã có yêu cầu hoặc liên kết. Nếu quyền đã bị thu hồi, hãy dùng mã mới và chờ người cao tuổi duyệt lại.');
     }
     transaction.set(linkReference, {
       ownerUid, ownerDisplayName: inviteData.ownerDisplayName,
@@ -218,7 +233,7 @@ export async function rejectPendingCaregiverLink(ownerUid: string, caregiverUid:
   await decidePendingCaregiverLink(ownerUid, caregiverUid, 'reject');
 }
 
-/** Revocation is irreversible for this UID pair in this MVP. */
+/** Revocation removes access; reconnecting requires a fresh invite and owner approval. */
 export async function revokeCaregiverLink(ownerUid: string, rawCaregiverUid: string): Promise<void> {
   checkSession(ownerUid);
   const caregiverUid = validateFamilyUid(rawCaregiverUid);

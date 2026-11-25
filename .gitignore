@@ -64,7 +64,10 @@ app.*.map.json
 *.pem
 *.key
 service-account*.json
+**/serviceAccountKey.json
 firebase-adminsdk*.json
+.runtimeconfig.json
+**/.firebase/
 
 # Firebase client configuration such as android/app/google-services.json and
 # lib/firebase_options.dart is intentionally versioned. It contains public
@@ -73,3 +76,17 @@ firebase-adminsdk*.json
 # Local Firebase and editor state
 /.firebase/
 /.vscode/
+
+# Expo / React Native migration workspace
+/expo-app/node_modules/
+/expo-app/.expo/
+/expo-app/dist/
+/expo-app/web-build/
+/expo-app/.metro-health-check*
+/expo-app/.claude/
+/expo-app/.vscode/
+/expo-app/.env
+/expo-app/.env.*
+!/expo-app/.env.example
+/expo-app/ios/
+/expo-app/android/

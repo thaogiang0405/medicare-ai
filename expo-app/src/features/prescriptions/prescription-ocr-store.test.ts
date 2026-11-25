@@ -1,0 +1,206 @@
+import type { MedicationRepository } from '@/features/medications';
+import type { Medication } from '@/types/domain';
+
+import type { PrescriptionOcrGateway, PrescriptionOcrImagePage, PrescriptionOcrResult } from './domain/prescription-ocr';
+import { createPrescriptionOcrStore } from './prescription-ocr-store';
+
+const imagePage: PrescriptionOcrImagePage = {
+  id: 'page-a',
+  uri: 'file:///temporary-a.jpg',
+  mimeType: 'image/jpeg',
+  byteSize: 3,
+  width: 100,
+  height: 100,
+  base64: 'YWJj',
+  qualityWarnings: [],
+};
+
+const ocrResult: PrescriptionOcrResult = {
+  provider: 'google-cloud-vision',
+  pages: [{ pageIndex: 0, text: '1. Paracetamol 500 mg - Uống khi cần', confidence: null, qualityWarnings: [] }],
+};
+
+function repository(): MedicationRepository {
+  const item = (id: string, name: string): Medication => ({
+    id,
+    name,
+    strengthText: '',
+    directionsText: '',
+    status: 'active',
+    createdAt: '2026-11-20T00:00:00.000Z',
+    updatedAt: '2026-11-20T00:00:00.000Z',
+  });
+  return {
+    listMedications: jest.fn(async () => []),
+    getActiveMedications: jest.fn(async () => []),
+    getMedicationById: jest.fn(async () => null),
+    createMedication: jest.fn(async (_uid, input) => item('created', input.name)),
+    updateMedication: jest.fn(async (_uid, id, input) => item(id, input.name)),
+    markMedicationInactive: jest.fn(async (_uid, id) => item(id, 'inactive')),
+  };
+}
+
+describe('prescription OCR store', () => {
+  it('drops a late OCR response after an account switch', async () => {
+    let resolveOcr: ((value: PrescriptionOcrResult) => void) | undefined;
+    const pendingOcr = new Promise<PrescriptionOcrResult>((resolve) => {
+      resolveOcr = resolve;
+    });
+    const gateway: PrescriptionOcrGateway = { recognizePrescription: jest.fn(async () => pendingOcr) };
+    const store = createPrescriptionOcrStore(gateway, repository, () => true);
+
+    store.getState().bindAuthenticatedUser('elderly-a');
+    store.getState().setPages([imagePage]);
+    store.getState().setConsentAccepted(true);
+    const processing = store.getState().requestOcr();
+
+    store.getState().bindAuthenticatedUser('elderly-b');
+    resolveOcr?.(ocrResult);
+    await processing;
+
+    expect(store.getState()).toMatchObject({
+      activeUserId: 'elderly-b',
+      pages: [],
+      ocrResult: null,
+      candidates: [],
+      status: 'ready',
+    });
+  });
+
+  it('keeps on-device OCR disabled until an explicit feature flag opt-in', async () => {
+    const gateway: PrescriptionOcrGateway = { recognizePrescription: jest.fn(async () => ocrResult) };
+    const store = createPrescriptionOcrStore(gateway, repository, () => false);
+
+    store.getState().bindAuthenticatedUser('elderly-a');
+    store.getState().setPages([imagePage]);
+    store.getState().setConsentAccepted(true);
+    await store.getState().process();
+
+    expect(gateway.recognizePrescription).not.toHaveBeenCalled();
+    expect(store.getState()).toMatchObject({
+      status: 'error',
+      errorMessage: expect.stringContaining('chưa được bật'),
+    });
+  });
+
+  it('clears temporary image, OCR text, and review candidates on cancellation/logout reset', async () => {
+    const gateway: PrescriptionOcrGateway = { recognizePrescription: jest.fn(async () => ocrResult) };
+    const store = createPrescriptionOcrStore(gateway, repository, () => true);
+
+    store.getState().bindAuthenticatedUser('elderly-a');
+    store.getState().setPages([imagePage]);
+    store.getState().setConsentAccepted(true);
+    await store.getState().process();
+    expect(store.getState().candidates).toHaveLength(1);
+
+    store.getState().cancel();
+    expect(store.getState()).toMatchObject({ pages: [], ocrResult: null, candidates: [], consentAccepted: false });
+
+    store.getState().setPages([imagePage]);
+    store.getState().reset();
+    expect(store.getState()).toMatchObject({ activeUserId: null, pages: [], ocrResult: null, candidates: [] });
+  });
+
+  it('reviews free pasted prescription text without calling any OCR gateway', () => {
+    const gateway: PrescriptionOcrGateway = { recognizePrescription: jest.fn(async () => ocrResult) };
+    const store = createPrescriptionOcrStore(gateway, repository, () => false);
+
+    store.getState().bindAuthenticatedUser('elderly-a');
+    store.getState().reviewPastedText('1. Paracetamol 500 mg - Uống khi cần theo đơn');
+
+    expect(gateway.recognizePrescription).not.toHaveBeenCalled();
+    expect(store.getState().ocrResult?.provider).toBe('manual-import');
+    expect(store.getState().status).toBe('review');
+    expect(store.getState().candidates[0].input.name).toBe('Paracetamol');
+
+    store.getState().bindAuthenticatedUser('elderly-b');
+    expect(store.getState()).toMatchObject({ ocrResult: null, candidates: [], pages: [] });
+  });
+
+  it('rejects empty and overlong pasted text without calling the OCR gateway', () => {
+    const gateway: PrescriptionOcrGateway = { recognizePrescription: jest.fn(async () => ocrResult) };
+    const store = createPrescriptionOcrStore(gateway, repository, () => false);
+    store.getState().bindAuthenticatedUser('elderly-a');
+
+    store.getState().reviewPastedText('  ');
+    expect(store.getState().ocrResult).toBeNull();
+    expect(store.getState().errorMessage).toContain('Vui lòng dán');
+
+    store.getState().reviewPastedText('x'.repeat(12_001));
+    expect(store.getState().ocrResult).toBeNull();
+    expect(store.getState().errorMessage).toContain('12.000');
+    expect(gateway.recognizePrescription).not.toHaveBeenCalled();
+  });
+
+  it('aborts the local worker request and clears transient progress on cancellation', async () => {
+    let resolveOcr: ((value: PrescriptionOcrResult) => void) | undefined;
+    let receivedSignal: AbortSignal | undefined;
+    const pendingOcr = new Promise<PrescriptionOcrResult>((resolve) => {
+      resolveOcr = resolve;
+    });
+    const gateway: PrescriptionOcrGateway = {
+      recognizePrescription: jest.fn(async (_userId, _request, options) => {
+        receivedSignal = options?.signal;
+        options?.onProgress?.({ pageIndex: 0, totalPages: 1, phase: 'recognizing', progress: 0.5 });
+        return pendingOcr;
+      }),
+    };
+    const store = createPrescriptionOcrStore(gateway, repository, () => true);
+
+    store.getState().bindAuthenticatedUser('elderly-a');
+    store.getState().setPages([imagePage]);
+    store.getState().setConsentAccepted(true);
+    const processing = store.getState().process();
+    await Promise.resolve();
+
+    expect(store.getState().ocrProgress).toMatchObject({ pageIndex: 0, phase: 'recognizing', progress: 0.5 });
+    store.getState().cancel();
+    expect(receivedSignal?.aborted).toBe(true);
+    expect(store.getState()).toMatchObject({ status: 'ready', ocrProgress: null, pages: [], ocrResult: null });
+
+    resolveOcr?.(ocrResult);
+    await processing;
+    expect(store.getState()).toMatchObject({ status: 'ready', ocrResult: null, candidates: [] });
+  });
+
+  it('parses an offline package scan with no automatically selected medicine or directions', async () => {
+    const gateway: PrescriptionOcrGateway = {
+      recognizePrescription: jest.fn(async () => ({
+        provider: 'local-offline' as const,
+        pages: [{ pageIndex: 0, text: 'Tên thuốc: Paracetamol 500 mg\nHSD: 12/2028', confidence: 0.92, qualityWarnings: [] }],
+      })),
+    };
+    const store = createPrescriptionOcrStore(gateway, repository, () => true);
+    store.getState().bindAuthenticatedUser('elderly-a');
+    store.getState().setPages([imagePage]);
+    store.getState().setConsentAccepted(true);
+    store.getState().setSourceMode('packaging');
+    expect(store.getState().pages).toEqual([]);
+
+    store.getState().setPages([imagePage]);
+    store.getState().setConsentAccepted(true);
+    await store.getState().process();
+    expect(store.getState().candidates).toHaveLength(1);
+    expect(store.getState().candidates[0]).toMatchObject({
+      selected: false,
+      input: { name: 'Paracetamol', strengthText: '500 mg', directionsText: '' },
+    });
+    store.getState().setCandidateSelected(store.getState().candidates[0].id, true);
+    expect(store.getState().candidates[0].selected).toBe(true);
+
+    store.getState().setSourceMode('prescription');
+    expect(store.getState()).toMatchObject({ sourceMode: 'prescription', pages: [], candidates: [], ocrResult: null });
+  });
+
+  it('parses pasted packaging letters without an OCR server request', () => {
+    const gateway: PrescriptionOcrGateway = { recognizePrescription: jest.fn(async () => ocrResult) };
+    const store = createPrescriptionOcrStore(gateway, repository, () => false);
+    store.getState().bindAuthenticatedUser('elderly-a');
+    store.getState().setSourceMode('packaging');
+    store.getState().reviewPastedText('Tên thuốc: Vitamin C 500 mg');
+    expect(gateway.recognizePrescription).not.toHaveBeenCalled();
+    expect(store.getState().candidates[0]).toMatchObject({
+      selected: false, input: { name: 'Vitamin C', strengthText: '500 mg', directionsText: '' },
+    });
+  });
+});

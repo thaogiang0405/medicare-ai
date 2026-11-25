@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MediCare AI Offline OCR POC</title>
+    <script src="./tesseract/tesseract.min.js"></script>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 24px; color: #073b3a; }
+      canvas { border: 1px solid #b4cfcd; max-width: 100%; }
+      pre { white-space: pre-wrap; background: #f1f8f7; padding: 16px; }
+    </style>
+  </head>
+  <body>
+    <h1>OCR cục bộ — ảnh tổng hợp</h1>
+    <p>Không có request OCR nào đến CDN hoặc server.</p>
+    <canvas id="sample" width="1400" height="420"></canvas>
+    <pre id="output">Đang khởi tạo…</pre>
+    <script>
+      (async () => {
+        const output = document.getElementById('output');
+        const canvas = document.getElementById('sample');
+        const context = canvas.getContext('2d');
+        context.fillStyle = '#ffffff';
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        context.fillStyle = '#000000';
+        context.font = 'bold 54px Arial';
+        context.fillText('ĐƠN THUỐC TỔNG HỢP', 60, 90);
+        context.font = '44px Arial';
+        context.fillText('Paracetamol 500 mg', 60, 190);
+        context.fillText('Uống sau ăn — cần kiểm tra', 60, 280);
+
+        const worker = await Tesseract.createWorker(['vie', 'eng'], 1, {
+          workerPath: './tesseract/worker.min.js',
+          corePath: './tesseract-core',
+          langPath: './lang',
+          cacheMethod: 'none',
+          workerBlobURL: false,
+          gzip: true,
+          logger: message => {
+            output.textContent = `${message.status}: ${Math.round((message.progress || 0) * 100)}%`;
+          },
+        });
+
+        const { data } = await worker.recognize(canvas);
+        output.textContent = `Kết quả OCR cục bộ:\n${data.text}\n\nĐộ tin cậy: ${data.confidence}`;
+        await worker.terminate();
+      })().catch(() => {
+        document.getElementById('output').textContent = 'Không thể khởi tạo OCR cục bộ từ các tài nguyên đã đóng gói.';
+      });
+    </script>
+  </body>
+</html>

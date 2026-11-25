@@ -1,0 +1,156 @@
+import type { StyleProp, ViewStyle } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
+
+import {
+  medicareColors,
+  medicareRadius,
+  medicareShadow,
+  medicareSpacing,
+  medicareTypography,
+} from '@/constants/medicare-theme';
+import type { DoseStatus } from '@/types/domain';
+
+import { PrimaryButton } from './PrimaryButton';
+import { SecondaryButton } from './SecondaryButton';
+import { StatusBadge } from './StatusBadge';
+
+export type MedicationScheduleCardProps = {
+  localTime: string;
+  medicationName: string;
+  strengthText: string;
+  recurrenceText: string;
+  /** Present only when M3.4 dose tracking is explicitly enabled. */
+  doseStatus?: DoseStatus;
+  responseActions?: Readonly<{
+    canRespond: boolean;
+    onReportTaken: () => void;
+    onReportSkipped: () => void;
+    isSubmitting?: boolean;
+    blockedMessage?: string;
+  }>;
+  style?: StyleProp<ViewStyle>;
+  testID?: string;
+};
+
+/**
+ * A planned medication schedule, deliberately separate from a DoseEvent.
+ * It has no adherence actions because M3.3.1 does not create dose records.
+ */
+export function MedicationScheduleCard({
+  localTime,
+  medicationName,
+  strengthText,
+  recurrenceText,
+  doseStatus,
+  responseActions,
+  style,
+  testID,
+}: MedicationScheduleCardProps) {
+  const isTrackedSchedule = doseStatus !== undefined;
+  const isPendingResponse = doseStatus === 'pending' || doseStatus === 'unanswered';
+  const responseNotice = isTrackedSchedule
+    ? isPendingResponse
+      ? responseActions?.canRespond
+        ? 'Chưa ghi nhận phản hồi tự báo'
+        : responseActions?.blockedMessage ?? 'Chưa ghi nhận phản hồi – chờ đến giờ dự kiến'
+      : 'Phản hồi do bạn tự báo, không phải xác nhận y tế'
+    : 'Lịch dự kiến – Chưa ghi nhận uống';
+
+  return (
+    <View
+      accessibilityLabel={`Lịch dự kiến lúc ${localTime}: ${medicationName}, ${strengthText}, ${recurrenceText}. ${responseNotice}.`}
+      style={[styles.card, style]}
+      testID={testID}>
+      <View style={styles.header}>
+        <Text maxFontSizeMultiplier={1.5} style={styles.time}>
+          {localTime}
+        </Text>
+        <View style={styles.copy}>
+          <Text maxFontSizeMultiplier={1.45} style={styles.name}>
+            {medicationName}
+          </Text>
+          <Text maxFontSizeMultiplier={1.5} style={styles.details}>
+            {strengthText}
+          </Text>
+        </View>
+        {isTrackedSchedule ? <StatusBadge status={doseStatus} /> : null}
+      </View>
+      <Text maxFontSizeMultiplier={1.5} style={styles.recurrence}>
+        {recurrenceText}
+      </Text>
+      <Text maxFontSizeMultiplier={1.5} style={styles.notice}>
+        {responseNotice}
+      </Text>
+      {isTrackedSchedule && isPendingResponse && responseActions ? (
+        <View style={styles.actions}>
+          <PrimaryButton
+            accessibilityHint="Ghi nhận đây là phản hồi do bạn tự báo, không phải xác nhận y tế"
+            disabled={!responseActions.canRespond}
+            label="Đã uống"
+            loading={responseActions.isSubmitting}
+            onPress={responseActions.onReportTaken}
+          />
+          <SecondaryButton
+            accessibilityHint="Ghi nhận bỏ qua là phản hồi do bạn tự báo, không phải xác nhận y tế"
+            disabled={!responseActions.canRespond || responseActions.isSubmitting}
+            label="Bỏ qua"
+            onPress={responseActions.onReportSkipped}
+          />
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  card: {
+    gap: medicareSpacing.sm,
+    padding: medicareSpacing.lg,
+    borderRadius: medicareRadius.lg,
+    borderWidth: 1,
+    borderColor: medicareColors.border,
+    backgroundColor: medicareColors.surfaceElevated,
+    ...medicareShadow,
+  },
+  header: {
+    flexDirection: 'row',
+    gap: medicareSpacing.md,
+    alignItems: 'flex-start',
+  },
+  time: {
+    minWidth: 60,
+    color: medicareColors.primary,
+    fontSize: medicareTypography.subheading,
+    fontWeight: '800',
+    lineHeight: 29,
+  },
+  copy: {
+    flex: 1,
+    gap: medicareSpacing.xxs,
+  },
+  name: {
+    color: medicareColors.text,
+    fontSize: medicareTypography.subheading,
+    fontWeight: '700',
+    lineHeight: 29,
+  },
+  details: {
+    color: medicareColors.textMuted,
+    fontSize: medicareTypography.body,
+    lineHeight: medicareTypography.lineHeightBody,
+  },
+  recurrence: {
+    color: medicareColors.primary,
+    fontSize: medicareTypography.label,
+    fontWeight: '700',
+    lineHeight: 23,
+  },
+  notice: {
+    color: medicareColors.textMuted,
+    fontSize: medicareTypography.bodySmall,
+    lineHeight: 22,
+  },
+  actions: {
+    gap: medicareSpacing.sm,
+  },
+});

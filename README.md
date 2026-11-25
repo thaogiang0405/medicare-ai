@@ -1,134 +1,92 @@
 # MediCare AI
 
-Ứng dụng Flutter Android hỗ trợ người cao tuổi quản lý lịch thuốc và cho phép người chăm sóc theo dõi dữ liệu **sau khi được cấp quyền rõ ràng**.
+MediCare AI hiện được phát triển và vận hành bằng **React Native + Expo SDK 58** trong thư mục [`expo-app/`](expo-app/). Đây là ứng dụng chính thức duy nhất của repository, dùng TypeScript strict, Expo Router, Zustand và Firebase JavaScript SDK modular.
 
 > MediCare AI hỗ trợ ghi nhận thông tin, không thay thế bác sĩ. Ứng dụng không tư vấn liều, không tự suy luận dữ liệu thiếu từ đơn thuốc, và trạng thái “Đã uống” chỉ là tự báo cáo.
 
-## Trạng thái hiện tại — Phase 2.1: Firebase Setup
+## Công nghệ và tính năng
 
-Đã có nền Flutter Android, kiến trúc feature-first, điều hướng GoRouter, state Riverpod, theme tiếng Việt dễ tiếp cận và luồng dữ liệu giả lập có thể thao tác:
+- Firebase Authentication Email/Password với AsyncStorage persistence.
+- Hồ sơ người dùng và phân quyền route dựa trên role đã lưu; role UI không thay thế Security Rules.
+- Quản lý thuốc, lịch dùng thuốc, DoseEvent tự khai báo và lịch sử phân trang.
+- Nhắc thuốc cục bộ theo UID/thiết bị; không có FCM hoặc server scheduler trong luồng hiện hành.
+- Quét đơn thuốc review-first bằng Tesseract.js tiếng Việt + tiếng Anh chạy trên thiết bị; người dùng phải xem và xác nhận trước khi lưu.
+- Family Care MVP: người sở hữu hồ sơ chủ động tạo lời mời, caregiver claim bằng UID và chỉ được đọc sau khi owner phê duyệt; owner có thể thu hồi quyền. Caregiver không được ghi sửa thuốc/lịch.
 
-- Splash, onboarding, đăng nhập/đăng ký trình diễn và chọn vai trò.
-- Repository contract cùng `Mock*Repository` in-memory cho auth, thuốc và dose event; UI không phụ thuộc Firebase trực tiếp.
-- Trang chủ cho Người cao tuổi và Người chăm sóc.
-- Danh sách thuốc, thêm thuốc, chi tiết/ngừng thuốc trong bộ nhớ.
-- Lịch thuốc hôm nay; nút `Đã uống`, `Bỏ qua`, `Nhắc lại` cập nhật trạng thái giả lập.
-- Luồng kiểm tra đơn thuốc có bước xác nhận bắt buộc trước khi tạo thuốc giả lập.
-- Các màn hình nền tảng cho lịch sử, liên kết gia đình, theo dõi, hồ sơ và cài đặt.
-- Thiết kế Firestore, Security Rules, Storage Rules và indexes ở mức sẵn sàng tích hợp Firebase.
-- Firebase Android đã được liên kết chính thức với project `medicare-ai-cf804` thông qua FlutterFire CLI.
-- `firebase_core`, `firebase_auth` và `cloud_firestore` đã được cài đặt; ứng dụng chỉ khởi tạo Firebase, chưa dùng chúng để xác thực hoặc đọc/ghi dữ liệu.
+Các tích hợp Firestore và Family Care được kiểm soát bằng feature flags trong `.env`. Các flag trong `.env.example` mặc định tắt; public flag chỉ điều khiển routing/UI, không cấp quyền truy cập. Firestore Security Rules mới là lớp phân quyền thực tế.
 
-Firebase Authentication, Firestore CRUD, camera/ML Kit OCR, local notification, TTS và FCM **chưa được triển khai**. Không có dữ liệu y tế thật, service account hoặc khóa bí mật phía server trong repository.
+## Firebase: môi trường và an toàn phát hành
 
-## Chạy dự án
+| Môi trường | Project ID | Project Number | Phạm vi |
+|---|---|---:|---|
+| Production | `medicare-ai-cf804` | `354989416256` | Không dùng trong đợt QA Family Care này |
+| Staging | `medicare-ai-staging` | `318128431668` | Môi trường duy nhất cho QA Family Care |
 
-Yêu cầu: Flutter 3.47.5 hoặc SDK tương thích Dart `^3.13.4`, Android SDK và một emulator/thiết bị Android.
+Để chạy Expo, sao chép `expo-app/.env.example` thành `expo-app/.env` và điền Web App config lấy đúng từ Firebase project cần kiểm thử. File `.env` bị Git ignore; không commit credential, service account hoặc private key.
 
-```powershell
-flutter pub get
-flutter analyze
-flutter test
-flutter run
-```
-
-Package Android hiện tại là `com.medicareai.medicare_ai`. Đổi package/bộ ký ứng dụng trước khi phát hành.
-
-## Cấu trúc chính
-
-```text
-lib/
-  app/                 # App shell, GoRouter, theme và token trợ năng
-  core/                # Widget và utilities dùng chung
-  features/
-    auth/
-    elderly_home/
-    medication/
-    schedule/
-    dose_event/
-    prescription_scanner/
-    family_connection/
-    caregiver_monitoring/
-    profile/
-    settings/
-docs/                  # Quyết định kiến trúc và mô hình dữ liệu
-firestore.rules         # Quy tắc truy cập Firestore mẫu
-storage.rules           # Quy tắc truy cập Firebase Storage mẫu
-firestore.indexes.json  # Composite indexes dự kiến
-```
-
-Mỗi feature sẽ phát triển theo hướng `data → domain → presentation`: UI không gọi Firebase/ML Kit/notification trực tiếp. Phase 1 dùng `Mock*Repository` trong data layer và `NotifierProvider` ở presentation để luồng UI có thể kiểm thử trước khi cấu hình backend.
-
-## Tài liệu thiết kế
-
-- [Kiến trúc, yêu cầu và roadmap](docs/architecture.md)
-- [Mô hình Firestore và đồng bộ](docs/firestore-data-model.md)
-- [Hướng dẫn an toàn Firebase Rules](docs/firebase-security.md)
-- [Phạm vi Phase 1](docs/phase-1-foundation.md)
-- [Firebase Setup — Phase 2.1](docs/firebase-setup.md)
-
-## Firebase Setup — Phase 2.1
-
-Firebase Project hiện dùng: `medicare-ai-cf804`.
-
-Android package: `com.medicareai.medicare_ai`.
-
-Firebase initialization chưa được xác minh bằng lần chạy thực tế trên Android device hoặc emulator. Hiện tại chỉ đã kiểm tra dependency resolution, static analysis và widget test; cần chạy `flutter run` trên Android trước khi coi native integration đã được kiểm chứng trên thiết bị.
-
-FlutterFire đã tạo và cập nhật các file client configuration sau:
-
-- `lib/firebase_options.dart`
-- `android/app/google-services.json`
-- Android Google Services Gradle plugin và metadata `flutter` trong `firebase.json`
-
-Ba package nền tảng hiện có:
-
-- `firebase_core`
-- `firebase_auth`
-- `cloud_firestore`
-
-Thành viên mới chỉ cần chạy:
+Đối với Family Care, chỉ dùng Web App config của `medicare-ai-staging`, đặt `EXPO_PUBLIC_FIREBASE_PROJECT_ID=medicare-ai-staging` và bật các flag cần thiết sau khi owner phê duyệt. Chạy preflight ngoại tuyến từ thư mục `expo-app/`:
 
 ```powershell
-flutter pub get
-flutter analyze
-flutter test
-flutter run
+node scripts/check-family-care-staging.mjs --project medicare-ai-staging
 ```
 
-Không tự viết `firebase_options.dart`. Khi cần thêm platform Firebase mới, chạy lại:
+Preflight khóa đúng Project ID staging, Sender ID và Web App ID theo Project Number đã duyệt; chặn production và Emulator project. Preflight không kết nối Firebase, không xác minh Rules đã deploy và không deploy tài nguyên.
+
+Chỉ sau khi owner review `firestore.rules` và `firestore.indexes.json`, preflight PASS, và xác nhận Firebase Console đang mở đúng Staging project, mới chạy từ `expo-app/`:
 
 ```powershell
-flutterfire configure --project=medicare-ai-cf804 --platforms=android --android-package-name=com.medicareai.medicare_ai
+npx firebase-tools@15.34.1 --config ../firebase.json deploy --only firestore:rules,firestore:indexes --project medicare-ai-staging
 ```
 
-`firebase_options.dart` và `google-services.json` là client configuration được version-control để nhóm dùng cùng Android app. Không commit `.env`, service account JSON, private key, keystore hoặc `key.properties`.
+Lệnh trên chỉ deploy Firestore Rules và Indexes vào Staging. Không deploy Functions, Storage hoặc Hosting; không thay đổi Billing. Không chạy lệnh deploy trên Production. Trong PR này chưa thực hiện bất kỳ thao tác deploy Firebase nào.
 
-### Emulator cho giai đoạn kiểm thử
+**Giới hạn dữ liệu cần biết:** Firestore Rules cho phép caregiver đọc toàn bộ field của document thuốc/lịch đang active; Rules không thể lọc field riêng lẻ trong một document. Owner UI nêu rõ phạm vi chia sẻ, caregiver UI chỉ hiển thị tên thuốc và giờ dự kiến, đồng thời client xác thực schema. Nếu cần bảo đảm field-level access ở backend, phải chuyển sang thiết kế projection document riêng trước khi mở rộng phạm vi sử dụng.
 
-Khi bắt đầu kiểm thử Auth/Firestore, cài Firebase Emulator Suite và thêm emulator configuration có chủ đích. Chưa chạy hoặc deploy gì ở Phase 2.1.
+## Chạy ứng dụng
+
+Yêu cầu: Node.js 24.12.0 và npm. Tất cả lệnh dưới đây chạy trong `expo-app/`, không chạy từ thư mục gốc repository.
 
 ```powershell
-# Chỉ chạy khi nhóm đã thống nhất thay đổi firebase.json.
-firebase init emulators
-firebase emulators:start --only auth,firestore
+cd expo-app
+npm ci
+npm run typecheck
+npm run lint
+npm test
+npm run test:rules
+npx expo start --clear --lan
 ```
 
-Xem [hướng dẫn Firebase Setup chi tiết](docs/firebase-setup.md) trước khi thêm service hoặc deploy Security Rules.
+Expo Android/iOS export:
 
-## Milestone đề xuất
+```powershell
+npx expo export --platform android --output-dir <output-directory>
+npx expo export --platform ios --output-dir <output-directory>
+```
 
-1. **Foundation** — hoàn thành skeleton, mock flow, docs và security design.
-2. **Authentication & Profile** — Firebase Auth, profile, role redirect và Emulator tests.
-3. **Medication & Scheduling** — CRUD Firestore, schedule versioning, dose events và lịch sử bất biến.
-4. **Reminders** — local notification, exact-alarm/notification permission, dedupe và kiểm thử máy thật.
-5. **OCR & TTS** — camera/ảnh, ML Kit, editable review bắt buộc, tiếng Việt TTS.
-6. **Family Care** — invite/approval/revoke qua Cloud Functions, dashboard caregiver, FCM overdue.
-7. **Hardening** — tests, offline UX, accessibility audit, demo data và Android release signing.
+## Family Care — release gate
 
-## An toàn dữ liệu
+- Một chiều: owner tạo mã mời; caregiver claim; owner xác minh và phê duyệt UID.
+- Chỉ link `active` mới cho phép đọc thuốc/lịch. Caregiver không được ghi sửa, đọc DoseEvents, OCR hoặc dữ liệu không active.
+- Owner revoke sẽ dừng listener sức khỏe; các lần đọc mới bị Firestore Rules từ chối.
+- Link `revoked`/`rejected` chỉ có thể quay lại `pending` khi caregiver claim mã mời mới do owner phát hành; owner phải phê duyệt lại.
+- Feature flag mặc định tắt. Chỉ bật trên Staging sau khi Rules/Indexes được owner duyệt và deploy.
+- Dùng hai tài khoản test và dữ liệu giả. Chưa coi staging/device QA là hoàn tất nếu chưa ghi nhận kết quả checklist trong [Family Care release checklist](docs/family-care-owner-approved-links.md).
 
-- Không ghi đơn thuốc, OCR raw text, token hoặc thông tin nhạy cảm vào log/analytics.
-- Tất cả server timestamp dùng Firestore `Timestamp` (UTC); UI chuyển sang timezone hồ sơ.
-- Lịch sử dose event dùng ID xác định để chống trùng; sửa lịch chỉ có hiệu lực cho lần tương lai.
-- Người chăm sóc mất quyền không được đọc dữ liệu mới. Dữ liệu đã xem trước đó không thể bị “thu hồi” khỏi bộ nhớ con người/thiết bị, vì vậy điều này phải được nêu rõ trong chính sách quyền riêng tư.
+## Tài liệu chính
+
+- [Expo app README](expo-app/README.md)
+- [Mô hình dữ liệu Firestore](docs/firestore-data-model.md)
+- [Firebase Security Rules](docs/firebase-security.md)
+- [Firebase JavaScript SDK Integration](docs/firebase-js-sdk-integration.md)
+- [Firebase Authentication](docs/firebase-authentication.md)
+- [Firestore User Profiles](docs/firestore-user-profiles.md)
+- [Medication Management M3.1](docs/medication-management-m3.1.md)
+- [Firestore Medication CRUD M3.2](docs/medication-management-m3.2.md)
+- [Medication Schedules M3.3](docs/medication-schedules-m3.3.md)
+- [Medication workflow and local reminders](docs/medication-workflow-finalization.md)
+- [Prescription OCR — AI Phase 1](docs/prescription-ocr-ai-phase-1.md)
+- [Family Care owner-approved links and QA checklist](docs/family-care-owner-approved-links.md)
+
+## Mã nguồn Flutter cũ
+
+Các thư mục Flutter cũ ở repository root (`lib/`, `android/`, `test/` và các file `pubspec.*`) không còn là ứng dụng được hỗ trợ, không thuộc luồng build/release hiện hành và không được dùng làm baseline cho tính năng mới. Chúng được giữ lại tạm thời để tham chiếu lịch sử; ứng dụng đang phát triển là `expo-app/`.

@@ -5,169 +5,554 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function ownsProfile(elderlyId) {
-      return signedIn() && request.auth.uid == elderlyId;
+    function ownsUser(uid) {
+      return signedIn() && request.auth.uid == uid;
     }
 
-    function linkExists(elderlyId) {
-      return signedIn()
-        && exists(/databases/$(database)/documents/elderlyProfiles/$(elderlyId)/caregiverLinks/$(request.auth.uid));
-    }
-
-    function activeLink(elderlyId) {
-      return linkExists(elderlyId)
-        && get(/databases/$(database)/documents/elderlyProfiles/$(elderlyId)/caregiverLinks/$(request.auth.uid)).data.status == 'active';
-    }
-
-    function canReadProfile(elderlyId) {
-      return activeLink(elderlyId)
-        && get(/databases/$(database)/documents/elderlyProfiles/$(elderlyId)/caregiverLinks/$(request.auth.uid)).data.scopes.profileRead == true;
-    }
-
-    function canReadMedications(elderlyId) {
-      return activeLink(elderlyId)
-        && get(/databases/$(database)/documents/elderlyProfiles/$(elderlyId)/caregiverLinks/$(request.auth.uid)).data.scopes.medicationsRead == true;
-    }
-
-    function canManageMedications(elderlyId) {
-      return activeLink(elderlyId)
-        && get(/databases/$(database)/documents/elderlyProfiles/$(elderlyId)/caregiverLinks/$(request.auth.uid)).data.scopes.medicationsWrite == true;
-    }
-
-    function canReadSchedules(elderlyId) {
-      return activeLink(elderlyId)
-        && get(/databases/$(database)/documents/elderlyProfiles/$(elderlyId)/caregiverLinks/$(request.auth.uid)).data.scopes.schedulesRead == true;
-    }
-
-    function canManageSchedules(elderlyId) {
-      return activeLink(elderlyId)
-        && get(/databases/$(database)/documents/elderlyProfiles/$(elderlyId)/caregiverLinks/$(request.auth.uid)).data.scopes.schedulesWrite == true;
-    }
-
-    function canReadDoseHistory(elderlyId) {
-      return activeLink(elderlyId)
-        && get(/databases/$(database)/documents/elderlyProfiles/$(elderlyId)/caregiverLinks/$(request.auth.uid)).data.scopes.doseHistoryRead == true;
-    }
-
-    function canReadOcr(elderlyId) {
-      return activeLink(elderlyId)
-        && get(/databases/$(database)/documents/elderlyProfiles/$(elderlyId)/caregiverLinks/$(request.auth.uid)).data.scopes.ocrRead == true;
-    }
-
-    function belongsToProfile(elderlyId) {
-      return request.resource.data.elderlyId == elderlyId;
-    }
-
-    function preservesRecordIdentity() {
-      return request.resource.data.elderlyId == resource.data.elderlyId
-        && request.resource.data.createdBy == resource.data.createdBy
-        && request.resource.data.createdAt == resource.data.createdAt;
-    }
-
-    function isValidDoseResponse() {
-      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'status', 'respondedAt', 'respondedBy', 'responseSource', 'updatedAt'
+    function hasExactUserProfileFields(data) {
+      return data.keys().hasAll([
+          'uid',
+          'displayName',
+          'primaryRole',
+          'roles',
+          'locale',
+          'timeZone',
+          'onboardingCompleted',
+          'createdAt',
+          'updatedAt'
         ])
-        && request.resource.data.respondedBy == request.auth.uid
-        && request.resource.data.status in ['reportedTaken', 'reportedSkipped', 'snoozed'];
+        && data.keys().hasOnly([
+          'uid',
+          'displayName',
+          'primaryRole',
+          'roles',
+          'locale',
+          'timeZone',
+          'onboardingCompleted',
+          'createdAt',
+          'updatedAt'
+        ]);
     }
 
-    match /users/{uid} {
-      allow create: if signedIn()
-        && request.auth.uid == uid
-        && request.resource.data.uid == request.auth.uid;
-      allow read, delete: if signedIn() && request.auth.uid == uid;
-      allow update: if signedIn()
-        && request.auth.uid == uid
+    function hasSingleValidRole(data) {
+      return data.primaryRole is string
+        && data.primaryRole in ['elderly', 'caregiver']
+        && data.roles is map
+        && data.roles.keys().hasAll(['elderly', 'caregiver'])
+        && data.roles.keys().hasOnly(['elderly', 'caregiver'])
+        && data.roles.elderly is bool
+        && data.roles.caregiver is bool
+        && (
+          (data.primaryRole == 'elderly'
+            && data.roles.elderly == true
+            && data.roles.caregiver == false)
+          || (data.primaryRole == 'caregiver'
+            && data.roles.elderly == false
+            && data.roles.caregiver == true)
+        );
+    }
+
+    function hasValidUserProfileSchema(data) {
+      return hasExactUserProfileFields(data)
+        && data.uid is string
+        && data.displayName is string
+        && data.displayName.size() >= 2
+        && data.displayName.size() <= 120
+        && hasSingleValidRole(data)
+        && data.locale == 'vi'
+        && data.timeZone == 'Asia/Ho_Chi_Minh'
+        && data.onboardingCompleted is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidInitialUserProfile(uid) {
+      return ownsUser(uid)
+        && hasValidUserProfileSchema(request.resource.data)
+        && request.resource.data.uid == uid
+        && request.resource.data.onboardingCompleted == true
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    function isValidUserProfileUpdate(uid) {
+      return ownsUser(uid)
+        && hasValidUserProfileSchema(request.resource.data)
+        && resource.data.uid == uid
         && request.resource.data.uid == resource.data.uid
+        && request.resource.data.uid == uid
         && request.resource.data.primaryRole == resource.data.primaryRole
-        && request.resource.data.roles == resource.data.roles;
+        && request.resource.data.roles == resource.data.roles
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.onboardingCompleted == resource.data.onboardingCompleted
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'displayName',
+          'locale',
+          'timeZone',
+          'updatedAt'
+        ]);
+    }
 
-      match /devices/{deviceId} {
-        allow read, create, update, delete: if signedIn() && request.auth.uid == uid;
-      }
+    function hasValidElderlyProfile(uid) {
+      return ownsUser(uid)
+        && exists(/databases/$(database)/documents/users/$(uid))
+        && hasValidUserProfileSchema(get(/databases/$(database)/documents/users/$(uid)).data)
+        && get(/databases/$(database)/documents/users/$(uid)).data.uid == uid
+        && get(/databases/$(database)/documents/users/$(uid)).data.primaryRole == 'elderly'
+        && get(/databases/$(database)/documents/users/$(uid)).data.roles.elderly == true
+        && get(/databases/$(database)/documents/users/$(uid)).data.roles.caregiver == false
+        && get(/databases/$(database)/documents/users/$(uid)).data.onboardingCompleted == true;
+    }
 
-      match /notifications/{notificationId} {
-        allow read: if signedIn() && request.auth.uid == uid;
-        allow write: if false;
-      }
+    function hasExactMedicationFields(data) {
+      return data.keys().hasAll([
+          'ownerUid',
+          'name',
+          'strengthText',
+          'directionsText',
+          'status',
+          'createdAt',
+          'updatedAt',
+          'revision'
+        ])
+        && data.keys().hasOnly([
+          'ownerUid',
+          'name',
+          'strengthText',
+          'directionsText',
+          'status',
+          'createdAt',
+          'updatedAt',
+          'revision'
+        ]);
+    }
 
-      match /elderlyIndex/{elderlyId} {
-        allow read: if signedIn() && request.auth.uid == uid;
-        allow write: if false;
+    function hasValidMedicationSchema(data) {
+      return hasExactMedicationFields(data)
+        && data.ownerUid is string
+        && data.name is string
+        && data.name.size() >= 1
+        && data.name.size() <= 120
+        && data.name.matches('.*\\S.*')
+        && data.strengthText is string
+        && data.strengthText.size() <= 80
+        && data.directionsText is string
+        && data.directionsText.size() <= 500
+        && data.status is string
+        && data.status in ['active', 'inactive']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && data.revision is int
+        && data.revision >= 1;
+    }
+
+    function isValidMedicationCreate(uid) {
+      return hasValidElderlyProfile(uid)
+        && hasValidMedicationSchema(request.resource.data)
+        && request.resource.data.ownerUid == uid
+        && request.resource.data.status == 'active'
+        && request.resource.data.revision == 1
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    function isValidMedicationUpdate(uid) {
+      return hasValidElderlyProfile(uid)
+        && hasValidMedicationSchema(resource.data)
+        && hasValidMedicationSchema(request.resource.data)
+        && resource.data.ownerUid == uid
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.ownerUid == uid
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.revision == resource.data.revision + 1
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'name',
+          'strengthText',
+          'directionsText',
+          'status',
+          'updatedAt',
+          'revision'
+        ])
+        && (
+          (resource.data.status == 'active'
+            && request.resource.data.status in ['active', 'inactive'])
+          || (resource.data.status == 'inactive'
+            && request.resource.data.status == 'inactive')
+        );
+    }
+
+    function hasExactMedicationScheduleFields(data) {
+      return data.keys().hasAll([
+          'ownerUid',
+          'medicationId',
+          'recurrence',
+          'localTime',
+          'weekdays',
+          'startDate',
+          'endDate',
+          'timeZone',
+          'active',
+          'revision',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerUid',
+          'medicationId',
+          'recurrence',
+          'localTime',
+          'weekdays',
+          'startDate',
+          'endDate',
+          'timeZone',
+          'active',
+          'revision',
+          'createdAt',
+          'updatedAt'
+        ]);
+    }
+
+    function hasValidMedicationScheduleDate(value) {
+      // ISO calendar date in the reviewed M3.3 range, including leap days.
+      return value is string
+        && (
+          value.matches('^20[0-9]{2}-(?:(?:01|03|05|07|08|10|12)-(?:0[1-9]|[12][0-9]|3[01])|(?:04|06|09|11)-(?:0[1-9]|[12][0-9]|30)|02-(?:0[1-9]|1[0-9]|2[0-8]))$')
+          || value.matches('^20(?:00|0[48]|[2468][048]|[13579][26])-02-29$')
+        );
+    }
+
+    function hasValidMedicationScheduleWeekdays(recurrence, weekdays) {
+      return weekdays is list
+        && hasValidMedicationScheduleWeekdaySet(recurrence, weekdays.toSet(), weekdays.size());
+    }
+
+    function hasValidMedicationScheduleWeekdaySet(recurrence, weekdaySet, weekdayCount) {
+      return weekdayCount >= 1
+        && weekdayCount <= 7
+        && weekdaySet.size() == weekdayCount
+        && weekdaySet.hasOnly([1, 2, 3, 4, 5, 6, 7])
+        && (
+          (recurrence == 'daily'
+            && weekdayCount == 7
+            && weekdaySet.hasAll([1, 2, 3, 4, 5, 6, 7]))
+          || (recurrence == 'weekly' && weekdayCount >= 1)
+        );
+    }
+
+    function hasValidMedicationScheduleSchema(data) {
+      return hasExactMedicationScheduleFields(data)
+        && data.ownerUid is string
+        && data.medicationId is string
+        && data.medicationId.size() >= 1
+        && data.medicationId.size() <= 150
+        && data.medicationId.matches('^[^/]+$')
+        && data.recurrence is string
+        && data.recurrence in ['daily', 'weekly']
+        && data.localTime is string
+        && data.localTime.matches('^(?:[01][0-9]|2[0-3]):[0-5][0-9]$')
+        && hasValidMedicationScheduleWeekdays(data.recurrence, data.weekdays)
+        && hasValidMedicationScheduleDate(data.startDate)
+        && (
+          data.endDate == null
+          || (hasValidMedicationScheduleDate(data.endDate) && data.endDate >= data.startDate)
+        )
+        && data.timeZone == 'Asia/Ho_Chi_Minh'
+        && data.active is bool
+        && data.revision is int
+        && data.revision >= 1
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function hasActiveOwnedMedication(uid, medicationId) {
+      return medicationId is string
+        && exists(/databases/$(database)/documents/elderlyProfiles/$(uid)/medications/$(medicationId))
+        && isActiveOwnedMedicationData(
+          uid,
+          get(/databases/$(database)/documents/elderlyProfiles/$(uid)/medications/$(medicationId)).data
+        );
+    }
+
+    function isActiveOwnedMedicationData(uid, data) {
+      return hasValidMedicationSchema(data)
+        && data.ownerUid == uid
+        && data.status == 'active';
+    }
+
+    function isValidMedicationScheduleCreate(uid) {
+      return hasValidElderlyProfile(uid)
+        && hasValidMedicationScheduleSchema(request.resource.data)
+        && request.resource.data.ownerUid == uid
+        && request.resource.data.active == true
+        && request.resource.data.revision == 1
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && hasActiveOwnedMedication(uid, request.resource.data.medicationId);
+    }
+
+    function isValidMedicationScheduleUpdate(uid) {
+      return hasValidElderlyProfile(uid)
+        && hasValidMedicationScheduleSchema(request.resource.data)
+        && resource.data.ownerUid == uid
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.ownerUid == uid
+        && request.resource.data.medicationId == resource.data.medicationId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.revision == resource.data.revision + 1
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'recurrence',
+          'localTime',
+          'weekdays',
+          'startDate',
+          'endDate',
+          'active',
+          'updatedAt',
+          'revision'
+        ])
+        && (
+          (resource.data.active == false && request.resource.data.active == false)
+          || (
+            resource.data.active == true
+            && (
+              request.resource.data.active == false
+              || hasActiveOwnedMedication(uid, resource.data.medicationId)
+            )
+          )
+        );
+    }
+
+    function hasExactDoseEventFields(data) {
+      return data.keys().hasAll([
+          'ownerUid',
+          'scheduleId',
+          'medicationId',
+          'occurrenceKey',
+          'scheduledAt',
+          'scheduledLocalDate',
+          'scheduledLocalTime',
+          'timeZone',
+          'medicationSnapshot',
+          'status',
+          'responseSource',
+          'respondedAt',
+          'respondedBy',
+          'responseHistory',
+          'revision',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerUid',
+          'scheduleId',
+          'medicationId',
+          'occurrenceKey',
+          'scheduledAt',
+          'scheduledLocalDate',
+          'scheduledLocalTime',
+          'timeZone',
+          'medicationSnapshot',
+          'status',
+          'responseSource',
+          'respondedAt',
+          'respondedBy',
+          'responseHistory',
+          'revision',
+          'createdAt',
+          'updatedAt'
+        ]);
+    }
+
+    function hasValidDoseEventMedicationSnapshot(snapshot) {
+      return snapshot is map
+        && snapshot.keys().hasAll(['name', 'strengthText', 'directionsText'])
+        && snapshot.keys().hasOnly(['name', 'strengthText', 'directionsText'])
+        && snapshot.name is string
+        && snapshot.name.size() >= 1
+        && snapshot.name.size() <= 120
+        && snapshot.name.matches('.*\\S.*')
+        && snapshot.strengthText is string
+        && snapshot.strengthText.size() <= 80
+        && snapshot.directionsText is string
+        && snapshot.directionsText.size() <= 500;
+    }
+
+    function hasValidDoseEventResponseHistory(history, uid, status) {
+      return history is map
+        && history.keys().hasAll(['initial'])
+        && history.keys().hasOnly(['initial'])
+        && history.initial is map
+        && history.initial.keys().hasAll(['status', 'responseSource', 'respondedAt', 'respondedBy'])
+        && history.initial.keys().hasOnly(['status', 'responseSource', 'respondedAt', 'respondedBy'])
+        && history.initial.status == status
+        && history.initial.responseSource == 'selfReported'
+        && history.initial.respondedAt == request.time
+        && history.initial.respondedBy == uid;
+    }
+
+    // Firestore stores timestamps in UTC. Viet Nam does not observe daylight
+    // saving time, so adding seven hours lets Rules validate the exact HCM
+    // calendar day and wall-clock time supplied by the client.
+    function hasExactHcmDoseEventTimestamp(data) {
+      let dateParts = data.scheduledLocalDate.split('-');
+      let timeParts = data.scheduledLocalTime.split(':');
+      let hcmScheduledAt = data.scheduledAt + duration.time(7, 0, 0, 0);
+      let expectedHcmScheduledAt = timestamp.date(
+        int(dateParts[0]),
+        int(dateParts[1]),
+        int(dateParts[2])
+      ) + duration.time(int(timeParts[0]), int(timeParts[1]), 0, 0);
+      return hcmScheduledAt == expectedHcmScheduledAt;
+    }
+
+    function hasValidDoseEventSchema(data, uid) {
+      return hasExactDoseEventFields(data)
+        && data.ownerUid is string
+        && data.scheduleId is string
+        && data.scheduleId.size() >= 1
+        && data.scheduleId.size() <= 150
+        && data.scheduleId.matches('^[^/]+$')
+        && data.medicationId is string
+        && data.medicationId.size() >= 1
+        && data.medicationId.size() <= 150
+        && data.medicationId.matches('^[^/]+$')
+        && data.occurrenceKey is string
+        && data.scheduledLocalDate is string
+        && hasValidMedicationScheduleDate(data.scheduledLocalDate)
+        && data.scheduledLocalTime is string
+        && data.scheduledLocalTime.matches('^(?:[01][0-9]|2[0-3]):[0-5][0-9]$')
+        && data.occurrenceKey == data.scheduledLocalDate + 'T' + data.scheduledLocalTime + '@Asia/Ho_Chi_Minh'
+        && data.scheduledAt is timestamp
+        && data.scheduledAt <= request.time
+        && hasExactHcmDoseEventTimestamp(data)
+        && data.timeZone == 'Asia/Ho_Chi_Minh'
+        && hasValidDoseEventMedicationSnapshot(data.medicationSnapshot)
+        && data.status is string
+        && data.status in ['reportedTaken', 'reportedSkipped']
+        && data.responseSource == 'selfReported'
+        && data.respondedAt == request.time
+        && data.respondedBy == uid
+        && hasValidDoseEventResponseHistory(data.responseHistory, uid, data.status)
+        && data.revision == 1
+        && data.createdAt == request.time
+        && data.updatedAt == request.time;
+    }
+
+    function hasValidDoseEventScheduleReference(uid, data) {
+      let schedulePath = /databases/$(database)/documents/elderlyProfiles/$(uid)/medicationSchedules/$(data.scheduleId);
+      let schedule = get(schedulePath).data;
+      let hcmScheduledAt = data.scheduledAt + duration.time(7, 0, 0, 0);
+      return exists(schedulePath)
+        && schedule.ownerUid == uid
+        && schedule.active == true
+        && schedule.medicationId == data.medicationId
+        && schedule.localTime == data.scheduledLocalTime
+        && schedule.timeZone == data.timeZone
+        && schedule.recurrence is string
+        && schedule.recurrence in ['daily', 'weekly']
+        && schedule.weekdays is list
+        && (
+          schedule.recurrence == 'daily'
+          || (
+            schedule.recurrence == 'weekly'
+            && schedule.weekdays.toSet().hasAll([hcmScheduledAt.dayOfWeek()])
+          )
+        )
+        && schedule.startDate is string
+        && data.scheduledLocalDate >= schedule.startDate
+        && (
+          schedule.endDate == null
+          || (schedule.endDate is string && data.scheduledLocalDate <= schedule.endDate)
+        );
+    }
+
+    function hasValidDoseEventMedicationReference(uid, data) {
+      let medicationPath = /databases/$(database)/documents/elderlyProfiles/$(uid)/medications/$(data.medicationId);
+      let medication = get(medicationPath).data;
+      return exists(medicationPath)
+        // M3.2 Rules enforce the exact persisted schema; only an active
+        // same-owner medication can anchor a new self-report.
+        && medication.ownerUid == uid
+        && medication.status == 'active'
+        && medication.name == data.medicationSnapshot.name
+        && medication.strengthText == data.medicationSnapshot.strengthText
+        && medication.directionsText == data.medicationSnapshot.directionsText;
+    }
+
+    function isValidDoseEventCreate(uid, doseEventId) {
+      return hasValidElderlyProfile(uid)
+        && hasValidDoseEventSchema(request.resource.data, uid)
+        && request.resource.data.ownerUid == uid
+        && doseEventId == request.resource.data.scheduleId
+          + '__' + request.resource.data.scheduledLocalDate
+          + '__' + request.resource.data.scheduledLocalTime
+        && hasValidDoseEventScheduleReference(uid, request.resource.data)
+        && hasValidDoseEventMedicationReference(uid, request.resource.data);
+    }
+
+    // Migration 2.3 profile surface. `get` deliberately
+    // excludes collection queries so users cannot enumerate other profiles.
+    match /users/{uid} {
+      allow get: if ownsUser(uid);
+      allow list: if false;
+      allow create: if isValidInitialUserProfile(uid);
+      allow update: if isValidUserProfileUpdate(uid);
+      allow delete: if false;
+
+      // Device, notification, and index schemas are not part of M2.3 yet.
+      match /{document=**} {
+        allow read, write: if false;
       }
     }
 
-    match /caregiverProfiles/{caregiverId} {
-      allow create, read, update, delete: if signedIn() && request.auth.uid == caregiverId;
-    }
-
-    match /caregiverInvites/{inviteId} {
+    // A role selected by the client is not a health-data authorization grant.
+    // These surfaces remain closed until their schema, server workflow, and
+    // emulator coverage are approved in a later milestone.
+    match /caregiverProfiles/{document=**} {
       allow read, write: if false;
     }
 
-    match /elderlyProfiles/{elderlyId} {
-      allow create: if ownsProfile(elderlyId)
-        && request.resource.data.ownerUid == request.auth.uid;
-      allow read: if ownsProfile(elderlyId) || canReadProfile(elderlyId);
-      allow update: if ownsProfile(elderlyId)
-        && request.resource.data.ownerUid == resource.data.ownerUid;
+    match /caregiverInvites/{document=**} {
+      allow read, write: if false;
+    }
+
+    // M3.2: an elderly owner may access only their own medication records.
+    // A profile role from the UI never grants access; the canonical M2.3
+    // `/users/{uid}` document is checked for every operation.
+    match /elderlyProfiles/{uid}/medications/{medicationId} {
+      allow get, list: if hasValidElderlyProfile(uid);
+      allow create: if isValidMedicationCreate(uid);
+      allow update: if isValidMedicationUpdate(uid);
       allow delete: if false;
+    }
 
-      match /caregiverLinks/{caregiverId} {
-        allow read: if ownsProfile(elderlyId)
-          || (signedIn() && request.auth.uid == caregiverId);
-        allow write: if false;
-      }
+    // M3.3: schedules use the same elderly-owner boundary as medications.
+    // They never grant notification, DoseEvent, or caregiver access.
+    match /elderlyProfiles/{uid}/medicationSchedules/{scheduleId} {
+      allow get, list: if hasValidElderlyProfile(uid);
+      allow create: if isValidMedicationScheduleCreate(uid);
+      allow update: if isValidMedicationScheduleUpdate(uid);
+      allow delete: if false;
+    }
 
-      match /prescriptions/{prescriptionId} {
-        allow read: if ownsProfile(elderlyId);
-        allow create: if ownsProfile(elderlyId)
-          && belongsToProfile(elderlyId)
-          && request.resource.data.createdBy == request.auth.uid;
-        allow update: if ownsProfile(elderlyId) && preservesRecordIdentity();
-        allow delete: if false;
-      }
+    // M3.4: an elderly owner may create and read exactly one immutable
+    // self-reported response for a real planned occurrence. Client updates,
+    // deletes, notification documents, and caregiver access remain denied.
+    match /elderlyProfiles/{uid}/doseEvents/{doseEventId} {
+      allow get, list: if hasValidElderlyProfile(uid);
+      allow create: if isValidDoseEventCreate(uid, doseEventId);
+      allow update, delete: if false;
+    }
 
-      match /medications/{medicationId} {
-        allow read: if ownsProfile(elderlyId) || canReadMedications(elderlyId);
-        allow create: if (ownsProfile(elderlyId) || canManageMedications(elderlyId))
-          && belongsToProfile(elderlyId)
-          && request.resource.data.createdBy == request.auth.uid;
-        allow update: if (ownsProfile(elderlyId) || canManageMedications(elderlyId))
-          && preservesRecordIdentity();
-        allow delete: if false;
-      }
+    match /elderlyProfiles/{document=**} {
+      allow read, write: if false;
+    }
 
-      match /medicationSchedules/{scheduleId} {
-        allow read: if ownsProfile(elderlyId) || canReadSchedules(elderlyId);
-        allow create: if (ownsProfile(elderlyId) || canManageSchedules(elderlyId))
-          && belongsToProfile(elderlyId)
-          && request.resource.data.createdBy == request.auth.uid;
-        allow update: if (ownsProfile(elderlyId) || canManageSchedules(elderlyId))
-          && preservesRecordIdentity();
-        allow delete: if false;
-      }
-
-      match /doseEvents/{doseEventId} {
-        allow read: if ownsProfile(elderlyId) || canReadDoseHistory(elderlyId);
-        allow update: if ownsProfile(elderlyId) && isValidDoseResponse();
-        allow create, delete: if false;
-      }
-
-      match /ocrResults/{ocrResultId} {
-        allow read: if ownsProfile(elderlyId) || canReadOcr(elderlyId);
-        allow create: if ownsProfile(elderlyId)
-          && belongsToProfile(elderlyId)
-          && request.resource.data.createdBy == request.auth.uid;
-        allow update: if ownsProfile(elderlyId) && preservesRecordIdentity();
-        allow delete: if false;
-      }
-
-      match /auditLogs/{auditLogId} {
-        allow read: if ownsProfile(elderlyId);
-        allow write: if false;
-      }
+    // Explicit default-deny for every future collection and subcollection.
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

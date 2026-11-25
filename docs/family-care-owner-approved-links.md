@@ -65,10 +65,10 @@ Chỉ chạy trên **Firebase staging project riêng**, không dùng production.
 5. **Live update:** owner đổi giờ lịch giả trên A. Kỳ vọng: B nhận giờ mới mà không cần đăng xuất hoặc khởi động lại.
 6. **Phạm vi:** thử bằng tài khoản caregiver khác và UID owner khác. Kỳ vọng: không truy cập được. Kiểm thử Emulator đã bao phủ đọc inactive, DoseEvents, OCR, user profile khác và ghi sửa; không dùng dữ liệu thật để thử các trường hợp này.
 7. **Thu hồi:** owner revoke trên A. Kỳ vọng: listener metadata link trên B nhận trạng thái `revoked`, tự ngắt listener thuốc/lịch và xóa dữ liệu hiển thị; mọi lần đọc mới thuốc/lịch bị Rules từ chối. UID caregiver cũ không thể tự cấp lại quyền.
-9. **Kết nối lại:** owner tạo mã mới; cùng caregiver claim mã và link chỉ trở về `pending`. Kỳ vọng: caregiver vẫn bị từ chối đọc thuốc/lịch cho đến khi owner xác minh và duyệt lại.
-8. **Mất mạng:** khi B offline, không dùng cache để xác nhận link hoặc tiếp tục hiển thị lịch cũ. Khi A offline, approve/revoke phải báo thất bại/chưa hoàn tất; sau khi có mạng mới thử lại.
-9. **Đổi tài khoản:** B đăng xuất rồi đăng nhập caregiver khác không có link. Kỳ vọng: không còn bất kỳ tên thuốc/lịch nào của owner trước.
-10. **Dọn test:** ghi lại kết quả PASS/FAIL bằng UID giả đã che bớt; reset staging test data theo quy trình quản trị. Không chụp/chia sẻ màn hình chứa hồ sơ sức khỏe thật.
+8. **Kết nối lại:** owner tạo mã mới; cùng caregiver claim mã và link chỉ trở về `pending`. Kỳ vọng: caregiver vẫn bị từ chối đọc thuốc/lịch cho đến khi owner xác minh và duyệt lại.
+9. **Mất mạng:** khi B offline, không dùng cache để xác nhận link hoặc tiếp tục hiển thị lịch cũ. Khi A offline, approve/revoke phải báo thất bại/chưa hoàn tất; sau khi có mạng mới thử lại.
+10. **Đổi tài khoản:** B đăng xuất rồi đăng nhập caregiver khác không có link. Kỳ vọng: không còn bất kỳ tên thuốc/lịch nào của owner trước.
+11. **Dọn test:** ghi lại kết quả PASS/FAIL bằng UID giả đã che bớt; reset staging test data theo quy trình quản trị. Không chụp/chia sẻ màn hình chứa hồ sơ sức khỏe thật.
 
 **Điều kiện đạt:** không có dữ liệu trước approve; thay đổi lịch cập nhật live; revoke xóa dữ liệu khỏi UI và chặn đọc mới; offline không tạo thành công giả; đổi tài khoản không làm lộ dữ liệu phiên trước. Chỉ sau khi checklist này và review phạm vi đọc toàn bộ document được chấp thuận mới xem xét bật tính năng cho người dùng thật.
 

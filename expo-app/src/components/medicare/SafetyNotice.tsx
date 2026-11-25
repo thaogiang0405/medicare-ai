@@ -35,22 +35,22 @@ export function SafetyNotice({ title, message, tone = 'warning', style }: Safety
 const tonePalettes = {
   warning: {
     container: {
-      borderColor: medicareColors.warning,
-      backgroundColor: medicareColors.warningContainer,
+      borderColor: '#E8C77F',
+      backgroundColor: '#FFF8E9',
     },
-    text: { color: medicareColors.warning },
+    text: { color: '#674B16' },
   },
   error: {
     container: {
-      borderColor: medicareColors.error,
-      backgroundColor: medicareColors.errorContainer,
+      borderColor: '#E8B4AE',
+      backgroundColor: '#FFF2F0',
     },
     text: { color: medicareColors.onErrorContainer },
   },
   information: {
     container: {
-      borderColor: medicareColors.secondary,
-      backgroundColor: medicareColors.secondaryContainer,
+      borderColor: '#D2DFEF',
+      backgroundColor: '#F0F5FB',
     },
     text: { color: medicareColors.onSecondaryContainer },
   },
@@ -61,6 +61,7 @@ const styles = StyleSheet.create({
     gap: medicareSpacing.xxs,
     borderRadius: medicareRadius.md,
     borderWidth: 1,
+    borderLeftWidth: 4,
     padding: medicareSpacing.md,
   },
   title: {

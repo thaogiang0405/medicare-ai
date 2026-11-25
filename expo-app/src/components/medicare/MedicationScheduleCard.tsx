@@ -62,9 +62,11 @@ export function MedicationScheduleCard({
       style={[styles.card, style]}
       testID={testID}>
       <View style={styles.header}>
-        <Text maxFontSizeMultiplier={1.5} style={styles.time}>
-          {localTime}
-        </Text>
+        <View style={styles.timeBadge}>
+          <Text maxFontSizeMultiplier={1.5} style={styles.time}>
+            {localTime}
+          </Text>
+        </View>
         <View style={styles.copy}>
           <Text maxFontSizeMultiplier={1.45} style={styles.name}>
             {medicationName}
@@ -117,8 +119,16 @@ const styles = StyleSheet.create({
     gap: medicareSpacing.md,
     alignItems: 'flex-start',
   },
+  timeBadge: {
+    minWidth: 76,
+    minHeight: 64,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: medicareSpacing.xs,
+    borderRadius: medicareRadius.md,
+    backgroundColor: medicareColors.primaryContainer,
+  },
   time: {
-    minWidth: 60,
     color: medicareColors.primary,
     fontSize: medicareTypography.subheading,
     fontWeight: '800',

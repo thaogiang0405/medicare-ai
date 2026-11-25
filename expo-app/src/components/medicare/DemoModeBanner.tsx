@@ -28,18 +28,18 @@ export function DemoModeBanner({ title, description }: DemoModeBannerProps) {
 
 const styles = StyleSheet.create({
   container: {
-    gap: medicareSpacing.xxs,
+    gap: medicareSpacing.xs,
     padding: medicareSpacing.md,
-    borderRadius: medicareRadius.md,
+    borderRadius: medicareRadius.lg,
     borderWidth: 1,
-    borderColor: medicareColors.secondary,
-    backgroundColor: medicareColors.secondaryContainer,
+    borderColor: '#D2DFEF',
+    backgroundColor: '#F0F5FB',
   },
   title: {
     color: medicareColors.onSecondaryContainer,
     fontSize: medicareTypography.label,
-    fontWeight: '700',
-    lineHeight: 23,
+    fontWeight: '800',
+    lineHeight: 24,
   },
   description: {
     color: medicareColors.onSecondaryContainer,

@@ -59,7 +59,7 @@ export function PrimaryButton({
 
 const styles = StyleSheet.create({
   button: {
-    minHeight: medicareAccessibility.minTouchTarget,
+    minHeight: 60,
     borderRadius: medicareRadius.md,
     alignItems: 'center',
     justifyContent: 'center',
@@ -68,6 +68,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: medicareSpacing.lg,
     paddingVertical: medicareSpacing.sm,
     backgroundColor: medicareColors.primary,
+    shadowColor: '#183A32',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.14,
+    shadowRadius: 8,
+    elevation: 2,
   },
   label: {
     color: medicareColors.onPrimary,

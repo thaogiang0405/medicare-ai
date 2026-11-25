@@ -50,15 +50,15 @@ export function SecondaryButton({
 
 const styles = StyleSheet.create({
   button: {
-    minHeight: medicareAccessibility.minTouchTarget,
-    borderWidth: 2,
-    borderColor: medicareColors.primary,
+    minHeight: 60,
+    borderWidth: 1.5,
+    borderColor: medicareColors.border,
     borderRadius: medicareRadius.md,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: medicareSpacing.lg,
     paddingVertical: medicareSpacing.sm,
-    backgroundColor: medicareColors.transparent,
+    backgroundColor: medicareColors.surfaceElevated,
   },
   label: {
     color: medicareColors.primary,

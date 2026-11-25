@@ -76,7 +76,7 @@ export default function LoginScreen() {
 
   return (
     <Screen contentStyle={styles.content}>
-      <AppHeader onBack={() => router.back()} title="Đăng nhập" />
+      <AppHeader onBack={() => router.back()} subtitle="Tiếp tục hành trình chăm sóc sức khỏe" title="Đăng nhập" />
       <View style={styles.heading}>
         <Text accessibilityRole="header" style={styles.title}>
           Chào mừng trở lại

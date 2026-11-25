@@ -16,6 +16,7 @@ export default function OnboardingScreen() {
         <View accessibilityElementsHidden style={styles.illustration}>
           <Text style={styles.illustrationText}>♥</Text>
         </View>
+        <Text style={styles.brand}>MediCare AI</Text>
         <Text accessibilityRole="header" style={styles.title}>
           Quản lý thuốc nhẹ nhàng, rõ ràng
         </Text>
@@ -46,16 +47,25 @@ const styles = StyleSheet.create({
   },
   hero: {
     alignItems: 'center',
-    gap: medicareSpacing.lg,
+    gap: medicareSpacing.md,
     paddingTop: medicareSpacing.xxl,
+    paddingBottom: medicareSpacing.md,
+  },
+  brand: {
+    color: medicareColors.primary,
+    fontSize: medicareTypography.label,
+    fontWeight: '800',
+    letterSpacing: 1.2,
   },
   illustration: {
-    width: 112,
-    height: 112,
+    width: 120,
+    height: 120,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: medicareRadius.pill,
-    backgroundColor: medicareColors.primaryContainer,
+    borderRadius: 38,
+    borderWidth: 1,
+    borderColor: '#CBE8DE',
+    backgroundColor: '#E8F5F0',
   },
   illustrationText: {
     color: medicareColors.primary,

@@ -91,11 +91,9 @@ async function runPreflight() {
   const root = process.cwd();
   const envContents = await readFile(resolve(root, '.env'), 'utf8');
   const variables = parseEnv(envContents);
-  const firebaseSettings = JSON.parse(await readFile(resolve(root, '../firebase.json'), 'utf8'));
-  const productionProject = firebaseSettings.flutter?.platforms?.android?.default?.projectId
-    ?? firebaseSettings.flutter?.platforms?.dart?.['lib/firebase_options.dart']?.projectId;
-
-  const issues = validateFamilyCareStagingEnv(variables, process.argv[3], productionProject);
+  // Keep the production denylist independent of obsolete FlutterFire metadata.
+  // Family Care QA is pinned to the owner-approved staging project only.
+  const issues = validateFamilyCareStagingEnv(variables, process.argv[3], 'medicare-ai-cf804');
 
   // Expo may load environment overrides which this script would otherwise miss.
   for (const filename of ['.env.local', '.env.development', '.env.development.local']) {

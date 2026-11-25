@@ -90,3 +90,16 @@ test('blocks the emulator project and project IDs not designated staging/test', 
 test('fails closed if production project identity is unavailable', () => {
   assert.match(validateFamilyCareStagingEnv(fixture, staging, '').join(' '), /Cannot determine/);
 });
+
+
+test('blocks the known production project without relying on FlutterFire metadata', () => {
+  const changed = {
+    ...fixture,
+    EXPO_PUBLIC_FIREBASE_PROJECT_ID: production,
+    EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN: production + '.firebaseapp.com',
+  };
+  assert.match(
+    validateFamilyCareStagingEnv(changed, staging, production).join(' '),
+    /Production Firebase project is blocked/,
+  );
+});

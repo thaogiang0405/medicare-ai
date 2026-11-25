@@ -1,34 +1,32 @@
 /**
- * Design tokens for MediCare AI's high-legibility mobile interface.
- *
- * These tokens deliberately prioritise contrast, generous spacing and touch
- * targets suitable for older adults. They are platform-neutral React Native
- * values, so feature screens do not need to duplicate visual decisions.
+ * Shared MediCare AI design tokens.
+ * Calm, high-contrast colours and generous touch targets keep the app
+ * comfortable to use for older adults and their caregivers.
  */
 export const medicareColors = {
-  primary: '#006C67',
-  primaryPressed: '#00514E',
-  primaryContainer: '#B8F2EC',
+  primary: '#0D6B63',
+  primaryPressed: '#0A554F',
+  primaryContainer: '#DDF3ED',
   onPrimary: '#FFFFFF',
-  onPrimaryContainer: '#00201E',
-  secondary: '#365F91',
-  secondaryContainer: '#D5E3FF',
-  onSecondaryContainer: '#001B3C',
-  error: '#BA1A1A',
-  errorContainer: '#FFDAD6',
-  onErrorContainer: '#410002',
-  success: '#176B3A',
-  successContainer: '#D8F3DC',
-  warning: '#7A4E00',
-  warningContainer: '#FFE8B6',
-  surface: '#FAFDFC',
-  surfaceMuted: '#EDF3F1',
+  onPrimaryContainer: '#123B35',
+  secondary: '#355F8A',
+  secondaryContainer: '#EAF1FA',
+  onSecondaryContainer: '#243F5E',
+  error: '#B42318',
+  errorContainer: '#FFF0EF',
+  onErrorContainer: '#7D211B',
+  success: '#176B48',
+  successContainer: '#E2F4E9',
+  warning: '#805600',
+  warningContainer: '#FFF5DF',
+  surface: '#F5F8F6',
+  surfaceMuted: '#EDF3F0',
   surfaceElevated: '#FFFFFF',
-  text: '#191C1C',
-  textMuted: '#3F4948',
-  border: '#BEC9C7',
-  disabled: '#DDE5E3',
-  disabledText: '#596462',
+  text: '#1B2D29',
+  textMuted: '#52635D',
+  border: '#DCE6E1',
+  disabled: '#E4EBE7',
+  disabledText: '#697771',
   white: '#FFFFFF',
   transparent: 'transparent',
 } as const;
@@ -41,26 +39,26 @@ export const medicareSpacing = {
   lg: 20,
   xl: 24,
   xxl: 32,
-  page: 20,
+  page: 22,
 } as const;
 
 export const medicareRadius = {
-  sm: 12,
-  md: 16,
-  lg: 20,
+  sm: 14,
+  md: 18,
+  lg: 24,
   pill: 999,
 } as const;
 
 export const medicareTypography = {
   display: 32,
-  heading: 26,
+  heading: 27,
   subheading: 22,
   body: 18,
   bodySmall: 16,
   label: 17,
   caption: 14,
   lineHeightBody: 27,
-  lineHeightHeading: 34,
+  lineHeightHeading: 35,
 } as const;
 
 export const medicareAccessibility = {
@@ -69,10 +67,10 @@ export const medicareAccessibility = {
 } as const;
 
 export const medicareShadow = {
-  shadowColor: '#000000',
-  shadowOffset: { width: 0, height: 2 },
-  shadowOpacity: 0.08,
-  shadowRadius: 8,
+  shadowColor: '#183A32',
+  shadowOffset: { width: 0, height: 3 },
+  shadowOpacity: 0.055,
+  shadowRadius: 12,
   elevation: 2,
 } as const;
 

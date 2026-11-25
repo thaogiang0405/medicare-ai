@@ -62,6 +62,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: medicareSpacing.sm,
+    paddingBottom: medicareSpacing.xs,
   },
   backButton: {
     width: medicareAccessibility.minTouchTarget,
@@ -84,7 +85,8 @@ const styles = StyleSheet.create({
   title: {
     color: medicareColors.text,
     fontSize: medicareTypography.subheading,
-    fontWeight: '700',
+    fontWeight: '800',
+    letterSpacing: -0.4,
     lineHeight: 29,
   },
   subtitle: {

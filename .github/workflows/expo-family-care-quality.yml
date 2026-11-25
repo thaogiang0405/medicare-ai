@@ -3,10 +3,13 @@ name: Expo quality gates
 on:
   pull_request:
     branches:
+      - main
       - migration/expo-sdk58
     paths:
       - "expo-app/**"
+      - "firebase.json"
       - "firestore.rules"
+      - "firestore.indexes.json"
       - ".github/workflows/expo-family-care-quality.yml"
 permissions:
   contents: read

@@ -42,17 +42,24 @@ Các test client bổ sung mô phỏng listener Firestore, không sử dụng t�
 
 ## Chuẩn bị Firebase staging an toàn (chưa triển khai)
 
-**Không dùng project production `medicare-ai-cf804` hoặc project Emulator `medicare-ai-rules-test`.** Tạo một Firebase staging project **riêng biệt**, đặt ID chứa `-staging` hoặc `-test`, và dùng gói Spark nếu đáp ứng quota. Trong Firebase Console của project staging, tạo Web App, bật Authentication (phương thức đăng nhập mà app đang dùng) và tạo Firestore. Chỉ khi đã phê duyệt, triển khai bản `firestore.rules` và index collection-group `caregiverLinks` của PR này **vào project staging** bằng quy trình quản trị thủ công; script bên dưới không deploy Rules.
+**Firebase Staging đã được chủ dự án xác định:** Project ID `medicare-ai-staging`, Project Number `318128431668`. **Production bị loại khỏi phạm vi:** `medicare-ai-cf804` (Project Number `354989416256`). Project Emulator `medicare-ai-rules-test` chỉ dùng cho kiểm thử cục bộ, không phải Firebase staging. Không dùng project production hoặc Emulator cho kiểm thử hai tài khoản.
 
-1. Tại thư mục `expo-app/`, sao chép `.env.example` thành `.env` (file này được Git ignore). Điền **đúng Web App config của staging**, không sao chép thông số từ project production. Đặt `EXPO_PUBLIC_FIRESTORE_USER_PROFILES_ENABLED=true`, `EXPO_PUBLIC_FIRESTORE_MEDICATIONS_ENABLED=true`, `EXPO_PUBLIC_FIRESTORE_SCHEDULES_ENABLED=true` và `EXPO_PUBLIC_FAMILY_CARE_ENABLED=true`. Giữ flag OCR/DoseEvents khác theo mục đích kiểm thử, không cần bật cho Family Care.
-2. Chạy **kiểm tra không kết nối mạng và không triển khai gì** từ `expo-app/`:
+Trong Firebase Console của `medicare-ai-staging`, xác nhận project dùng gói Spark, tạo Web App, bật Authentication (phương thức đăng nhập mà app đang dùng) và tạo Firestore. Trước khi bật tính năng hoặc dùng tài khoản kiểm thử, chủ dự án phải duyệt Rules và index của PR này. Việc deploy Rules thay thế bộ Firestore Rules hiện tại của project đích; chỉ thực hiện trên staging đã xác minh, không chạy lệnh deploy nếu CLI đang trỏ project khác.
 
-       node scripts/check-family-care-staging.mjs --project <staging-project-id>
+1. Tại thư mục `expo-app/`, sao chép `.env.example` thành `.env` (file này được Git ignore). Điền **đúng Web App config lấy từ project `medicare-ai-staging`**, không sao chép thông số production. Đặt `EXPO_PUBLIC_FIREBASE_PROJECT_ID=medicare-ai-staging`, `EXPO_PUBLIC_FIRESTORE_USER_PROFILES_ENABLED=true`, `EXPO_PUBLIC_FIRESTORE_MEDICATIONS_ENABLED=true`, `EXPO_PUBLIC_FIRESTORE_SCHEDULES_ENABLED=true` và `EXPO_PUBLIC_FAMILY_CARE_ENABLED=true`. Giữ flag OCR/DoseEvents khác theo mục đích kiểm thử, không cần bật cho Family Care.
+2. Chạy **preflight ngoại tuyến** từ `expo-app/`:
 
-   Script chỉ kiểm tra sự khớp project ID được nhập tường minh, loại project production đã biết, tên staging/test, các trường Web App cấu hình, Firebase authDomain/Storage bucket cùng project, bốn flag bắt buộc, và cảnh báo nếu `.env.local` / `.env.development*` hoặc shell ghi đè cấu hình. Nó **không xác minh Rules đã deploy hoặc tài khoản có thật**, cũng không phải bằng chứng dữ liệu an toàn production.
-3. Khi preflight PASS **và Rules staging đã được chủ dự án duyệt/triển khai**, mở ứng dụng tại `expo-app/` bằng `npx expo start --clear --lan`, rồi dùng hai tài khoản test trên hai thiết bị. Không chạy lệnh từ thư mục gốc repository vì package Expo nằm trong `expo-app`. Thực hiện checklist dưới đây và ghi PASS/FAIL. Không dùng hồ sơ sức khỏe thật.
+       node scripts/check-family-care-staging.mjs --project medicare-ai-staging
 
-Nếu preflight báo BLOCKED thì chỉnh lại cấu hình staging, **không dùng tùy chọn bỏ qua** và không đổi project sang production. Kiểm tra project thực tế trong Firebase Console trước khi đăng nhập hai tài khoản.
+   Script chỉ kiểm tra project ID được nhập tường minh có khớp `.env`, chặn project production đã biết, xác nhận tên staging/test, các trường Web App config, Firebase authDomain/Storage bucket cùng project, bốn flag bắt buộc và phát hiện `.env.local` / `.env.development*` hoặc shell ghi đè cấu hình. Nó **không kết nối Firebase, không xác minh Rules đã deploy, không kiểm tra tài khoản và không deploy bất kỳ tài nguyên nào**.
+3. Sau khi preflight PASS và chủ dự án đã duyệt toàn bộ `firestore.rules` cùng `firestore.indexes.json`, chạy lệnh sau ngay trong `expo-app/` để deploy **chỉ Firestore Rules và Indexes lên Staging**:
+
+       npx firebase-tools@15.34.1 --config ../firebase.json deploy --only firestore:rules,firestore:indexes --project medicare-ai-staging
+
+   Kiểm tra output CLI phải hiển thị project `medicare-ai-staging`. Nếu CLI báo bất kỳ project ID nào khác, hủy thao tác ngay. Không deploy Storage, Functions, Hosting, không đổi Billing và không dùng `--force`.
+4. Chỉ sau khi lệnh deploy hoàn tất thành công, mở ứng dụng tại `expo-app/` bằng `npx expo start --clear --lan`, rồi dùng hai tài khoản test trên hai thiết bị. Ghi lại PASS/FAIL theo checklist bên dưới. Chỉ dùng dữ liệu giả, không dùng hồ sơ sức khỏe thật.
+
+Nếu preflight báo BLOCKED thì chỉnh lại cấu hình staging, **không bỏ qua guard và không đổi project sang production**. Nếu Rules hoặc Indexes deploy thất bại, giữ feature flag tắt và không tiếp tục kiểm thử hai tài khoản.
 
 ## Checklist kiểm thử thủ công hai tài khoản (chưa thực hiện)
 

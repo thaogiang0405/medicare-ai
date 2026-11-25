@@ -14,7 +14,13 @@ function friendlyFamilyCareError(cause: unknown, fallback: string): string {
   const code = typeof value?.code === 'string' ? value.code : '';
   const message = typeof value?.message === 'string' ? value.message : '';
   if (code === 'permission-denied' || /missing or insufficient permissions/i.test(message)) {
-    return 'Firebase đang từ chối thao tác. Hãy kiểm tra đúng dự án Firebase và triển khai Firestore Security Rules mới nhất.';
+    return 'Firebase Staging đang từ chối thao tác. Hãy kiểm tra đúng Project ID và xác nhận Firestore Rules Family Care đã được duyệt, triển khai trên chính dự án Staging này.';
+  }
+  if (code === 'failed-precondition' || /requires an index/i.test(message)) {
+    return 'Firestore Staging đang thiếu chỉ mục cần thiết. Hãy kiểm tra và triển khai chỉ mục đã được duyệt trên Staging.';
+  }
+  if (code === 'unauthenticated') {
+    return 'Phiên đăng nhập đã hết hạn. Hãy đăng nhập lại rồi thử lần nữa.';
   }
   if (code === 'unavailable') {
     return 'Firebase tạm thời không kết nối được. Hãy kiểm tra mạng rồi thử lại.';
@@ -48,10 +54,10 @@ export function FamilyLinkOwnerPanel({ ownerUid }: Readonly<{ ownerUid: string }
       const result = await listOwnCaregiverLinks(ownerUid);
       if (generation !== listRequestGeneration.current) return;
       setLinks(result); setLoaded(true); setLoadedForOwnerUid(ownerUid); updateError('');
-    } catch {
+    } catch (cause) {
       if (generation !== listRequestGeneration.current) return;
       setLinks([]); setLoaded(false); setLoadedForOwnerUid(ownerUid);
-      updateError('Không thể đọc danh sách yêu cầu. Kiểm tra mạng hoặc cấu hình Firebase.');
+      updateError(friendlyFamilyCareError(cause, 'Không thể đọc danh sách yêu cầu. Kiểm tra mạng hoặc cấu hình Firebase Staging.'));
     }
   }, [authorizedOwner, ownerUid, updateError]);
 
@@ -62,10 +68,10 @@ export function FamilyLinkOwnerPanel({ ownerUid }: Readonly<{ ownerUid: string }
     void listOwnCaregiverLinks(ownerUid).then((result) => {
       if (cancelled || generation !== listRequestGeneration.current) return;
       setLinks(result); setLoaded(true); setLoadedForOwnerUid(ownerUid); updateError('');
-    }).catch(() => {
+    }).catch((cause) => {
       if (cancelled || generation !== listRequestGeneration.current) return;
       setLinks([]); setLoaded(false); setLoadedForOwnerUid(ownerUid);
-      updateError('Không thể đọc danh sách yêu cầu. Kiểm tra mạng hoặc cấu hình Firebase.');
+      updateError(friendlyFamilyCareError(cause, 'Không thể đọc danh sách yêu cầu. Kiểm tra mạng hoặc cấu hình Firebase Staging.'));
     });
     return () => { cancelled = true; listRequestGeneration.current += 1; };
   }, [authorizedOwner, ownerUid, updateError]);
@@ -94,8 +100,9 @@ export function FamilyLinkOwnerPanel({ ownerUid }: Readonly<{ ownerUid: string }
     if (!authorizedOwner || busy) return;
     Alert.alert(
       'Xác nhận người chăm sóc?',
-      'Bạn đang cấp quyền cho ' + (link.caregiverDisplayName ?? 'Người chăm sóc') + ' (UID: ' + link.caregiverUid
-        + '). Tài khoản này có thể đọc toàn bộ trường trong các bản ghi thuốc và lịch ĐANG HOẠT ĐỘNG trên Firestore, gồm hàm lượng và hướng dẫn dùng. Giao diện chỉ hiện tên thuốc và giờ dự kiến. Người chăm sóc không được sửa thuốc hoặc báo đã uống. Chỉ đồng ý nếu bạn xác minh đúng người.',
+      'Người chăm sóc: ' + (link.caregiverDisplayName ?? 'Chưa có tên hiển thị')
+        + '\nMã xác minh tài khoản: ' + link.caregiverUid
+        + '\n\nTài khoản này có thể đọc toàn bộ trường trong các bản ghi thuốc và lịch ĐANG HOẠT ĐỘNG trên Firestore, gồm hàm lượng và hướng dẫn dùng. Giao diện chỉ hiện tên thuốc và giờ dự kiến. Người chăm sóc không được sửa thuốc hoặc báo đã uống. Chỉ đồng ý nếu bạn đã xác minh đúng tên và mã tài khoản với người thân.',
       [
         { text: 'Hủy', style: 'cancel' },
         { text: 'Tôi đồng ý cấp quyền', onPress: () => {
@@ -157,19 +164,18 @@ export function FamilyLinkOwnerPanel({ ownerUid }: Readonly<{ ownerUid: string }
       {!hasLoadedLinks ? <Text style={{ color: medicareColors.textMuted }}>Danh sách yêu cầu chưa được tải.</Text> : null}
       {hasLoadedLinks && visibleLinks.length === 0 ? <Text style={{ color: medicareColors.textMuted }}>Chưa có yêu cầu hoặc người chăm sóc được liên kết.</Text> : null}
       {visibleLinks.map((link) => <View key={link.caregiverUid} style={styles.linkCard}>
-        <Text selectable style={styles.linkName}>{link.caregiverDisplayName ?? 'Người chăm sóc'}</Text>
-        <Text selectable style={styles.linkUid}>UID: {link.caregiverUid}</Text>
+        <Text style={styles.linkName}>{link.caregiverDisplayName ?? 'Người chăm sóc'}</Text>
         {link.status === 'pending' ? <>
-          <Text style={{ color: medicareColors.textMuted }}>Đang chờ bạn xác nhận. Chưa có quyền xem thuốc hoặc lịch.</Text>
+          <Text style={styles.linkStatus}>Đang chờ bạn xác nhận. Người chăm sóc chưa có quyền xem thuốc hoặc lịch.</Text>
           <SecondaryButton disabled={busy} label="Đồng ý cấp quyền" onPress={() => approve(link)} />
           <SecondaryButton disabled={busy} label="Từ chối yêu cầu" onPress={() => reject(link)} />
         </> : null}
         {link.status === 'active' ? <>
-          <Text style={{ color: medicareColors.textMuted }}>Đang có quyền xem thuốc và lịch đang hoạt động.</Text>
-          <SecondaryButton disabled={busy} label={'Thu hồi quyền của ' + link.caregiverUid} onPress={() => revoke(link.caregiverUid)} />
+          <Text style={styles.linkStatus}>Đang được cấp quyền chỉ xem thuốc và lịch đang hoạt động.</Text>
+          <SecondaryButton disabled={busy} label="Thu hồi quyền" onPress={() => revoke(link.caregiverUid)} />
         </> : null}
-        {link.status === 'revoked' ? <Text style={{ color: medicareColors.textMuted }}>Đã thu hồi quyền. Có thể kết nối lại bằng mã mới và xác nhận lại.</Text> : null}
-        {link.status === 'rejected' ? <Text style={{ color: medicareColors.textMuted }}>Đã từ chối yêu cầu.</Text> : null}
+        {link.status === 'revoked' ? <Text style={styles.linkStatus}>Đã thu hồi quyền. Muốn kết nối lại, hãy tạo mã mới để người chăm sóc gửi yêu cầu lại; bạn cần xác nhận lần nữa.</Text> : null}
+        {link.status === 'rejected' ? <Text style={styles.linkStatus}>Bạn đã từ chối yêu cầu. Người chăm sóc cần mã mới nếu muốn gửi lại.</Text> : null}
       </View>)}
     </View>
   );
@@ -220,5 +226,5 @@ const styles = StyleSheet.create({
     backgroundColor: medicareColors.surface,
   },
   linkName: { color: medicareColors.text, fontSize: medicareTypography.body, fontWeight: '800' },
-  linkUid: { color: medicareColors.textMuted, fontSize: medicareTypography.caption },
+  linkStatus: { color: medicareColors.textMuted, fontSize: medicareTypography.bodySmall, lineHeight: 23 },
 });

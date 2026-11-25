@@ -71,7 +71,9 @@ describe('one-way owner-issued Family Care invitation UI', () => {
     const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
     const view = await render(<FamilyLinkOwnerPanel ownerUid="elderly-123" />);
     expect(await view.findByText('Nguyễn Văn B')).toBeTruthy();
-    expect(view.getByText('Đang chờ bạn xác nhận. Chưa có quyền xem thuốc hoặc lịch.')).toBeTruthy();
+    expect(view.getByText('Đang chờ bạn xác nhận. Người chăm sóc chưa có quyền xem thuốc hoặc lịch.')).toBeTruthy();
+    expect(view.queryByText('UID: caregiver-123')).toBeNull();
+    expect(view.queryByText('caregiver-123')).toBeNull();
     await fireEvent.press(view.getByLabelText('Đồng ý cấp quyền'));
     expect(approvePendingCaregiverLink).not.toHaveBeenCalled();
     expect(alert).toHaveBeenCalledWith('Xác nhận người chăm sóc?', expect.any(String), expect.any(Array));
@@ -106,7 +108,8 @@ describe('one-way owner-issued Family Care invitation UI', () => {
     }]);
     const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
     const view = await render(<FamilyLinkOwnerPanel ownerUid="elderly-123" />);
-    await fireEvent.press(await view.findByLabelText('Thu hồi quyền của caregiver-123'));
+    expect(view.queryByText('UID: caregiver-123')).toBeNull();
+    await fireEvent.press(await view.findByLabelText('Thu hồi quyền'));
     const buttons = alert.mock.calls[0]?.[2];
     await act(async () => {
       buttons?.find((button) => button.text === 'Thu hồi quyền')?.onPress?.();
@@ -118,7 +121,8 @@ describe('one-way owner-issued Family Care invitation UI', () => {
   it('does not show a previous owner link while a new owner list is loading', async () => {
     jest.mocked(listOwnCaregiverLinks).mockResolvedValue([{ caregiverUid: 'caregiver-123', status: 'active', revision: 2 }]);
     const view = await render(<FamilyLinkOwnerPanel ownerUid="elderly-123" />);
-    expect(await view.findByText('UID: caregiver-123')).toBeTruthy();
+    expect(await view.findByText('Người chăm sóc')).toBeTruthy();
+    expect(view.queryByText('UID: caregiver-123')).toBeNull();
     session.user.id = 'elderly-456';
     jest.mocked(listOwnCaregiverLinks).mockImplementation(
       () => new Promise<Awaited<ReturnType<typeof listOwnCaregiverLinks>>>(() => undefined),
@@ -126,5 +130,28 @@ describe('one-way owner-issued Family Care invitation UI', () => {
     await view.rerender(<FamilyLinkOwnerPanel ownerUid="elderly-456" />);
     expect(view.queryByText('UID: caregiver-123')).toBeNull();
     expect(view.getByText('Danh sách yêu cầu chưa được tải.')).toBeTruthy();
+  });
+
+  it('shows a clear staging-specific message instead of the raw Firestore permission error', async () => {
+    jest.mocked(createFamilyInvite).mockRejectedValueOnce(
+      Object.assign(new Error('Missing or insufficient permissions.'), { code: 'permission-denied' }),
+    );
+    const view = await render(<FamilyLinkOwnerPanel ownerUid="elderly-123" />);
+    await fireEvent.press(view.getByLabelText('Tạo và chia sẻ mã kết nối'));
+    expect(await view.findByText(
+      'Firebase Staging đang từ chối thao tác. Hãy kiểm tra đúng Project ID và xác nhận Firestore Rules Family Care đã được duyệt, triển khai trên chính dự án Staging này.',
+    )).toBeTruthy();
+    expect(view.queryByText('Missing or insufficient permissions.')).toBeNull();
+  });
+
+  it('localizes permission errors while loading the owner connection list', async () => {
+    jest.mocked(listOwnCaregiverLinks).mockRejectedValueOnce(
+      Object.assign(new Error('Missing or insufficient permissions.'), { code: 'permission-denied' }),
+    );
+    const view = await render(<FamilyLinkOwnerPanel ownerUid="elderly-123" />);
+    expect(await view.findByText(
+      'Firebase Staging đang từ chối thao tác. Hãy kiểm tra đúng Project ID và xác nhận Firestore Rules Family Care đã được duyệt, triển khai trên chính dự án Staging này.',
+    )).toBeTruthy();
+    expect(view.queryByText('Missing or insufficient permissions.')).toBeNull();
   });
 });

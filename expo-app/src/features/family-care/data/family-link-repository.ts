@@ -1,3 +1,8 @@
+import { collection, collectionGroup, doc, getDocFromServer, getDocsFromServer, limit, onSnapshot, query, runTransaction, serverTimestamp, setDoc, Timestamp, where, type Unsubscribe } from 'firebase/firestore';
+
+import { getFirebaseAuth, getFirebaseFirestore } from '@/services/firebase';
+import { isValidMedicationScheduleDate } from '@/features/schedules/domain/medication-schedule-validation';
+
 export type FamilyLinkStatus = 'pending' | 'active' | 'revoked' | 'rejected';
 export type FamilyLinkRecord = Readonly<{ caregiverUid: string; caregiverDisplayName?: string; inviteCode?: string; status: FamilyLinkStatus; revision: number }>;
 export type FamilyInvite = Readonly<{ code: string; expiresAt: Date }>;
@@ -151,6 +156,25 @@ export async function approvePendingCaregiverLink(ownerUid: string, caregiverUid
 }
 export async function rejectPendingCaregiverLink(ownerUid: string, caregiverUid: string): Promise<void> {
   await decidePendingCaregiverLink(ownerUid, caregiverUid, 'reject');
+}
+
+/** @deprecated Compatibility helper for pre-invite staging links; the app UI never calls this. */
+export async function approveCaregiverLink(ownerUid: string, rawCaregiverUid: string): Promise<void> {
+  checkSession(ownerUid);
+  const caregiverUid = validateFamilyUid(rawCaregiverUid);
+  if (caregiverUid === ownerUid) throw new Error('Không thể tự liên kết với tài khoản của mình.');
+  await verifyOwnerShareableRecords(ownerUid);
+  checkSession(ownerUid);
+  await setDoc(linkRef(ownerUid, caregiverUid), {
+    ownerUid,
+    caregiverUid,
+    status: 'active',
+    scopes: { medicationsRead: true, schedulesRead: true },
+    revision: 1,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+  checkSession(ownerUid);
 }
 
 /** Revocation is irreversible for this UID pair in this MVP. */

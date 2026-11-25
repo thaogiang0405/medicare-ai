@@ -186,7 +186,7 @@ describe('Family Care Firestore watcher fail-closed behavior', () => {
     expect(runTransaction).not.toHaveBeenCalled();
   });
 
-  it('validates all active owner records before atomically approving a pending invitation', async () => {
+  it('validates active owner records before a retry-safe two-phase approval', async () => {
     authUid = elderlyUid;
     (getDocsFromServer as unknown as jest.Mock)
       .mockResolvedValueOnce({
@@ -200,34 +200,36 @@ describe('Family Care Firestore watcher fail-closed behavior', () => {
     const inviteCode = 'AbCdEfGhIjKlMnOpQrSt';
     const invitePath = 'familyInvites/' + inviteCode;
     const update = jest.fn();
-    const get = jest.fn().mockImplementation(async (reference: { path: string }) => {
-      if (reference.path === linkPath) {
-        return {
-          exists: () => true,
-          data: () => ({
-            ownerUid: elderlyUid, caregiverUid, status: 'pending', revision: 1, inviteCode,
-          }),
-        };
-      }
-      return {
-        exists: () => true,
-        data: () => ({ ownerUid: elderlyUid, claimedByUid: caregiverUid, status: 'claimed' }),
-      };
-    });
+    let transactionNumber = 0;
     (serverTimestamp as unknown as jest.Mock).mockReturnValue('server-clock');
     (runTransaction as unknown as jest.Mock).mockImplementation(
-      (_database: unknown, callback: (transaction: { get: typeof get; update: typeof update }) => Promise<void>) =>
-        callback({ get, update }),
+      (_database: unknown, callback: (transaction: {
+        get: (reference: { path: string }) => Promise<{ exists: () => boolean; data: () => Record<string, unknown> }>;
+        update: typeof update;
+      }) => Promise<void>) => {
+        transactionNumber += 1;
+        const inviteStatus = transactionNumber === 1 ? 'claimed' : 'consumed';
+        const get = jest.fn().mockImplementation(async (reference: { path: string }) => reference.path === linkPath
+          ? {
+            exists: () => true,
+            data: () => ({ ownerUid: elderlyUid, caregiverUid, status: 'pending', revision: 1, inviteCode }),
+          }
+          : {
+            exists: () => true,
+            data: () => ({ ownerUid: elderlyUid, claimedByUid: caregiverUid, status: inviteStatus }),
+          });
+        return callback({ get, update });
+      },
     );
 
     await expect(approvePendingCaregiverLink(elderlyUid, caregiverUid)).resolves.toBeUndefined();
     expect(getDocsFromServer).toHaveBeenCalledTimes(2);
-    expect(runTransaction).toHaveBeenCalledTimes(1);
-    expect(update).toHaveBeenNthCalledWith(1, { path: linkPath }, {
-      status: 'active', revision: 2, updatedAt: 'server-clock',
-    });
-    expect(update).toHaveBeenNthCalledWith(2, { path: invitePath }, {
+    expect(runTransaction).toHaveBeenCalledTimes(2);
+    expect(update).toHaveBeenNthCalledWith(1, { path: invitePath }, {
       status: 'consumed', updatedAt: 'server-clock',
+    });
+    expect(update).toHaveBeenNthCalledWith(2, { path: linkPath }, {
+      status: 'active', revision: 2, updatedAt: 'server-clock',
     });
   });
 

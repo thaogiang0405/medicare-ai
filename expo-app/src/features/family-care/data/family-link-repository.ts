@@ -154,24 +154,59 @@ async function decidePendingCaregiverLink(ownerUid: string, rawCaregiverUid: str
   const caregiverUid = validateFamilyUid(rawCaregiverUid);
   const database = getFirebaseFirestore();
   const reference = linkRef(ownerUid, caregiverUid);
+  const linkStatus = decision === 'approve' ? 'active' : 'rejected';
+  const inviteStatus = decision === 'approve' ? 'consumed' : 'rejected';
+
+  // Phase 1 records the owner's decision on the invitation. This is safe on
+  // its own: a consumed/rejected invite never grants health-data access.
   await runTransaction(database, async (transaction) => {
     const current = await transaction.get(reference);
     checkSession(ownerUid);
     if (!current.exists()) throw new Error('Không tìm thấy yêu cầu kết nối.');
     const data = current.data();
-    if (data.ownerUid !== ownerUid || data.caregiverUid !== caregiverUid || data.status !== 'pending') {
-      throw new Error('Yêu cầu không còn ở trạng thái chờ xác nhận.');
+    if (data.ownerUid !== ownerUid || data.caregiverUid !== caregiverUid) {
+      throw new Error('Yêu cầu kết nối không hợp lệ.');
     }
     const code = validateFamilyInviteCode(String(data.inviteCode ?? ''));
     const invitation = inviteRef(code);
     const inviteSnapshot = await transaction.get(invitation);
     if (!inviteSnapshot.exists() || inviteSnapshot.data().ownerUid !== ownerUid
-      || inviteSnapshot.data().claimedByUid !== caregiverUid || inviteSnapshot.data().status !== 'claimed') {
+      || inviteSnapshot.data().claimedByUid !== caregiverUid) {
       throw new Error('Mã mời không còn hợp lệ. Hãy tải lại danh sách yêu cầu.');
     }
-    const approved = decision === 'approve';
-    transaction.update(reference, { status: approved ? 'active' : 'rejected', revision: data.revision + 1, updatedAt: serverTimestamp() });
-    transaction.update(invitation, { status: approved ? 'consumed' : 'rejected', updatedAt: serverTimestamp() });
+    if (data.status === linkStatus && inviteSnapshot.data().status === inviteStatus) return;
+    if (data.status !== 'pending') throw new Error('Yêu cầu không còn ở trạng thái chờ xác nhận.');
+    if (inviteSnapshot.data().status === inviteStatus) return;
+    if (inviteSnapshot.data().status !== 'claimed') {
+      throw new Error('Mã mời đã được xử lý theo một quyết định khác.');
+    }
+    transaction.update(invitation, { status: inviteStatus, updatedAt: serverTimestamp() });
+  });
+  checkSession(ownerUid);
+
+  // Phase 2 applies the link state only after the invite records the same
+  // owner decision. Retrying completes safely if the app lost the first reply.
+  await runTransaction(database, async (transaction) => {
+    const current = await transaction.get(reference);
+    checkSession(ownerUid);
+    if (!current.exists()) throw new Error('Không tìm thấy yêu cầu kết nối.');
+    const data = current.data();
+    const code = validateFamilyInviteCode(String(data.inviteCode ?? ''));
+    const invitation = inviteRef(code);
+    const inviteSnapshot = await transaction.get(invitation);
+    if (!inviteSnapshot.exists() || inviteSnapshot.data().ownerUid !== ownerUid
+      || inviteSnapshot.data().claimedByUid !== caregiverUid || inviteSnapshot.data().status !== inviteStatus) {
+      throw new Error('Quyết định của chủ hồ sơ chưa được ghi nhận. Hãy tải lại và thử lại.');
+    }
+    if (data.ownerUid !== ownerUid || data.caregiverUid !== caregiverUid) {
+      throw new Error('Yêu cầu kết nối không hợp lệ.');
+    }
+    if (data.status === linkStatus) return;
+    if (data.status !== 'pending' || !Number.isSafeInteger(data.revision) || data.revision < 1
+      || data.revision >= Number.MAX_SAFE_INTEGER) {
+      throw new Error('Yêu cầu không còn ở trạng thái chờ xác nhận.');
+    }
+    transaction.update(reference, { status: linkStatus, revision: data.revision + 1, updatedAt: serverTimestamp() });
   });
   checkSession(ownerUid);
 }

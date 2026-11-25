@@ -1066,8 +1066,16 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
       const inviteSnapshot = await transaction.get(invitation);
       expect(linkSnapshot.data().status).toBe('pending');
       expect(inviteSnapshot.data().status).toBe('claimed');
-      transaction.update(ownerLink, { status: 'active', revision: 2, updatedAt: serverTimestamp() });
       transaction.update(invitation, { status: 'consumed', updatedAt: serverTimestamp() });
+    }));
+    expect((await assertSucceeds(getDoc(ownerLink))).data().status).toBe('pending');
+    await assertFails(getDoc(medicationReference(caregiverDB, userA)));
+    await assertSucceeds(runTransaction(ownerDB, async (transaction) => {
+      const linkSnapshot = await transaction.get(ownerLink);
+      const inviteSnapshot = await transaction.get(invitation);
+      expect(linkSnapshot.data().status).toBe('pending');
+      expect(inviteSnapshot.data().status).toBe('consumed');
+      transaction.update(ownerLink, { status: 'active', revision: 2, updatedAt: serverTimestamp() });
     }));
 
     expect((await assertSucceeds(getDoc(caregiverLink))).data().status).toBe('active');
@@ -1157,8 +1165,15 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
     await assertSucceeds(runTransaction(ownerDB, async (transaction) => {
       await transaction.get(ownerLink);
       await transaction.get(invitation);
-      transaction.update(ownerLink, { status: 'rejected', revision: 2, updatedAt: serverTimestamp() });
       transaction.update(invitation, { status: 'rejected', updatedAt: serverTimestamp() });
+    }));
+    expect((await assertSucceeds(getDoc(ownerLink))).data().status).toBe('pending');
+    await assertFails(getDoc(medicationReference(caregiverDB, userA)));
+    await assertSucceeds(runTransaction(ownerDB, async (transaction) => {
+      await transaction.get(ownerLink);
+      const inviteSnapshot = await transaction.get(invitation);
+      expect(inviteSnapshot.data().status).toBe('rejected');
+      transaction.update(ownerLink, { status: 'rejected', revision: 2, updatedAt: serverTimestamp() });
     }));
     expect((await assertSucceeds(getDoc(caregiverLink))).data().status).toBe('rejected');
     await assertFails(getDoc(inviteForCaregiver));

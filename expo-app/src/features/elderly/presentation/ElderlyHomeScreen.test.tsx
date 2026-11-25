@@ -257,6 +257,14 @@ describe('ElderlyHomeScreen', () => {
     expect(router.push).toHaveBeenCalledWith('/elderly/prescription-ocr');
   });
 
+  it('explains disabled Family Care without exposing a misleading contact button', async () => {
+    const view = await render(<ElderlyHomeScreen />);
+
+    expect(view.getByText('Family Care chưa bật')).toBeOnTheScreen();
+    expect(view.getByText(expect.stringContaining('Firebase staging'))).toBeOnTheScreen();
+    expect(view.queryByLabelText('Liên hệ người thân')).toBeNull();
+  });
+
   it('offers the separate safe package-label OCR route', async () => {
     const view = await render(<ElderlyHomeScreen />);
     await fireEvent.press(view.getByLabelText('Quét vỏ hộp thuốc'));

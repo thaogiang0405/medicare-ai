@@ -25,10 +25,6 @@ import { buildTodayScheduleSpeech } from './today-schedule-speech';
 import { TodayScheduleSpeechButton } from './TodayScheduleSpeechButton';
 import { useElderlyDashboard } from './useElderlyDashboard';
 
-function showDeferredFeature(feature: string) {
-  Alert.alert('Chưa có trong lộ trình hiện tại', `${feature} sẽ được xây dựng ở milestone phù hợp.`);
-}
-
 export default function ElderlyHomeScreen() {
   const {
     user,
@@ -343,11 +339,10 @@ export default function ElderlyHomeScreen() {
         {isFamilyCareFeatureEnabled() && user?.role === 'elderly' && user.id ? (
           <FamilyLinkOwnerPanel key={user.id} ownerUid={user.id} />
         ) : (
-          <ActionCard
-            description="Liên kết gia đình trực tuyến chưa bật. Cần kiểm thử và phê duyệt Firebase Security Rules trước khi sử dụng."
-            icon={<Text style={styles.icon}>⌂</Text>}
-            onPress={() => showDeferredFeature('Liên hệ người thân')}
-            title="Liên hệ người thân"
+          <SafetyNotice
+            title="Family Care chưa bật"
+            message="Liên kết người chăm sóc chỉ có trong bản PR #7 khi Firebase staging và Security Rules đã được kiểm thử, phê duyệt. Không cần bấm Liên hệ người thân; tính năng chưa được kích hoạt ở cấu hình này."
+            tone="information"
           />
         )}
       </View>

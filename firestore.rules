@@ -105,48 +105,180 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/users/$(uid)).data.onboardingCompleted == true;
     }
 
-    // Owner-approved read-only family link; no Cloud Functions or invite authority.
+    function verifiedElderly(ownerUid) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(ownerUid))
+        && hasValidUserProfileSchema(get(/databases/$(database)/documents/users/$(ownerUid)).data)
+        && get(/databases/$(database)/documents/users/$(ownerUid)).data.uid == ownerUid
+        && get(/databases/$(database)/documents/users/$(ownerUid)).data.primaryRole == 'elderly'
+        && get(/databases/$(database)/documents/users/$(ownerUid)).data.roles.elderly == true
+        && get(/databases/$(database)/documents/users/$(ownerUid)).data.roles.caregiver == false
+        && get(/databases/$(database)/documents/users/$(ownerUid)).data.onboardingCompleted == true;
+    }
+
     function verifiedCaregiver(caregiverUid) {
       return signedIn()
         && exists(/databases/$(database)/documents/users/$(caregiverUid))
         && hasValidUserProfileSchema(get(/databases/$(database)/documents/users/$(caregiverUid)).data)
         && get(/databases/$(database)/documents/users/$(caregiverUid)).data.uid == caregiverUid
         && get(/databases/$(database)/documents/users/$(caregiverUid)).data.primaryRole == 'caregiver'
-        && get(/databases/$(database)/documents/users/$(caregiverUid)).data.roles.caregiver == true;
+        && get(/databases/$(database)/documents/users/$(caregiverUid)).data.roles.caregiver == true
+        && get(/databases/$(database)/documents/users/$(caregiverUid)).data.onboardingCompleted == true;
     }
 
     function validFamilyLink(data, ownerUid, caregiverUid) {
       return data.keys().hasAll(['ownerUid', 'caregiverUid', 'status', 'scopes', 'revision', 'createdAt', 'updatedAt'])
-        && data.keys().hasOnly(['ownerUid', 'caregiverUid', 'status', 'scopes', 'revision', 'createdAt', 'updatedAt'])
-        && data.ownerUid == ownerUid
-        && data.caregiverUid == caregiverUid
-        && data.status in ['active', 'revoked']
+        && data.keys().hasOnly([
+          'ownerUid', 'caregiverUid', 'status', 'scopes', 'revision', 'createdAt', 'updatedAt',
+          'inviteCode', 'ownerDisplayName', 'caregiverDisplayName'
+        ])
+        && data.ownerUid == ownerUid && data.caregiverUid == caregiverUid
+        && data.status in ['pending', 'active', 'revoked', 'rejected']
         && data.scopes is map
         && data.scopes.keys().hasAll(['medicationsRead', 'schedulesRead'])
         && data.scopes.keys().hasOnly(['medicationsRead', 'schedulesRead'])
-        && data.scopes.medicationsRead == true
-        && data.scopes.schedulesRead == true
+        && data.scopes.medicationsRead == true && data.scopes.schedulesRead == true
         && data.revision is int && data.revision >= 1
-        && data.createdAt is timestamp && data.updatedAt is timestamp;
+        && data.createdAt is timestamp && data.updatedAt is timestamp
+        && (data.status != 'pending' || (
+          data.inviteCode is string && data.inviteCode.matches('^[A-Za-z0-9]{20}$')
+          && data.ownerDisplayName is string && data.caregiverDisplayName is string
+          && data.ownerDisplayName.size() >= 2 && data.caregiverDisplayName.size() >= 2
+        ));
     }
 
-    function validOwnerGrant(ownerUid, caregiverUid) {
-      return hasValidElderlyProfile(ownerUid)
-        && caregiverUid != ownerUid
-        && verifiedCaregiver(caregiverUid)
+    function validFamilyInvite(data, inviteCode) {
+      return data.keys().hasAll([
+          'ownerUid', 'ownerDisplayName', 'inviteCode', 'status', 'expiresAt',
+          'claimedByUid', 'claimedAt', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerUid', 'ownerDisplayName', 'inviteCode', 'status', 'expiresAt',
+          'claimedByUid', 'claimedAt', 'createdAt', 'updatedAt'
+        ])
+        && data.ownerUid is string && data.ownerDisplayName is string
+        && data.ownerDisplayName.size() >= 2 && data.ownerDisplayName.size() <= 120
+        && data.inviteCode == inviteCode && inviteCode.matches('^[A-Za-z0-9]{20}$')
+        && data.status in ['open', 'claimed', 'consumed', 'rejected']
+        && data.expiresAt is timestamp && data.createdAt is timestamp && data.updatedAt is timestamp
+        && ((data.status == 'open' && data.claimedByUid == null && data.claimedAt == null)
+          || (data.status in ['claimed', 'consumed', 'rejected'] && data.claimedByUid is string && data.claimedAt is timestamp));
+    }
+
+    function validFamilyInviteCreate(inviteCode) {
+      let ownerUid = request.resource.data.ownerUid;
+      return hasValidElderlyProfile(ownerUid) && request.auth.uid == ownerUid
+        && request.resource.data.keys().hasAll([
+          'ownerUid', 'ownerDisplayName', 'inviteCode', 'status', 'expiresAt',
+          'claimedByUid', 'claimedAt', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'ownerUid', 'ownerDisplayName', 'inviteCode', 'status', 'expiresAt',
+          'claimedByUid', 'claimedAt', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.ownerDisplayName == get(/databases/$(database)/documents/users/$(ownerUid)).data.displayName
+        && request.resource.data.inviteCode == inviteCode && inviteCode.matches('^[A-Za-z0-9]{20}$')
+        && request.resource.data.status == 'open'
+        && request.resource.data.expiresAt is timestamp
+        && request.resource.data.expiresAt > request.time
+        && request.resource.data.expiresAt <= request.time + duration.value(1, 'd')
+        && request.resource.data.claimedByUid == null && request.resource.data.claimedAt == null
+        && request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time;
+    }
+
+    function validCaregiverInviteClaim(inviteCode) {
+      let ownerUid = resource.data.ownerUid;
+      let linkPath = /databases/$(database)/documents/elderlyProfiles/$(ownerUid)/caregiverLinks/$(request.auth.uid);
+      return verifiedCaregiver(request.auth.uid) && validFamilyInvite(resource.data, inviteCode)
+        && resource.data.status == 'open' && resource.data.expiresAt > request.time
+        && request.resource.data.status == 'claimed'
+        && request.resource.data.claimedByUid == request.auth.uid
+        && request.resource.data.claimedAt == request.time && request.resource.data.updatedAt == request.time
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.ownerDisplayName == resource.data.ownerDisplayName
+        && request.resource.data.inviteCode == resource.data.inviteCode
+        && request.resource.data.expiresAt == resource.data.expiresAt
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'claimedByUid', 'claimedAt', 'updatedAt'])
+        && existsAfter(linkPath)
+        && getAfter(linkPath).data.ownerUid == ownerUid
+        && getAfter(linkPath).data.caregiverUid == request.auth.uid
+        && getAfter(linkPath).data.inviteCode == inviteCode
+        && getAfter(linkPath).data.status == 'pending';
+    }
+
+    function validOwnerInviteDecision(inviteCode) {
+      let ownerUid = resource.data.ownerUid;
+      let caregiverUid = resource.data.claimedByUid;
+      let linkPath = /databases/$(database)/documents/elderlyProfiles/$(ownerUid)/caregiverLinks/$(caregiverUid);
+      return hasValidElderlyProfile(ownerUid) && request.auth.uid == ownerUid
+        && validFamilyInvite(resource.data, inviteCode) && resource.data.status == 'claimed'
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.ownerDisplayName == resource.data.ownerDisplayName
+        && request.resource.data.inviteCode == resource.data.inviteCode
+        && request.resource.data.expiresAt == resource.data.expiresAt
+        && request.resource.data.claimedByUid == resource.data.claimedByUid
+        && request.resource.data.claimedAt == resource.data.claimedAt
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.status in ['consumed', 'rejected']
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])
+        && existsAfter(linkPath)
+        && getAfter(linkPath).data.ownerUid == ownerUid
+        && getAfter(linkPath).data.caregiverUid == caregiverUid
+        && ((request.resource.data.status == 'consumed' && getAfter(linkPath).data.status == 'active')
+          || (request.resource.data.status == 'rejected' && getAfter(linkPath).data.status == 'rejected'));
+    }
+
+    function validCaregiverRequest(ownerUid, caregiverUid) {
+      let inviteCode = request.resource.data.inviteCode;
+      let invitationPath = /databases/$(database)/documents/familyInvites/$(inviteCode);
+      return signedIn() && request.auth.uid == caregiverUid
+        && verifiedCaregiver(caregiverUid) && verifiedElderly(ownerUid) && caregiverUid != ownerUid
         && validFamilyLink(request.resource.data, ownerUid, caregiverUid)
-        && request.resource.data.status == 'active'
-        && request.resource.data.revision == 1
-        && request.resource.data.createdAt == request.time
-        && request.resource.data.updatedAt == request.time;
+        && request.resource.data.status == 'pending' && request.resource.data.revision == 1
+        && request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time
+        && request.resource.data.ownerDisplayName == get(/databases/$(database)/documents/users/$(ownerUid)).data.displayName
+        && request.resource.data.caregiverDisplayName == get(/databases/$(database)/documents/users/$(caregiverUid)).data.displayName
+        && existsAfter(invitationPath)
+        && getAfter(invitationPath).data.ownerUid == ownerUid
+        && getAfter(invitationPath).data.inviteCode == inviteCode
+        && getAfter(invitationPath).data.status == 'claimed'
+        && getAfter(invitationPath).data.claimedByUid == caregiverUid;
+    }
+
+    function validOwnerLinkDecision(ownerUid, caregiverUid) {
+      let inviteCode = resource.data.inviteCode;
+      let invitationPath = /databases/$(database)/documents/familyInvites/$(inviteCode);
+      return hasValidElderlyProfile(ownerUid)
+        && validFamilyLink(resource.data, ownerUid, caregiverUid)
+        && validFamilyLink(request.resource.data, ownerUid, caregiverUid)
+        && resource.data.status == 'pending'
+        && request.resource.data.status in ['active', 'rejected']
+        && request.resource.data.revision == resource.data.revision + 1
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'revision', 'updatedAt'])
+        && existsAfter(invitationPath)
+        && getAfter(invitationPath).data.ownerUid == ownerUid
+        && getAfter(invitationPath).data.claimedByUid == caregiverUid
+        && ((request.resource.data.status == 'active' && getAfter(invitationPath).data.status == 'consumed')
+          || (request.resource.data.status == 'rejected' && getAfter(invitationPath).data.status == 'rejected'));
+    }
+
+    // Legacy owner-created grants remain readable/revocable for existing staging links.
+    function validOwnerGrant(ownerUid, caregiverUid) {
+      return hasValidElderlyProfile(ownerUid) && caregiverUid != ownerUid && verifiedCaregiver(caregiverUid)
+        && validFamilyLink(request.resource.data, ownerUid, caregiverUid)
+        && request.resource.data.status == 'active' && request.resource.data.revision == 1
+        && request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time;
     }
 
     function validOwnerRevoke(ownerUid, caregiverUid) {
       return hasValidElderlyProfile(ownerUid)
         && validFamilyLink(resource.data, ownerUid, caregiverUid)
         && validFamilyLink(request.resource.data, ownerUid, caregiverUid)
-        && resource.data.status == 'active'
-        && request.resource.data.status == 'revoked'
+        && resource.data.status == 'active' && request.resource.data.status == 'revoked'
         && request.resource.data.revision == resource.data.revision + 1
         && request.resource.data.createdAt == resource.data.createdAt
         && request.resource.data.updatedAt == request.time
@@ -154,8 +286,7 @@ service cloud.firestore {
     }
 
     function hasActiveFamilyReadLink(ownerUid) {
-      return signedIn() && request.auth.uid != ownerUid
-        && verifiedCaregiver(request.auth.uid)
+      return signedIn() && request.auth.uid != ownerUid && verifiedCaregiver(request.auth.uid)
         && exists(/databases/$(database)/documents/elderlyProfiles/$(ownerUid)/caregiverLinks/$(request.auth.uid))
         && validFamilyLink(
           get(/databases/$(database)/documents/elderlyProfiles/$(ownerUid)/caregiverLinks/$(request.auth.uid)).data,
@@ -572,24 +703,39 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    match /familyInvites/{inviteCode} {
+      allow get: if validFamilyInvite(resource.data, inviteCode)
+        && (hasValidElderlyProfile(resource.data.ownerUid)
+          || (verifiedCaregiver(request.auth.uid)
+            && ((resource.data.status == 'open' && resource.data.expiresAt > request.time)
+              || (resource.data.status == 'claimed' && resource.data.claimedByUid == request.auth.uid))));
+      allow list: if false;
+      allow create: if validFamilyInviteCreate(inviteCode);
+      allow update: if validCaregiverInviteClaim(inviteCode) || validOwnerInviteDecision(inviteCode);
+      allow delete: if false;
+    }
+
     match /caregiverInvites/{document=**} {
       allow read, write: if false;
     }
 
-    // Only the owner may grant/revoke a link; caregivers can only get
-    // their active link by exact path. Lists are reserved for the owner.
     match /elderlyProfiles/{uid}/caregiverLinks/{caregiverUid} {
       allow get: if hasValidElderlyProfile(uid)
-        || (signedIn() && request.auth.uid == caregiverUid
-          && verifiedCaregiver(caregiverUid)
-          // Keep this metadata-only read available after revocation so the
-          // caregiver listener receives the revoke event and stops health
-          // subscriptions. Health collection reads still require active status.
-          && validFamilyLink(resource.data, uid, caregiverUid));
+        || (signedIn() && request.auth.uid == caregiverUid && verifiedCaregiver(caregiverUid)
+          && (!exists(/databases/$(database)/documents/elderlyProfiles/$(uid)/caregiverLinks/$(caregiverUid))
+            || validFamilyLink(resource.data, uid, caregiverUid)));
       allow list: if hasValidElderlyProfile(uid);
-      allow create: if validOwnerGrant(uid, caregiverUid);
-      allow update: if validOwnerRevoke(uid, caregiverUid);
+      allow create: if validOwnerGrant(uid, caregiverUid) || validCaregiverRequest(uid, caregiverUid);
+      allow update: if validOwnerRevoke(uid, caregiverUid) || validOwnerLinkDecision(uid, caregiverUid);
       allow delete: if false;
+    }
+
+    match /{path=**}/caregiverLinks/{caregiverUid} {
+      allow list: if signedIn() && request.auth.uid == caregiverUid && verifiedCaregiver(caregiverUid)
+        && resource.data.caregiverUid == caregiverUid
+        && resource.data.ownerUid is string
+        && verifiedElderly(resource.data.ownerUid)
+        && validFamilyLink(resource.data, resource.data.ownerUid, caregiverUid);
     }
 
     // M3.2: an elderly owner may access only their own medication records.

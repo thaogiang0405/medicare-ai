@@ -8,7 +8,7 @@
 
 1. Người cao tuổi đăng nhập tài khoản role elderly và bấm **Tạo và chia sẻ mã kết nối**. App tạo document `familyInvites/{inviteCode}` bằng Firestore auto-ID, hết hạn sau khoảng 24 giờ. Mã chỉ định vị một yêu cầu; nó không phải mật khẩu và không cấp quyền đọc sức khỏe.
 2. Người chăm sóc đăng nhập tài khoản role caregiver, nhập mã 20 ký tự và bấm **Gửi yêu cầu kết nối**. App claim invite `open → claimed`, sau đó tạo link `pending` trong transaction thứ hai. Chỉ caregiver đã claim mới tạo được link; nếu mạng lỗi giữa hai bước, chính caregiver đó có thể retry mã để hoàn tất, người khác không thể claim.
-3. Người cao tuổi tải lại danh sách yêu cầu, kiểm tra tên hiển thị và UID caregiver, rồi chọn **Đồng ý cấp quyền** hoặc **Từ chối yêu cầu**. App ghi quyết định vào invite trước (`consumed` hoặc `rejected`), rồi cập nhật link ở transaction thứ hai. Nếu ứng dụng/mạng gián đoạn giữa hai bước, người cao tuổi có thể bấm lại để hoàn tất; khi link còn `pending`, caregiver vẫn chưa có quyền đọc. Rules chỉ cho link chuyển trạng thái khi invite đã ghi đúng quyết định của owner.
+3. Người cao tuổi tải lại danh sách yêu cầu, kiểm tra tên hiển thị và UID caregiver, rồi chọn **Đồng ý cấp quyền** hoặc **Từ chối yêu cầu**. App ghi quyết định vào invite trước (`consumed` hoặc `rejected`), rồi cập nhật link ở transaction thứ hai. Nếu ứng dụng/mạng gián đoạn giữa hai bước, người cao tuổi có thể bấm lại để hoàn tất; khi link còn `pending`, caregiver vẫn chưa có quyền đọc. Rules xác thực invite đã claim khi tạo link, chỉ owner mới được chuyển link `pending` sang `active`/`rejected`, và không cho thay đổi metadata của link trong thao tác này.
 4. Sau khi owner approve, caregiver dashboard tự phát hiện link qua collection-group query chỉ lọc `caregiverUid == UID đang đăng nhập`, rồi mở listener thuốc/lịch. Không cần caregiver chia sẻ UID ngược lại hoặc owner gửi UID hồ sơ lần thứ hai.
 5. Người cao tuổi có thể **Thu hồi quyền** như trước. Link cùng cặp UID đã revoked không thể kích hoạt lại trong MVP. Dữ liệu từng xem/chụp màn hình bên ngoài không thể thu hồi.
 
@@ -60,7 +60,7 @@ Chỉ chạy trên **Firebase staging project riêng**, không dùng production.
 
 1. **Tạo mã:** owner elderly tạo và chia sẻ mã mời. Kỳ vọng: mã 20 ký tự, hết hạn khoảng 24 giờ; mã không tự cấp quyền.
 2. **Gửi yêu cầu:** caregiver nhập mã và gửi yêu cầu. Kỳ vọng: invite được claim đúng một lần, link chuyển sang pending; caregiver chỉ thấy trạng thái chờ, không đọc được thuốc/lịch.
-3. **Owner duyệt:** owner tải lại danh sách, kiểm tra display name/UID, rồi approve hoặc reject. Kỳ vọng: transaction cập nhật link và invite cùng lúc; caregiver không thể tự approve.
+3. **Owner duyệt:** owner tải lại danh sách, kiểm tra display name/UID, rồi approve hoặc reject. Kỳ vọng: hai transaction retry-safe ghi quyết định invite trước, sau đó đổi trạng thái link; caregiver không thể tự approve. Nếu gián đoạn sau bước invite, link vẫn pending và caregiver chưa đọc được dữ liệu.
 4. **Kết nối:** sau approval, hồ sơ tự xuất hiện trên caregiver dashboard qua collection-group query scoped theo caregiver UID. Kỳ vọng: chỉ tên thuốc đang dùng và giờ dự kiến hôm nay xuất hiện; không có nút chỉnh sửa hoặc báo đã uống.
 5. **Live update:** owner đổi giờ lịch giả trên A. Kỳ vọng: B nhận giờ mới mà không cần đăng xuất hoặc khởi động lại.
 6. **Phạm vi:** thử bằng tài khoản caregiver khác và UID owner khác. Kỳ vọng: không truy cập được. Kiểm thử Emulator đã bao phủ đọc inactive, DoseEvents, OCR, user profile khác và ghi sửa; không dùng dữ liệu thật để thử các trường hợp này.

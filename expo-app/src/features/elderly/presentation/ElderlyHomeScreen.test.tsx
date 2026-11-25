@@ -261,7 +261,7 @@ describe('ElderlyHomeScreen', () => {
     const view = await render(<ElderlyHomeScreen />);
 
     expect(view.getByText('Family Care chưa bật')).toBeOnTheScreen();
-    expect(view.getByText(expect.stringContaining('Firebase staging'))).toBeOnTheScreen();
+    expect(view.getByText(/Firebase staging/)).toBeOnTheScreen();
     expect(view.queryByLabelText('Liên hệ người thân')).toBeNull();
   });
 

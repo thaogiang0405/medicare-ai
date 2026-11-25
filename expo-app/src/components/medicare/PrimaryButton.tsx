@@ -3,7 +3,6 @@ import type { StyleProp, ViewStyle } from 'react-native';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import {
-  medicareAccessibility,
   medicareColors,
   medicareRadius,
   medicareSpacing,

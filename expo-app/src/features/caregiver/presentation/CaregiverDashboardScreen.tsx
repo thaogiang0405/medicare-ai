@@ -3,7 +3,7 @@ import { router } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { AppHeader, PrimaryButton, SafetyNotice, Screen, SecondaryButton, TextField } from '@/components/medicare';
-import { medicareColors, medicareRadius, medicareSpacing, medicareTypography } from '@/constants/medicare-theme';
+import { medicareColors, medicareRadius, medicareShadow, medicareSpacing, medicareTypography } from '@/constants/medicare-theme';
 import {
   requestCaregiverLink, watchCaregiverConnections, watchCaregiverPlans,
   type CaregiverConnectionRecord, type CaregiverConnectionsResult, type CaregiverScheduleResult,

@@ -14,6 +14,8 @@ jest.mock('@/components/medicare', () => {
   return {
     SafetyNotice: ({ title, message }: { title: string; message: string }) =>
       React.createElement(View, null, React.createElement(Text, null, title), React.createElement(Text, null, message)),
+    PrimaryButton: ({ label, onPress, disabled }: { label: string; onPress: () => void; disabled?: boolean }) =>
+      React.createElement(Pressable, { accessibilityLabel: label, onPress, disabled }, React.createElement(Text, null, label)),
     SecondaryButton: ({ label, onPress, disabled }: { label: string; onPress: () => void; disabled?: boolean }) =>
       React.createElement(Pressable, { accessibilityLabel: label, onPress, disabled }, React.createElement(Text, null, label)),
   };

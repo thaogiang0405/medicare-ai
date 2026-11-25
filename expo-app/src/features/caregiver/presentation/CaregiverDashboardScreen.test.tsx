@@ -16,6 +16,7 @@ jest.mock('@/components/medicare', () => {
     AppHeader: ({ title }: { title: string }) => React.createElement(Text, null, title),
     SafetyNotice: ({ title, message }: { title: string; message: string }) =>
       React.createElement(View, null, React.createElement(Text, null, title), React.createElement(Text, null, message)),
+    PrimaryButton: button,
     SecondaryButton: button,
     TextField: () => null,
   };

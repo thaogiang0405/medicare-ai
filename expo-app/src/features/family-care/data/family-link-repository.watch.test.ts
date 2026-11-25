@@ -15,16 +15,15 @@ jest.mock('firebase/firestore', () => ({
   limit: jest.fn(),
   getDocsFromServer: jest.fn(),
   runTransaction: jest.fn(),
-  setDoc: jest.fn(),
   serverTimestamp: jest.fn(),
 }));
 
 import {
-  collection, doc, getDocsFromServer, limit, onSnapshot, query, runTransaction, serverTimestamp, setDoc, where,
+  collection, doc, getDocsFromServer, limit, onSnapshot, query, runTransaction, serverTimestamp, where,
 } from 'firebase/firestore';
 import { getFirebaseAuth, getFirebaseFirestore } from '@/services/firebase';
 import {
-  approveCaregiverLink,
+  approvePendingCaregiverLink,
   listOwnCaregiverLinks,
   revokeCaregiverLink,
   watchCaregiverPlans,
@@ -159,7 +158,7 @@ describe('Family Care Firestore watcher fail-closed behavior', () => {
     });
   });
 
-  it('blocks caregiver approval when an active medication has unexpected fields', async () => {
+  it('blocks owner approval when an active medication has unexpected fields', async () => {
     authUid = elderlyUid;
     (getDocsFromServer as unknown as jest.Mock)
       .mockResolvedValueOnce({
@@ -168,12 +167,12 @@ describe('Family Care Firestore watcher fail-closed behavior', () => {
       })
       .mockResolvedValueOnce({ size: 0, docs: [] });
 
-    await expect(approveCaregiverLink(elderlyUid, caregiverUid))
+    await expect(approvePendingCaregiverLink(elderlyUid, caregiverUid))
       .rejects.toThrow('cấu trúc chia sẻ an toàn');
-    expect(setDoc).not.toHaveBeenCalled();
+    expect(runTransaction).not.toHaveBeenCalled();
   });
 
-  it('blocks caregiver approval when an active schedule has unexpected fields', async () => {
+  it('blocks owner approval when an active schedule has unexpected fields', async () => {
     authUid = elderlyUid;
     (getDocsFromServer as unknown as jest.Mock)
       .mockResolvedValueOnce({ size: 0, docs: [] })
@@ -182,12 +181,12 @@ describe('Family Care Firestore watcher fail-closed behavior', () => {
         docs: [{ id: 'schedule-1', data: () => scheduleData({ privateNote: 'not approved for sharing' }) }],
       });
 
-    await expect(approveCaregiverLink(elderlyUid, caregiverUid))
+    await expect(approvePendingCaregiverLink(elderlyUid, caregiverUid))
       .rejects.toThrow('cấu trúc chia sẻ an toàn');
-    expect(setDoc).not.toHaveBeenCalled();
+    expect(runTransaction).not.toHaveBeenCalled();
   });
 
-  it('checks all active owner records from the server before creating a caregiver link', async () => {
+  it('validates all active owner records before atomically approving a pending invitation', async () => {
     authUid = elderlyUid;
     (getDocsFromServer as unknown as jest.Mock)
       .mockResolvedValueOnce({
@@ -198,18 +197,38 @@ describe('Family Care Firestore watcher fail-closed behavior', () => {
         size: 1,
         docs: [{ id: 'schedule-1', data: () => scheduleData() }],
       });
-
-    await expect(approveCaregiverLink(elderlyUid, caregiverUid)).resolves.toBeUndefined();
-    expect(getDocsFromServer).toHaveBeenCalledTimes(2);
-    expect(setDoc).toHaveBeenCalledWith(
-      { path: linkPath },
-      expect.objectContaining({
-        ownerUid: elderlyUid,
-        caregiverUid,
-        status: 'active',
-        revision: 1,
-      }),
+    const inviteCode = 'AbCdEfGhIjKlMnOpQrSt';
+    const invitePath = 'familyInvites/' + inviteCode;
+    const update = jest.fn();
+    const get = jest.fn().mockImplementation(async (reference: { path: string }) => {
+      if (reference.path === linkPath) {
+        return {
+          exists: () => true,
+          data: () => ({
+            ownerUid: elderlyUid, caregiverUid, status: 'pending', revision: 1, inviteCode,
+          }),
+        };
+      }
+      return {
+        exists: () => true,
+        data: () => ({ ownerUid: elderlyUid, claimedByUid: caregiverUid, status: 'claimed' }),
+      };
+    });
+    (serverTimestamp as unknown as jest.Mock).mockReturnValue('server-clock');
+    (runTransaction as unknown as jest.Mock).mockImplementation(
+      (_database: unknown, callback: (transaction: { get: typeof get; update: typeof update }) => Promise<void>) =>
+        callback({ get, update }),
     );
+
+    await expect(approvePendingCaregiverLink(elderlyUid, caregiverUid)).resolves.toBeUndefined();
+    expect(getDocsFromServer).toHaveBeenCalledTimes(2);
+    expect(runTransaction).toHaveBeenCalledTimes(1);
+    expect(update).toHaveBeenNthCalledWith(1, { path: linkPath }, {
+      status: 'active', revision: 2, updatedAt: 'server-clock',
+    });
+    expect(update).toHaveBeenNthCalledWith(2, { path: invitePath }, {
+      status: 'consumed', updatedAt: 'server-clock',
+    });
   });
 
   it('loads the elderly owner link list from server, not offline cached grants', async () => {

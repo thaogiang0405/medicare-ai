@@ -12,7 +12,7 @@
 4. Sau khi owner approve, caregiver dashboard tự phát hiện link qua collection-group query chỉ lọc `caregiverUid == UID đang đăng nhập`, rồi mở listener thuốc/lịch. Không cần caregiver chia sẻ UID ngược lại hoặc owner gửi UID hồ sơ lần thứ hai.
 5. Người cao tuổi có thể **Thu hồi quyền** như trước. Link cùng cặp UID đã revoked không thể kích hoạt lại trong MVP. Dữ liệu từng xem/chụp màn hình bên ngoài không thể thu hồi.
 
-Mã mời là locator có entropy cao, không phải credential: biết mã chỉ cho phép gửi một yêu cầu pending. Mọi lần đọc thuốc/lịch vẫn bị Rules từ chối cho đến khi owner duyệt rõ ràng. Owner cần xác minh tên/UID hiển thị với người chăm sóc ngoài đời trước khi đồng ý. Nếu mã bị dùng nhầm, owner từ chối yêu cầu và tạo mã mới.
+Mã mời là locator có entropy cao, không phải credential: biết mã chỉ cho phép gửi một yêu cầu pending. Mọi lần đọc thuốc/lịch vẫn bị Rules từ chối cho đến khi owner duyệt rõ ràng. Owner cần xác minh tên/UID hiển thị với người chăm sóc ngoài đời trước khi đồng ý. Nếu mã bị dùng nhầm, owner từ chối yêu cầu và tạo mã mới. Việc tạo link `active` trực tiếp bằng UID caregiver đã bị Security Rules chặn; các link staging cũ đã tồn tại vẫn có thể đọc/thu hồi theo trạng thái hiện tại, nhưng không thể tạo mới hoặc kích hoạt lại theo đường cũ.
 
 ## Quyền truy cập
 

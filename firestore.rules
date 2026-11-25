@@ -266,14 +266,6 @@ service cloud.firestore {
           || (request.resource.data.status == 'rejected' && getAfter(invitationPath).data.status == 'rejected'));
     }
 
-    // Legacy owner-created grants remain readable/revocable for existing staging links.
-    function validOwnerGrant(ownerUid, caregiverUid) {
-      return hasValidElderlyProfile(ownerUid) && caregiverUid != ownerUid && verifiedCaregiver(caregiverUid)
-        && validFamilyLink(request.resource.data, ownerUid, caregiverUid)
-        && request.resource.data.status == 'active' && request.resource.data.revision == 1
-        && request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time;
-    }
-
     function validOwnerRevoke(ownerUid, caregiverUid) {
       return hasValidElderlyProfile(ownerUid)
         && validFamilyLink(resource.data, ownerUid, caregiverUid)
@@ -725,7 +717,7 @@ service cloud.firestore {
           && (!exists(/databases/$(database)/documents/elderlyProfiles/$(uid)/caregiverLinks/$(caregiverUid))
             || validFamilyLink(resource.data, uid, caregiverUid)));
       allow list: if hasValidElderlyProfile(uid);
-      allow create: if validOwnerGrant(uid, caregiverUid) || validCaregiverRequest(uid, caregiverUid);
+      allow create: if validCaregiverRequest(uid, caregiverUid);
       allow update: if validOwnerRevoke(uid, caregiverUid) || validOwnerLinkDecision(uid, caregiverUid);
       allow delete: if false;
     }

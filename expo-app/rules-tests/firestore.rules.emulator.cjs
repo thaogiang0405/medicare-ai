@@ -1165,7 +1165,7 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
     )));
   });
 
-  it('permits an elderly owner to approve an existing caregiver UID and only then read medicines/schedules', async () => {
+  it('allows an already-approved link to read only active medicines and schedules', async () => {
     await seed('users/' + userA, userProfile(userA));
     await seed('users/' + userB, userProfile(userB));
     await seed('users/' + caregiver, userProfile(caregiver, 'caregiver'));
@@ -1188,7 +1188,7 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
     await assertFails(getDocs(medicationSchedulesCollection(caregiverDB, userA)));
     await assertFails(getDoc(familyLinkRef(caregiverDB)));
 
-    await assertSucceeds(setDoc(familyLinkRef(ownerDB), familyLink(userA, caregiver)));
+    await seed('elderlyProfiles/' + userA + '/caregiverLinks/' + caregiver, familyLink(userA, caregiver));
     await assertSucceeds(getDoc(familyLinkRef(caregiverDB)));
     const sharedMedicationDocs = await assertSucceeds(getDocs(query(
       medicationsCollection(caregiverDB, userA),
@@ -1243,7 +1243,7 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
       where('active', '==', true),
     );
 
-    await assertSucceeds(setDoc(link, familyLink(userA, caregiver)));
+    await seed('elderlyProfiles/' + userA + '/caregiverLinks/' + caregiver, familyLink(userA, caregiver));
     const observedTimes = new Set();
     const timeWaiters = new Map();
     let scheduleListenerError = null;
@@ -1362,7 +1362,7 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
     await seed('elderlyProfiles/' + userA + '/medicationSchedules/schedule-a', medicationSchedule(userA));
     const ownerDB = firestoreAs(userA), caregiverDB = firestoreAs(caregiver);
     const ref = familyLinkRef(ownerDB);
-    await assertSucceeds(setDoc(ref, familyLink(userA, caregiver)));
+    await seed('elderlyProfiles/' + userA + '/caregiverLinks/' + caregiver, familyLink(userA, caregiver));
     await assertSucceeds(updateDoc(ref, {
       status: 'revoked', revision: 2, updatedAt: serverTimestamp(),
     }));
@@ -1382,7 +1382,7 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
     await seed('users/' + caregiver, userProfile(caregiver, 'caregiver'));
     const ownerDB = firestoreAs(userA);
     const caregiverDB = firestoreAs(caregiver);
-    await assertSucceeds(setDoc(familyLinkRef(ownerDB), familyLink(userA, caregiver)));
+    await seed('elderlyProfiles/' + userA + '/caregiverLinks/' + caregiver, familyLink(userA, caregiver));
 
     // These documents are deliberately seeded outside Rules to model legacy,
     // imported, or administrator-written records that bypass client writes.
@@ -1425,6 +1425,7 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
 
     await assertFails(setDoc(familyLinkRef(caregiverDB), familyLink(userA, caregiver)));
     await assertFails(setDoc(familyLinkRef(ownerDB, userA, userB), familyLink(userA, userB)));
+    await assertFails(setDoc(familyLinkRef(ownerDB), familyLink(userA, caregiver)));
     const bad = [
       familyLink(userA, caregiver, { ownerUid: userB }),
       familyLink(userA, caregiver, { caregiverUid: userB }),

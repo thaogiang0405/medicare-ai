@@ -158,25 +158,6 @@ export async function rejectPendingCaregiverLink(ownerUid: string, caregiverUid:
   await decidePendingCaregiverLink(ownerUid, caregiverUid, 'reject');
 }
 
-/** @deprecated Compatibility helper for pre-invite staging links; the app UI never calls this. */
-export async function approveCaregiverLink(ownerUid: string, rawCaregiverUid: string): Promise<void> {
-  checkSession(ownerUid);
-  const caregiverUid = validateFamilyUid(rawCaregiverUid);
-  if (caregiverUid === ownerUid) throw new Error('Không thể tự liên kết với tài khoản của mình.');
-  await verifyOwnerShareableRecords(ownerUid);
-  checkSession(ownerUid);
-  await setDoc(linkRef(ownerUid, caregiverUid), {
-    ownerUid,
-    caregiverUid,
-    status: 'active',
-    scopes: { medicationsRead: true, schedulesRead: true },
-    revision: 1,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
-  checkSession(ownerUid);
-}
-
 /** Revocation is irreversible for this UID pair in this MVP. */
 export async function revokeCaregiverLink(ownerUid: string, rawCaregiverUid: string): Promise<void> {
   checkSession(ownerUid);

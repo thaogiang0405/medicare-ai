@@ -1,0 +1,87 @@
+/* eslint-disable import/first */
+
+// These are pure validation/formatting tests. Avoid initializing Firebase Auth
+// and its native AsyncStorage persistence in a Jest environment.
+jest.mock('@/services/firebase', () => ({
+  getFirebaseAuth: jest.fn(),
+  getFirebaseFirestore: jest.fn(),
+}));
+
+import { deriveCaregiverMedicationNames, deriveCaregiverPlans, millisecondsUntilNextVietnamDay, validateFamilyInviteCode, validateFamilyUid } from './family-link-repository';
+import { isFamilyCareFeatureEnabled } from '@/services/firebase/family-care-feature';
+
+describe('owner-approved Family Care client guardrails', () => {
+  it('rolls over the Vietnam-local calendar at 00:00, not device-local midnight', () => {
+    expect(millisecondsUntilNextVietnamDay(new Date('2026-11-23T12:00:00.000Z')))
+      .toBe(5 * 60 * 60 * 1000 + 100);
+    expect(millisecondsUntilNextVietnamDay(new Date('2026-11-23T16:59:59.999Z')))
+      .toBe(101);
+    expect(millisecondsUntilNextVietnamDay(new Date('2026-11-23T17:00:00.000Z')))
+      .toBe(24 * 60 * 60 * 1000 + 100);
+  });
+
+  it('never interprets a profile code as a credential and rejects unsafe path identifiers', () => {
+    expect(validateFamilyUid(' caregiver-123 ')).toBe('caregiver-123');
+    for (const code of ['', 'a', '../user', 'user/a', 'user b', 'x'.repeat(129), '🤖']) {
+      expect(() => validateFamilyUid(code)).toThrow();
+    }
+  });
+
+  it('accepts only a complete 20-character one-time invitation code', () => {
+    expect(validateFamilyInviteCode(' AbCdEfGhIjKlMnOpQrSt ')).toBe('AbCdEfGhIjKlMnOpQrSt');
+    for (const code of ['', 'short', 'a'.repeat(19), 'a'.repeat(21), '../invite-code-123456', '🤖'.repeat(10)]) {
+      expect(() => validateFamilyInviteCode(code)).toThrow();
+    }
+  });
+
+  it('keeps family routes behind an explicit disabled-by-default public flag', () => {
+    expect(isFamilyCareFeatureEnabled('')).toBe(false);
+    expect(isFamilyCareFeatureEnabled('false')).toBe(false);
+    expect(isFamilyCareFeatureEnabled(' true ')).toBe(true);
+  });
+
+  it('lists active medicines even when a medicine has no planned dose today', () => {
+    expect(deriveCaregiverMedicationNames([
+      { id: 'a', name: '  Metformin  ', status: 'active' },
+      { id: 'b', name: 'Metformin', status: 'active' },
+      { id: 'c', name: 'Acetaminophen', status: 'active' },
+      { id: 'd', name: 'Inactive medicine', status: 'inactive' },
+      { id: 'e', name: '   ', status: 'active' },
+    ])).toEqual(['Acetaminophen', 'Metformin']);
+  });
+
+  it('displays only currently active owner medicines and matching daily/weekly plans', () => {
+    const meds = [
+      { id: 'med-1', name: 'Thuốc đã nhập', status: 'active' },
+      { id: 'med-2', name: 'Thuốc dừng', status: 'inactive' },
+    ];
+    const schedules = [
+      { medicationId: 'med-1', localTime: '20:15', recurrence: 'daily', weekdays: [1,2,3,4,5,6,7], startDate: '2026-11-01', endDate: null, timeZone: 'Asia/Ho_Chi_Minh', active: true },
+      { medicationId: 'med-1', localTime: '08:00', recurrence: 'weekly', weekdays: [1], startDate: '2026-11-01', endDate: null, timeZone: 'Asia/Ho_Chi_Minh', active: true },
+      { medicationId: 'med-1', localTime: '09:00', recurrence: 'weekly', weekdays: [2], startDate: '2026-11-01', endDate: null, timeZone: 'Asia/Ho_Chi_Minh', active: true },
+      { medicationId: 'med-2', localTime: '11:00', recurrence: 'daily', weekdays: [1,2,3,4,5,6,7], startDate: '2026-11-01', endDate: null, timeZone: 'Asia/Ho_Chi_Minh', active: true },
+      { medicationId: 'med-1', localTime: '12:00', recurrence: 'daily', weekdays: [1,2,3,4,5,6,7], startDate: '2026-12-01', endDate: null, timeZone: 'Asia/Ho_Chi_Minh', active: true },
+      { medicationId: 'med-1', localTime: '13:00', recurrence: 'daily', weekdays: [1,2,3,4,5,6,7], startDate: '2026-10-01', endDate: '2026-11-22', timeZone: 'Asia/Ho_Chi_Minh', active: true },
+      { medicationId: 'med-1', localTime: '14:00', recurrence: 'daily', weekdays: [1,2,3,4,5,6,7], startDate: '2026-11-01', endDate: null, timeZone: 'Asia/Ho_Chi_Minh', active: false },
+    ];
+    expect(deriveCaregiverPlans(meds, schedules, new Date('2026-11-23T03:00:00.000Z'))).toEqual([
+      { time: '08:00', medicationName: 'Thuốc đã nhập' },
+      { time: '20:15', medicationName: 'Thuốc đã nhập' },
+    ]);
+  });
+
+  it('ignores malformed schedule rows rather than crashing or inferring a dose', () => {
+    const medications = [{ id: 'm1', name: 'Tên thuốc hợp lệ', status: 'active' }];
+    const entries = [
+      { medicationId: 'm1', localTime: 'bad', recurrence: 'daily', weekdays: [1,2,3,4,5,6,7], startDate: '2026-11-01', endDate: null, timeZone: 'Asia/Ho_Chi_Minh', active: true },
+      { medicationId: 'm1', localTime: '08:00', recurrence: 'weekly', weekdays: [], startDate: '2026-11-01', endDate: null, timeZone: 'Asia/Ho_Chi_Minh', active: true },
+      { medicationId: 'm1', localTime: '10:00', recurrence: 'daily', weekdays: [1,2,3,4,5,6,7], startDate: '2026-11-01', endDate: null, timeZone: 'Asia/Ho_Chi_Minh', active: true },
+      { medicationId: 'm1', localTime: '11:00', recurrence: 'daily', weekdays: [1,1,1,1,1,1,1], startDate: '2026-11-01', endDate: null, timeZone: 'Asia/Ho_Chi_Minh', active: true },
+      { medicationId: 'm1', localTime: '12:00', recurrence: 'daily', weekdays: [1,2,3,4,5,6,7], startDate: '2026-02-30', endDate: null, timeZone: 'Asia/Ho_Chi_Minh', active: true },
+      { medicationId: 'm1', localTime: '13:00', recurrence: 'daily', weekdays: [1,2,3,4,5,6,7], startDate: '2026-11-01', endDate: null, timeZone: 'UTC', active: true },
+    ];
+    expect(deriveCaregiverPlans(medications, entries, new Date('2026-11-23T03:00:00.000Z'))).toEqual([
+      { time: '10:00', medicationName: 'Tên thuốc hợp lệ' },
+    ]);
+  });
+});

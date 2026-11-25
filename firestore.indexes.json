@@ -1,6 +1,13 @@
 {
   "indexes": [
     {
+      "collectionGroup": "caregiverLinks",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "caregiverUid", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "doseEvents",
       "queryScope": "COLLECTION_GROUP",
       "fields": [

@@ -43,10 +43,10 @@ export function ActionCard({
       testID={testID}>
       {icon ? <View style={styles.icon}>{icon}</View> : null}
       <View style={styles.copy}>
-        <Text maxFontSizeMultiplier={1.45} style={styles.title}>
+        <Text maxFontSizeMultiplier={1.3} style={styles.title}>
           {title}
         </Text>
-        <Text maxFontSizeMultiplier={1.5} style={styles.description}>
+        <Text maxFontSizeMultiplier={1.3} style={styles.description}>
           {description}
         </Text>
       </View>
@@ -59,7 +59,7 @@ export function ActionCard({
 
 const styles = StyleSheet.create({
   card: {
-    minHeight: 88,
+    minHeight: 96,
     borderRadius: medicareRadius.lg,
     flexDirection: 'row',
     alignItems: 'center',
@@ -71,9 +71,9 @@ const styles = StyleSheet.create({
     ...medicareShadow,
   },
   icon: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 56,
+    height: 56,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: medicareColors.primaryContainer,
@@ -85,13 +85,13 @@ const styles = StyleSheet.create({
   title: {
     color: medicareColors.text,
     fontSize: medicareTypography.label,
-    fontWeight: '700',
-    lineHeight: 23,
+    fontWeight: '800',
+    lineHeight: 24,
   },
   description: {
     color: medicareColors.textMuted,
     fontSize: medicareTypography.bodySmall,
-    lineHeight: 22,
+    lineHeight: 23,
   },
   chevron: {
     color: medicareColors.primary,

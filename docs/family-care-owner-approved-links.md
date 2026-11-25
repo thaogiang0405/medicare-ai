@@ -1,0 +1,109 @@
+# Family Care: liên kết hai tài khoản có chấp thuận (MVP Spark)
+
+## Trạng thái
+
+Đây là nhánh thử nghiệm riêng từ migration/expo-sdk58, không phải tính năng chia sẻ tin nhắn trong PR #6. Đã có mã nguồn giao diện hai vai trò và Security Rules nhưng **chưa deploy** lên Firebase production và mặc định tắt qua EXPO_PUBLIC_FAMILY_CARE_ENABLED=false.
+
+## Luồng liên kết một chiều
+
+1. Người cao tuổi đăng nhập tài khoản role elderly và bấm **Tạo và chia sẻ mã kết nối**. App tạo document `familyInvites/{inviteCode}` bằng Firestore auto-ID, hết hạn sau khoảng 24 giờ. Mã chỉ định vị một yêu cầu; nó không phải mật khẩu và không cấp quyền đọc sức khỏe.
+2. Người chăm sóc đăng nhập tài khoản role caregiver, nhập mã 20 ký tự và bấm **Gửi yêu cầu kết nối**. App claim invite `open → claimed`, sau đó tạo link `pending` trong transaction thứ hai. Chỉ caregiver đã claim mới tạo được link; nếu mạng lỗi giữa hai bước, chính caregiver đó có thể retry mã để hoàn tất, người khác không thể claim.
+3. Người cao tuổi tải lại danh sách yêu cầu, kiểm tra tên hiển thị và UID caregiver, rồi chọn **Đồng ý cấp quyền** hoặc **Từ chối yêu cầu**. App ghi quyết định vào invite trước (`consumed` hoặc `rejected`), rồi cập nhật link ở transaction thứ hai. Nếu ứng dụng/mạng gián đoạn giữa hai bước, người cao tuổi có thể bấm lại để hoàn tất; khi link còn `pending`, caregiver vẫn chưa có quyền đọc. Rules xác thực invite đã claim khi tạo link, chỉ owner mới được chuyển link `pending` sang `active`/`rejected`, và không cho thay đổi metadata của link trong thao tác này.
+4. Sau khi owner approve, caregiver dashboard tự phát hiện link qua collection-group query chỉ lọc `caregiverUid == UID đang đăng nhập`, rồi mở listener thuốc/lịch. Không cần caregiver chia sẻ UID ngược lại hoặc owner gửi UID hồ sơ lần thứ hai.
+5. Người cao tuổi có thể **Thu hồi quyền** bất cứ lúc nào. Nếu muốn kết nối lại cùng người chăm sóc, owner tạo mã mới; caregiver claim mã để đưa link `revoked`/`rejected` về `pending`, sau đó owner phải xác minh và duyệt lại. Không có thao tác nào tự đưa link về `active`. Dữ liệu từng xem/chụp màn hình bên ngoài không thể thu hồi.
+
+Mã mời là locator có entropy cao, không phải credential: biết mã chỉ cho phép claim một lần và tạo yêu cầu pending. Nếu claim thành công nhưng bước tạo link gián đoạn, chỉ đúng caregiver đã claim được retry. Mọi lần đọc thuốc/lịch vẫn bị Rules từ chối cho đến khi owner duyệt rõ ràng. Owner cần xác minh tên/UID hiển thị với người chăm sóc ngoài đời trước khi đồng ý. Nếu mã bị dùng nhầm, owner từ chối yêu cầu và tạo mã mới. Việc tạo link `active` trực tiếp bằng UID caregiver đã bị Security Rules chặn. Link `revoked`/`rejected` chỉ được chuyển lại `pending` khi chính caregiver đó claim một mã mời mới do owner tạo; owner vẫn phải duyệt lại trước khi cấp quyền.
+
+## Quyền truy cập
+
+- Owner elderly vẫn sở hữu và sửa thuốc/lịch của chính mình.
+- Caregiver có quyền **đọc toàn bộ field của document thuốc/lịch đang hoạt động** sau khi được owner cấp quyền, bao gồm hàm lượng và hướng dẫn dùng. Rules chặn đọc thuốc/lịch đã ngừng hoạt động; các truy vấn caregiver bắt buộc lọc `status == active` và `active == true`. Firestore Rules **không thể che riêng từng field khi cho phép đọc document**. UI chỉ trình bày tên thuốc đang dùng và lịch hôm nay. Không có nút sửa, không báo đã uống hoặc đọc DoseEvents. Cần xác minh đúng người nhận và xem lại phạm vi chia sẻ khi duyệt release. Rules vẫn từ chối caregiver đọc DoseEvents/lịch sử, OCR, user profile khác, tạo/chỉnh sửa thuốc và lịch.
+- Caregiver chỉ được đọc metadata của các link có `caregiverUid` đúng UID đang đăng nhập, gồm pending/active/revoked/rejected để tự phát hiện yêu cầu và hồ sơ đã kết nối. Collection-group query bắt buộc lọc `caregiverUid`; metadata không chứa dữ liệu sức khỏe. Sau khi revoke, Rules vẫn từ chối mọi lần đọc mới thuốc/lịch. Caregiver không thể tự tạo link pending nếu chưa claim invite mới cho đúng UID, không thể tự approve, cấp thêm quyền hoặc tự phục hồi quyền đọc của link đã revoked.
+- Với thao tác đọc trực tiếp một document, Rules xác thực schema đầy đủ và `ownerUid` phải trùng UID ở đường dẫn. Với truy vấn danh sách, query phải ràng buộc `ownerUid` cùng `status == active` hoặc `active == true`; Rules xác thực link và các điều kiện này. Thử thêm schema validator vào `allow list` khiến cả truy vấn hợp lệ bị Emulator từ chối (Rules không thể chứng minh các ràng buộc `keys().hasOnly()`/kiểu dữ liệu qua query), nên không bật cách đó. Firestore vẫn trả toàn bộ document cho caregiver. Trước khi cấp quyền, app owner đọc **từ server** toàn bộ thuốc/lịch active, yêu cầu đúng tập field và kiểu dữ liệu, giới hạn 100 mục; nếu có field lạ/sai schema thì không ghi link. Caregiver cũng kiểm tra lại schema chính xác và ẩn toàn bộ lịch nếu dữ liệu thay đổi bất thường sau khi cấp quyền. Tuy nhiên kiểm tra phía client không thể ngăn raw document được truyền trước khi phát hiện; vì vậy không thêm field nhạy cảm vào hai collection này, và mọi import/Admin SDK phải tuân thủ schema. Muốn giới hạn field thực sự cần projection riêng chỉ chứa dữ liệu caregiver được phép xem.
+- Khi chủ hồ sơ tải lại danh sách người được cấp quyền, ứng dụng đọc trực tiếp từ Firestore server, không dùng cache để xác nhận quyền. Chỉ phản hồi mới nhất được dùng để cập nhật danh sách (tránh lần tải cũ ghi đè trạng thái revoked). Thu hồi quyền dùng transaction với revision mới nhất; nếu offline, thao tác thất bại có thông báo và không báo thành công giả. Cấp quyền vẫn phải do chủ hồ sơ xác nhận rõ ràng.
+- Dữ liệu đọc trực tuyến chỉ hiển thị sau khi listener nhận xác nhận server; khi quyền bị từ chối hoặc mất kết nối, UI ẩn dữ liệu đã hiển thị. Nếu bất kỳ bản ghi thuốc/lịch đang hoạt động nào có cấu trúc sai, thao tác cấp quyền bị chặn; nếu dữ liệu đổi bất thường sau đó, toàn bộ lịch caregiver bị ẩn và hiện lỗi, không âm thầm bỏ qua một thuốc rồi trình bày lịch thiếu. Tính giờ theo Asia/Ho_Chi_Minh và **tự làm mới lịch dự kiến vào 00:00 giờ Việt Nam** khi màn hình vẫn đang mở. Khi thoát màn hình hoặc quyền bị thu hồi, listener/timer đều phải được ngắt. Màn hình caregiver còn dùng generation token để bỏ qua callback tới muộn từ hồ sơ đã đóng/chuyển, tránh lẫn dữ liệu giữa hai người.
+
+## Miễn phí và an toàn triển khai
+
+Sử dụng Firebase Auth + Firestore trên Spark, không có Cloud Functions, FCM hay dịch vụ trả phí, không tự nâng cấp Billing. Kiểm tra role và liên kết bằng Rules có dùng exists/get, nghĩa là có thêm lượt đọc phụ thuộc và sử dụng quota Firestore miễn phí. Không có đảm bảo chạy vượt quota Spark.
+
+Trước khi bất kỳ tài khoản thật nào được phép kết nối, chủ dự án phải duyệt toàn bộ changeset Rules, chạy emulator và phê duyệt release riêng. Không tự deploy Rules, Indexes, Storage, Functions hoặc đổi project. Chỉ bật flag Family Care thủ công trong .env khi Rules phù hợp đã được phát hành và hai role đã có hồ sơ test.
+
+## Kiểm thử
+
+Chạy tại expo-app/ trong nhánh feature/owner-approved-family-links:
+
+    npm run typecheck && npm run lint && npm test
+    npm run test:rules
+
+Lệnh test:rules chạy Firestore Emulator cục bộ, có thể cần Java/Firebase CLI. Nó không deploy gì lên production. **GitHub Actions run #45223627265 trên commit `f47c56a` đã đạt: Node.js 24.12.0, TypeScript, ESLint, 50/50 Jest suites (227/227 tests), 50/50 Firestore Rules Emulator tests, 5/5 test riêng cho bundle audit, và bundle audit Android + iOS (8 bundle mỗi nền tảng).** Kết quả: https://github.com/thaogiang0405/medicare-ai/actions/runs/45223627265 . Test Rules xác nhận: không link → deny; caregiver tự approve → deny; elderly cấp đúng UID caregiver → allow đọc thuốc/lịch active; query không ràng buộc ownerUid hoặc trạng thái → deny; dữ liệu sai owner không lọt vào query; direct get sai schema → deny; ghi thuốc/lịch, DoseEvents và revoke trái phép → deny.
+
+Các test client bổ sung mô phỏng listener Firestore, không sử dụng tài khoản bệnh nhân thật, gồm: kiểm tra link server trước khi đọc, giữ trạng thái tải khi offline/cache, xóa dữ liệu khi revoked, xử lý đổi tài khoản, hủy subscription, cập nhật lịch qua nửa đêm tại Việt Nam, danh sách thuốc đang dùng, lỗi cấu trúc dữ liệu, transaction thu hồi khi offline/đổi Auth và phản hồi danh sách liên kết đến không đúng thứ tự. **Các ca này đã đạt trong GitHub Actions**, nhưng chưa được kiểm tra trên iPhone thật.
+
+## Chuẩn bị Firebase staging an toàn (chưa triển khai)
+
+**Firebase Staging đã được chủ dự án xác định:** Project ID `medicare-ai-staging`, Project Number `318128431668`. **Production bị loại khỏi phạm vi:** `medicare-ai-cf804` (Project Number `354989416256`). Project Emulator `medicare-ai-rules-test` chỉ dùng cho kiểm thử cục bộ, không phải Firebase staging. Không dùng project production hoặc Emulator cho kiểm thử hai tài khoản.
+
+Trong Firebase Console của `medicare-ai-staging`, xác nhận project dùng gói Spark, tạo Web App, bật Authentication (phương thức đăng nhập mà app đang dùng) và tạo Firestore. Trước khi bật tính năng hoặc dùng tài khoản kiểm thử, chủ dự án phải duyệt Rules và index của PR này. Việc deploy Rules thay thế bộ Firestore Rules hiện tại của project đích; chỉ thực hiện trên staging đã xác minh, không chạy lệnh deploy nếu CLI đang trỏ project khác.
+
+1. Tại thư mục `expo-app/`, sao chép `.env.example` thành `.env` (file này được Git ignore). Điền **đúng Web App config lấy từ project `medicare-ai-staging`**, không sao chép thông số production. Đặt `EXPO_PUBLIC_FIREBASE_PROJECT_ID=medicare-ai-staging`, `EXPO_PUBLIC_FIRESTORE_USER_PROFILES_ENABLED=true`, `EXPO_PUBLIC_FIRESTORE_MEDICATIONS_ENABLED=true`, `EXPO_PUBLIC_FIRESTORE_SCHEDULES_ENABLED=true` và `EXPO_PUBLIC_FAMILY_CARE_ENABLED=true`. Giữ flag OCR/DoseEvents khác theo mục đích kiểm thử, không cần bật cho Family Care.
+2. Chạy **preflight ngoại tuyến** từ `expo-app/`:
+
+       node scripts/check-family-care-staging.mjs --project medicare-ai-staging
+
+   Script chỉ chấp nhận project ID đã duyệt `medicare-ai-staging`, kiểm tra ID khớp `.env`, chặn project production đã biết, xác nhận Firebase Auth domain/Storage bucket, Messaging Sender ID `318128431668`, Web App ID bắt đầu bằng `1:318128431668:web:`, bốn flag bắt buộc và phát hiện `.env.local` / `.env.development*` hoặc shell ghi đè cấu hình. Nó **không kết nối Firebase, không xác minh Rules đã deploy, không kiểm tra tài khoản và không deploy bất kỳ tài nguyên nào**.
+3. Sau khi preflight PASS và chủ dự án đã duyệt toàn bộ `firestore.rules` cùng `firestore.indexes.json`, chạy lệnh sau ngay trong `expo-app/` để deploy **chỉ Firestore Rules và Indexes lên Staging**:
+
+       npx firebase-tools@15.34.1 --config ../firebase.json deploy --only firestore:rules,firestore:indexes --project medicare-ai-staging
+
+   Kiểm tra output CLI phải hiển thị project `medicare-ai-staging`. Nếu CLI báo bất kỳ project ID nào khác, hủy thao tác ngay. Không deploy Storage, Functions, Hosting, không đổi Billing và không dùng `--force`.
+4. Chỉ sau khi lệnh deploy hoàn tất thành công, mở ứng dụng tại `expo-app/` bằng `npx expo start --clear --lan`, rồi dùng hai tài khoản test trên hai thiết bị. Ghi lại PASS/FAIL theo checklist bên dưới. Chỉ dùng dữ liệu giả, không dùng hồ sơ sức khỏe thật.
+
+Nếu preflight báo BLOCKED thì chỉnh lại cấu hình staging, **không bỏ qua guard và không đổi project sang production**. Nếu Rules hoặc Indexes deploy thất bại, giữ feature flag tắt và không tiếp tục kiểm thử hai tài khoản.
+
+## Checklist kiểm thử thủ công hai tài khoản (chưa thực hiện)
+
+Chỉ chạy trên **Firebase staging project riêng**, không dùng production. Cần build Expo với Firebase config trỏ staging và `EXPO_PUBLIC_FAMILY_CARE_ENABLED=true`. Tạo hai tài khoản test độc lập (một elderly, một caregiver), hoàn tất onboarding và dùng dữ liệu giả hoàn toàn; không nhập tên thuốc, hồ sơ hoặc thông tin sức khỏe của người thật. Để kiểm thử kết nối lại, dùng cùng UID caregiver nhưng luôn tạo mã mời mới; mỗi lượt phải xác minh owner duyệt lại trước khi quyền đọc được cấp.
+
+1. **Tạo mã:** owner elderly tạo và chia sẻ mã mời. Kỳ vọng: mã 20 ký tự, hết hạn khoảng 24 giờ; mã không tự cấp quyền.
+2. **Gửi yêu cầu:** caregiver nhập mã và gửi yêu cầu. Kỳ vọng: invite được claim đúng một lần, link chuyển sang pending; caregiver chỉ thấy trạng thái chờ, không đọc được thuốc/lịch.
+3. **Owner duyệt:** owner tải lại danh sách, kiểm tra display name/UID, rồi approve hoặc reject. Kỳ vọng: hai transaction retry-safe ghi quyết định invite trước, sau đó đổi trạng thái link; caregiver không thể tự approve. Nếu gián đoạn sau bước invite, link vẫn pending và caregiver chưa đọc được dữ liệu.
+4. **Kết nối:** sau approval, hồ sơ tự xuất hiện trên caregiver dashboard qua collection-group query scoped theo caregiver UID. Kỳ vọng: chỉ tên thuốc đang dùng và giờ dự kiến hôm nay xuất hiện; không có nút chỉnh sửa hoặc báo đã uống.
+5. **Live update:** owner đổi giờ lịch giả trên A. Kỳ vọng: B nhận giờ mới mà không cần đăng xuất hoặc khởi động lại.
+6. **Phạm vi:** thử bằng tài khoản caregiver khác và UID owner khác. Kỳ vọng: không truy cập được. Kiểm thử Emulator đã bao phủ đọc inactive, DoseEvents, OCR, user profile khác và ghi sửa; không dùng dữ liệu thật để thử các trường hợp này.
+7. **Thu hồi:** owner revoke trên A. Kỳ vọng: listener metadata link trên B nhận trạng thái `revoked`, tự ngắt listener thuốc/lịch và xóa dữ liệu hiển thị; mọi lần đọc mới thuốc/lịch bị Rules từ chối. UID caregiver cũ không thể tự cấp lại quyền.
+8. **Kết nối lại:** owner tạo mã mới; cùng caregiver claim mã và link chỉ trở về `pending`. Kỳ vọng: caregiver vẫn bị từ chối đọc thuốc/lịch cho đến khi owner xác minh và duyệt lại.
+9. **Mất mạng:** khi B offline, không dùng cache để xác nhận link hoặc tiếp tục hiển thị lịch cũ. Khi A offline, approve/revoke phải báo thất bại/chưa hoàn tất; sau khi có mạng mới thử lại.
+10. **Đổi tài khoản:** B đăng xuất rồi đăng nhập caregiver khác không có link. Kỳ vọng: không còn bất kỳ tên thuốc/lịch nào của owner trước.
+11. **Dọn test:** ghi lại kết quả PASS/FAIL bằng UID giả đã che bớt; reset staging test data theo quy trình quản trị. Không chụp/chia sẻ màn hình chứa hồ sơ sức khỏe thật.
+
+**Điều kiện đạt:** không có dữ liệu trước approve; thay đổi lịch cập nhật live; revoke xóa dữ liệu khỏi UI và chặn đọc mới; offline không tạo thành công giả; đổi tài khoản không làm lộ dữ liệu phiên trước. Chỉ sau khi checklist này và review phạm vi đọc toàn bộ document được chấp thuận mới xem xét bật tính năng cho người dùng thật.
+
+## Dependency audit – release gate
+
+- Báo cáo non-blocking trong GitHub Actions cho thấy `npm audit` toàn cây: **27 package advisories (22 moderate, 5 high)**; `npm audit --omit=dev`: **24 (20 moderate, 4 high)**. Các mục high trong cây production gồm `firebase`, `@firebase/firestore`, `@firebase/firestore-compat` và `@grpc/grpc-js`, cùng liên quan dependency gRPC; `@firebase/rules-unit-testing` là mục high bổ sung ở cây dev/test.
+- Advisory high [GHSA-m9gg-hp2v-232j](https://github.com/advisories/GHSA-m9gg-hp2v-232j) ảnh hưởng `@grpc/grpc-js <1.13.6` và `>=1.14.0 <1.14.5`, bản vá là `1.13.6` / `1.14.5`. Advisory mô tả lỗi xác thực certificate ở một số cấu hình **gRPC server** dùng `getAuthContext`; advisory low liên quan lỗi thông tin trong status message server là [GHSA-f596-whhp-79r4](https://github.com/advisories/GHSA-f596-whhp-79r4).
+- Lockfile xác nhận `@firebase/firestore@4.20.0` khai báo `@grpc/grpc-js: ~1.9.0`, cài `1.9.16`. Firebase upstream issue [firebase/firebase-js-sdk#10400](https://github.com/firebase/firebase-js-sdk/issues/10400) ghi nhận pin này; issue vẫn mở và được cập nhật ngày 17-11-2026. npm override thông thường có thể để lại bản 1.9.16 lồng trong Firestore, không bảo đảm thay đúng bản.
+- Có dấu hiệu tốt cho Expo runtime: package Firebase Firestore có export riêng `react-native` → `index.rn.js`; [index.rn.ts](https://github.com/firebase/firebase-js-sdk/blob/main/packages/firestore/src/index.rn.ts) và [RN connection.ts](https://github.com/firebase/firebase-js-sdk/blob/main/packages/firestore/src/platform/rn/connection.ts) cho thấy RN dùng browser connection, trong khi [grpc_connection.ts](https://github.com/firebase/firebase-js-sdk/blob/main/packages/firestore/src/platform/node/grpc_connection.ts) là Node transport. Vì vậy audit vẫn thấy dependency trong package tree. Metro export của ứng dụng đã quét **8 bundle Android và 8 bundle iOS**, không tìm thấy các chữ ký Node-only. Test riêng của script audit cũng xác nhận bundle sạch được chấp nhận, thiếu bundle bị từ chối và cả ba chữ ký Node-only đều bị chặn.
+- Vì vậy **không tự ép override, downgrade Firebase, hoặc chạy `npm audit fix --force`**. Trước release cần theo dõi bản sửa chính thức từ Firebase và kiểm tra Metro bundle thực tế; giữ cảnh báo trong báo cáo CI cho tới khi upstream xử lý hoặc có phương án tương thích được kiểm thử.
+
+Sau khi Rules và index được xét duyệt và triển khai có chủ đích lên staging, dùng hai tài khoản test riêng (không dùng dữ liệu y tế thật), lần lượt tạo mã, claim invite, owner approve, kiểm tra caregiver tự thấy hồ sơ và lịch live, sửa một lịch để kiểm tra thay đổi, revoke để kiểm tra mất quyền, đổi account để kiểm tra xóa dữ liệu.
+
+**CI run #45223627265 trên commit `f47c56a` đã thành công: Node 24.12.0, TypeScript, ESLint, 50/50 Jest suites (227/227 tests), 50/50 Rules Emulator tests, 5/5 bundle-audit tests, Android 8/8 bundles và iOS 8/8 bundles. Chưa kiểm thử luồng hai điện thoại trên Expo Go hoặc staging Firebase. PR tiếp tục là Draft; chưa deploy Rules production hoặc đổi billing.**
+
+## Kiểm tra Firebase Node transport trong bundle React Native
+
+CI có thêm bước export bundle Android bằng Expo và quét các bundle JavaScript/Hermes
+được tạo ra để tìm chữ ký đặc trưng của Node-only Firestore gRPC transport
+(`@grpc/grpc-js`, `grpc_connection`, `getAuthContext`). Bước này giúp phân
+biệt dependency xuất hiện trong cây npm/npm audit với mã thực sự được đóng gói
+cho React Native. Nó không thay thế kiểm tra dependency advisory, không chứng
+minh mọi đường thực thi runtime và không phải security certification. Nếu bước
+này thất bại, cần xem bundle và Metro resolution trước khi kết luận hoặc thêm
+npm override. Không ép phiên bản `@grpc/grpc-js` ngoài range của Firebase SDK.
+
+Bước export dùng cấu hình Expo client hiện có; không deploy Firebase hoặc thay
+đổi feature flags trên production.
+
+CI trên commit `3781c4e` đã export cả Android và iOS thành công, quét **8 bundle JavaScript/Hermes trên mỗi nền tảng** mà không tìm thấy các chữ ký Node-only nêu trên. Đây là bằng chứng cụ thể từ output Metro của ứng dụng (không chỉ suy luận từ export map của Firebase). Bộ test riêng của script audit đạt **5/5 ca**: bundle sạch, thiếu bundle và ba chữ ký Node-only.
+

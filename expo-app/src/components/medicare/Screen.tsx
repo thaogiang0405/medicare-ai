@@ -49,7 +49,8 @@ const styles = StyleSheet.create({
   content: {
     flexGrow: 1,
     paddingHorizontal: medicareSpacing.page,
-    paddingVertical: medicareSpacing.lg,
+    paddingTop: medicareSpacing.lg,
+    paddingBottom: medicareSpacing.xxl,
   },
   fill: {
     flex: 1,

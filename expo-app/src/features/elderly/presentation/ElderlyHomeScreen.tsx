@@ -12,8 +12,10 @@ import {
   Screen,
   SecondaryButton,
 } from '@/components/medicare';
-import { medicareColors, medicareSpacing, medicareTypography } from '@/constants/medicare-theme';
+import { medicareColors, medicareRadius, medicareSpacing, medicareTypography } from '@/constants/medicare-theme';
 import { medicationScheduleRecurrenceLabel } from '@/features/schedules/presentation/medication-schedule-utils';
+import { isFamilyCareFeatureEnabled } from '@/services/firebase/family-care-feature';
+import { FamilyLinkOwnerPanel } from '@/features/family-care/presentation/FamilyLinkOwnerPanel';
 import { isPrescriptionOcrFeatureEnabled } from '@/features/prescriptions';
 import { useSessionStore } from '@/store';
 import type { PersistedDoseResponseStatus } from '@/types/domain';
@@ -22,10 +24,6 @@ import { formatVietnameseTime } from '@/utils/formatters';
 import { buildTodayScheduleSpeech } from './today-schedule-speech';
 import { TodayScheduleSpeechButton } from './TodayScheduleSpeechButton';
 import { useElderlyDashboard } from './useElderlyDashboard';
-
-function showDeferredFeature(feature: string) {
-  Alert.alert('Chưa có trong lộ trình hiện tại', `${feature} sẽ được xây dựng ở milestone phù hợp.`);
-}
 
 export default function ElderlyHomeScreen() {
   const {
@@ -113,29 +111,40 @@ export default function ElderlyHomeScreen() {
       }
       : {
       title: 'Lịch thuốc trên Firebase',
-      description: 'Lịch hôm nay là kế hoạch từ hồ sơ đã xác thực. DoseEvent, phản hồi uống thuốc và nhắc lại chưa được tạo từ lịch này.',
+      description: 'Lịch được lấy từ hồ sơ của bạn. Ứng dụng chưa tự ghi nhận việc uống thuốc.',
       }
     : medicationsFeatureEnabled
       ? {
         title: 'Thuốc trên Firebase · Lịch demo',
-        description: 'Thuốc của bạn được lưu trong Firestore theo hồ sơ đã xác thực. Lịch hôm nay và phản hồi uống thuốc bên dưới vẫn là dữ liệu demo.',
+        description: 'Thuốc được lưu trong hồ sơ của bạn. Lịch và phản hồi bên dưới vẫn là dữ liệu thử nghiệm.',
       }
       : schedulesFeatureEnabled
         ? {
           title: 'Chế độ trình diễn',
-          description: 'Lịch Firebase chỉ được dùng khi cả Thuốc và Lịch thuốc đều được bật. Nội dung bên dưới hiện là dữ liệu demo.',
+          description: 'Lịch bên dưới chỉ dùng để thử ứng dụng, chưa phải lịch thuốc thật.',
         }
         : {
           title: 'Chế độ trình diễn',
-          description: 'Vai trò đã được kiểm tra từ hồ sơ của chính bạn. Lịch, thuốc và phản hồi dưới đây chỉ dùng để thử giao diện; không phải hồ sơ y tế.',
+          description: 'Nội dung bên dưới chỉ dùng để làm quen với ứng dụng, không phải hồ sơ y tế.',
         };
 
   return (
     <Screen contentStyle={styles.content}>
       <AppHeader
-        right={<Text style={styles.roleLabel}>Người cao tuổi</Text>}
-        title={`Chào ${user?.displayName ?? 'bạn'}`}
+        right={<Text maxFontSizeMultiplier={1.2} style={styles.roleLabel}>Người cao tuổi</Text>}
+        subtitle="Chăm sóc sức khỏe mỗi ngày"
+        title={user?.displayName ?? 'Chào bạn'}
       />
+      <View style={styles.welcomeCard}>
+        <View style={styles.welcomeIcon}>
+          <Text accessibilityElementsHidden style={styles.welcomeIconText}>♥</Text>
+        </View>
+        <View style={styles.welcomeCopy}>
+          <Text maxFontSizeMultiplier={1.25} style={styles.welcomeEyebrow}>MEDICARE AI</Text>
+          <Text maxFontSizeMultiplier={1.3} style={styles.welcomeTitle}>Thuốc đúng giờ, an tâm mỗi ngày</Text>
+          <Text maxFontSizeMultiplier={1.25} style={styles.welcomeDescription}>Theo dõi lịch uống và thuốc trong một nơi.</Text>
+        </View>
+      </View>
       <DemoModeBanner description={dashboardBanner.description} title={dashboardBanner.title} />
       {errorMessage ? (
         <View style={styles.errorGroup}>
@@ -158,11 +167,11 @@ export default function ElderlyHomeScreen() {
         <Text accessibilityRole="header" style={styles.sectionTitle}>
           Lịch thuốc hôm nay
         </Text>
-        {todaySpeech ? <TodayScheduleSpeechButton key={user?.id} message={todaySpeech} /> : null}
+        {todaySpeech ? <TodayScheduleSpeechButton key={`${user?.id ?? 'anonymous'}:${todaySpeech}`} message={todaySpeech} /> : null}
         {isLoading ? <ActivityIndicator color={medicareColors.primary} size="large" /> : null}
         {!isLoading && !errorMessage && usesFirestoreSchedules && medicationSchedules.length === 0 ? (
           <SafetyNotice
-            message="Hôm nay chưa có lịch thuốc đang hoạt động. Bạn có thể tạo lịch trong mục Thuốc của tôi."
+            message="Bạn chưa có lịch đang hoạt động. Vào “Thuốc của tôi” để tạo lịch."
             title="Chưa có lịch thuốc hôm nay"
             tone="information"
           />
@@ -235,9 +244,9 @@ export default function ElderlyHomeScreen() {
       </View>
       <SafetyNotice
         message={usesFirestoreDoseTracking
-          ? '“Đã uống” và “Bỏ qua” là phản hồi do bạn tự báo. Ứng dụng không tự xác nhận việc uống thuốc và chưa có cảnh báo y tế.'
+          ? 'Bạn tự xác nhận Đã uống hoặc Bỏ qua. Ứng dụng không tự xác nhận việc uống thuốc.'
           : usesFirestoreSchedules
-            ? 'Đây là lịch dự kiến. Ứng dụng chưa ghi nhận bạn đã uống thuốc, chưa tự tạo DoseEvent và chưa gửi thông báo.'
+            ? 'Đây là giờ uống dự kiến. Ứng dụng chưa ghi nhận việc bạn đã uống thuốc.'
           : '“Đã uống” là phản hồi do bạn tự báo. Nếu quên liều hoặc có dấu hiệu bất thường, hãy liên hệ bác sĩ hoặc dược sĩ.'}
         title={usesFirestoreDoseTracking ? 'Phản hồi tự báo' : usesFirestoreSchedules ? 'Giới hạn hiện tại' : 'Ghi nhận an toàn'}
         tone="information"
@@ -338,12 +347,15 @@ export default function ElderlyHomeScreen() {
           onPress={() => router.push('/elderly/reminder-settings')}
           title="Cài đặt nhắc lịch"
         />
-        <ActionCard
-          description="Liên kết gia đình chưa được triển khai."
-          icon={<Text style={styles.icon}>⌂</Text>}
-          onPress={() => showDeferredFeature('Liên hệ người thân')}
-          title="Liên hệ người thân"
-        />
+        {isFamilyCareFeatureEnabled() && user?.role === 'elderly' && user.id ? (
+          <FamilyLinkOwnerPanel key={user.id} ownerUid={user.id} />
+        ) : (
+          <SafetyNotice
+            title="Family Care chưa bật"
+            message="Liên kết người chăm sóc chỉ có trong bản PR #7 khi Firebase staging và Security Rules đã được kiểm thử, phê duyệt. Không cần bấm Liên hệ người thân; tính năng chưa được kích hoạt ở cấu hình này."
+            tone="information"
+          />
+        )}
       </View>
       <SecondaryButton
         accessibilityHint="Đăng xuất và xóa trạng thái phiên trong bộ nhớ"
@@ -360,9 +372,58 @@ const styles = StyleSheet.create({
     gap: medicareSpacing.xl,
   },
   roleLabel: {
+    overflow: 'hidden',
     color: medicareColors.primary,
+    backgroundColor: medicareColors.primaryContainer,
+    borderRadius: 999,
+    paddingHorizontal: medicareSpacing.sm,
+    paddingVertical: medicareSpacing.xs,
     fontSize: medicareTypography.caption,
+    fontWeight: '800',
+  },
+  welcomeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: medicareSpacing.md,
+    padding: medicareSpacing.lg,
+    borderRadius: medicareRadius.lg,
+    borderWidth: 1,
+    borderColor: '#CBE8DE',
+    backgroundColor: '#E8F5F0',
+  },
+  welcomeIcon: {
+    width: 56,
+    height: 56,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 20,
+    backgroundColor: '#D2EBE2',
+  },
+  welcomeIconText: {
+    color: medicareColors.primary,
+    fontSize: 30,
     fontWeight: '700',
+  },
+  welcomeCopy: {
+    flex: 1,
+    gap: medicareSpacing.xxs,
+  },
+  welcomeEyebrow: {
+    color: medicareColors.primary,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1,
+  },
+  welcomeTitle: {
+    color: medicareColors.text,
+    fontSize: medicareTypography.label,
+    fontWeight: '800',
+    lineHeight: 24,
+  },
+  welcomeDescription: {
+    color: medicareColors.textMuted,
+    fontSize: medicareTypography.bodySmall,
+    lineHeight: 22,
   },
   section: {
     gap: medicareSpacing.md,
@@ -377,6 +438,7 @@ const styles = StyleSheet.create({
     color: medicareColors.text,
     fontSize: medicareTypography.subheading,
     fontWeight: '800',
+    letterSpacing: -0.25,
     lineHeight: 29,
   },
   icon: {

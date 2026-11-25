@@ -63,7 +63,9 @@
     "preset": "jest-expo",
     "testPathIgnorePatterns": [
       "/node_modules/",
-      "/.expo/"
+      "/.expo/",
+      "/scripts/verify-firebase-rn-bundle.test.mjs",
+      "/scripts/check-family-care-staging.test.mjs"
     ]
   },
   "private": true

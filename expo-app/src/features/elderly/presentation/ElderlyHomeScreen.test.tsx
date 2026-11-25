@@ -7,6 +7,16 @@ jest.mock('expo-router', () => ({
   },
 }));
 
+jest.mock('@/services/firebase/family-care-feature', () => ({
+  isFamilyCareFeatureEnabled: () => false,
+}));
+
+// The family-link panel is feature-gated off here; do not import its
+// Firebase/AsyncStorage runtime while exercising the elderly dashboard.
+jest.mock('@/features/family-care/presentation/FamilyLinkOwnerPanel', () => ({
+  FamilyLinkOwnerPanel: () => null,
+}));
+
 jest.mock('./TodayScheduleSpeechButton', () => ({
   TodayScheduleSpeechButton: () => null,
 }));
@@ -245,6 +255,14 @@ describe('ElderlyHomeScreen', () => {
     await fireEvent.press(view.getByLabelText('Quét đơn thuốc'));
 
     expect(router.push).toHaveBeenCalledWith('/elderly/prescription-ocr');
+  });
+
+  it('explains disabled Family Care without exposing a misleading contact button', async () => {
+    const view = await render(<ElderlyHomeScreen />);
+
+    expect(view.getByText('Family Care chưa bật')).toBeOnTheScreen();
+    expect(view.getByText(/Firebase staging/)).toBeOnTheScreen();
+    expect(view.queryByLabelText('Liên hệ người thân')).toBeNull();
   });
 
   it('offers the separate safe package-label OCR route', async () => {

@@ -62,7 +62,7 @@ export default function RegisterScreen() {
 
   return (
     <Screen contentStyle={styles.content}>
-      <AppHeader onBack={() => router.back()} title="Tạo tài khoản" />
+      <AppHeader onBack={() => router.back()} subtitle="Chỉ mất vài phút để bắt đầu" title="Tạo tài khoản" />
       <View style={styles.heading}>
         <Text accessibilityRole="header" style={styles.title}>
           Thông tin cơ bản

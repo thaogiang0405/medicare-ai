@@ -56,34 +56,40 @@ Toàn bộ dữ liệu sức khỏe thuộc một người cao tuổi nằm dư�
 
 Không lưu mật khẩu, token, raw OCR hay thuốc trong `/users`.
 
-### Caregiver link
+### Family Care invite and caregiver link
 
 ```json
-// elderlyProfiles/{elderlyId}/caregiverLinks/{caregiverId}
+// familyInvites/{inviteCode}
 {
-  "elderlyId": "elderlyUid",
-  "caregiverId": "caregiverUid",
-  "status": "pending",
-  "initiatedBy": "caregiverUid",
-  "invitationId": "invite-id",
-  "scopes": {
-    "profileRead": true,
-    "medicationsRead": true,
-    "medicationsWrite": false,
-    "schedulesRead": true,
-    "schedulesWrite": false,
-    "doseHistoryRead": true,
-    "ocrRead": false
-  },
+  "ownerUid": "elderlyUid",
+  "ownerDisplayName": "Tên hiển thị chủ hồ sơ",
+  "inviteCode": "20-character-firestore-auto-id",
+  "status": "open",
+  "expiresAt": "Timestamp (about 24 hours after creation)",
+  "claimedByUid": null,
+  "claimedAt": null,
   "createdAt": "Timestamp",
-  "acceptedAt": null,
-  "revokedAt": null,
-  "updatedAt": "Timestamp",
-  "version": 1
+  "updatedAt": "Timestamp"
+}
+
+// elderlyProfiles/{elderlyId}/caregiverLinks/{caregiverUid}
+{
+  "ownerUid": "elderlyUid",
+  "ownerDisplayName": "Tên hiển thị chủ hồ sơ",
+  "caregiverUid": "caregiverUid",
+  "caregiverDisplayName": "Tên hiển thị người chăm sóc",
+  "inviteCode": "same invite ID",
+  "status": "pending",
+  "scopes": { "medicationsRead": true, "schedulesRead": true },
+  "revision": 1,
+  "createdAt": "Timestamp",
+  "updatedAt": "Timestamp"
 }
 ```
 
-Status lifecycle: `pending → active | rejected | expired`; `active → revoked`. Caregiver can never set `active` from client. A Callable Function hashes invite codes, validates expiry and creates pending link; elderly approval and revocation run through server-trusted code/transaction.
+Invite lifecycle: `open → claimed → consumed` (approved) or `open → claimed → rejected`. Expired open invites cannot be read/claimed. Each invite is claimed once; retry by the same caregiver is idempotent when the matching link is already pending; after a previous link was revoked/rejected, a fresh claimed invite may update that same UID-pair document back to `pending` with a new revision and invite code. Claim and pending-link creation/reconnection are separate transactions to avoid circular Rules evaluation: after claim, only the same caregiver can complete the matching request; other accounts cannot take the invite. Owner approval/rejection uses two retry-safe transactions: first the invite records the owner's decision, then the link changes state. Rules validate the claimed invite on both initial creation and reconnect; only the owner can transition a pending link to active/rejected, and that transition cannot modify link metadata. Only `active` links authorize medication/schedule reads. Caregiver discovery uses a collection-group query constrained to the signed-in caregiver UID and returns link metadata only.
+
+The invitation ID is a locator, not a permission token. Knowing it can create a pending request but cannot grant health-data access. Owner confirmation remains mandatory. Revoked/rejected links cannot be directly reactivated or deleted; a fresh one-time invite can only return the same UID pair to `pending`, and the owner must approve again.
 
 ### Prescription and OCR — AI Phase 1
 
@@ -238,7 +244,7 @@ recurrence/clock tuyệt đối ngoài dữ liệu client khai báo.
 3. Dose event ID and local reminder logical key are deterministic. Local delivery is best effort, so the device dedupes only MediCare-owned IDs.
 4. Changing a schedule increments its own revision. A future trusted scheduler must never rewrite self-reported dose events already generated.
 5. Stopping a medication/schedule prevents future event creation in a later milestone; it does not delete history.
-6. Revoke marks the link inactive, stops future caregiver notifications and deletes projection records. It cannot erase data already observed by the caregiver.
+6. Family Care MVP revocation marks the link inactive; Firestore Rules deny subsequent reads and the caregiver client clears its visible state and listeners. The MVP creates no projection documents or caregiver notifications to delete. Revocation cannot erase data already observed, copied, or screenshotted by the caregiver.
 
 ## Queries/indexes
 

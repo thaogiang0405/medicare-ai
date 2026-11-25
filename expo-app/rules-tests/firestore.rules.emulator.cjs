@@ -8,11 +8,13 @@ const {
 } = require('@firebase/rules-unit-testing');
 const {
   collection,
+  collectionGroup,
   documentId,
   doc,
   deleteDoc,
   getDoc,
   getDocs,
+  onSnapshot,
   orderBy,
   query,
   runTransaction,
@@ -949,7 +951,6 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
     const blockedReads = [
       `elderlyProfiles/${userA}/prescriptions/prescription-a`,
       `elderlyProfiles/${userA}/ocrResults/ocr-a`,
-      `elderlyProfiles/${userA}/caregiverLinks/${caregiver}`,
       `elderlyProfiles/${userA}/notifications/notification-a`,
       `elderlyProfiles/${userA}/auditLogs/audit-a`,
       `caregiverProfiles/${userA}`,
@@ -961,4 +962,580 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
       await assertFails(getDoc(doc(database, path)));
     }
   });
+  function familyLink(ownerUid, caregiverUid, overrides = {}) {
+    return {
+      ownerUid,
+      caregiverUid,
+      status: 'active',
+      scopes: { medicationsRead: true, schedulesRead: true },
+      revision: 1,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      ...overrides,
+    };
+  }
+
+  function familyLinkRef(database, ownerUid = userA, caregiverUid = caregiver) {
+    return doc(database, 'elderlyProfiles', ownerUid, 'caregiverLinks', caregiverUid);
+  }
+
+  const familyInviteCode = 'AbCdEfGhIjKlMnOpQrSt';
+
+  function familyInvite(ownerUid, inviteCode = familyInviteCode, overrides = {}) {
+    return {
+      ownerUid,
+      ownerDisplayName: 'Người dùng kiểm thử',
+      inviteCode,
+      status: 'open',
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      claimedByUid: null,
+      claimedAt: null,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      ...overrides,
+    };
+  }
+
+  function pendingFamilyLink(ownerUid, caregiverUid, inviteCode = familyInviteCode, overrides = {}) {
+    return {
+      ownerUid,
+      ownerDisplayName: 'Người dùng kiểm thử',
+      caregiverUid,
+      caregiverDisplayName: 'Người dùng kiểm thử',
+      inviteCode,
+      status: 'pending',
+      scopes: { medicationsRead: true, schedulesRead: true },
+      revision: 1,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      ...overrides,
+    };
+  }
+
+  it('claims a one-time invite, creates a pending link, and grants health reads only after owner approval', async () => {
+    await seed('users/' + userA, userProfile(userA));
+    await seed('users/' + caregiver, userProfile(caregiver, 'caregiver'));
+    await seed('elderlyProfiles/' + userA + '/medications/medication-a', medication(userA));
+    const ownerDB = firestoreAs(userA);
+    const caregiverDB = firestoreAs(caregiver);
+    const invitation = doc(ownerDB, 'familyInvites', familyInviteCode);
+    const caregiverInvitation = doc(caregiverDB, 'familyInvites', familyInviteCode);
+    const ownerLink = familyLinkRef(ownerDB);
+    const caregiverLink = familyLinkRef(caregiverDB);
+
+    await assertSucceeds(setDoc(invitation, familyInvite(userA)));
+    await assertSucceeds(getDoc(caregiverInvitation));
+    await assertFails(getDoc(medicationReference(caregiverDB, userA)));
+    await assertFails(runTransaction(caregiverDB, async (transaction) => {
+      await transaction.get(caregiverInvitation);
+      await transaction.get(caregiverLink);
+      await transaction.get(userProfileReference(caregiverDB, caregiver));
+      transaction.set(caregiverLink, pendingFamilyLink(userA, caregiver));
+    }));
+
+    await assertSucceeds(runTransaction(caregiverDB, async (transaction) => {
+      const inviteSnapshot = await transaction.get(caregiverInvitation);
+      expect(inviteSnapshot.data().status).toBe('open');
+      transaction.update(caregiverInvitation, {
+        status: 'claimed', claimedByUid: caregiver, claimedAt: serverTimestamp(), updatedAt: serverTimestamp(),
+      });
+    }));
+    expect((await assertSucceeds(getDoc(caregiverLink))).exists()).toBe(false);
+    await assertSucceeds(runTransaction(caregiverDB, async (transaction) => {
+      const inviteSnapshot = await transaction.get(caregiverInvitation);
+      const existingLink = await transaction.get(caregiverLink);
+      const caregiverProfile = await transaction.get(userProfileReference(caregiverDB, caregiver));
+      expect(inviteSnapshot.data().status).toBe('claimed');
+      expect(inviteSnapshot.data().claimedByUid).toBe(caregiver);
+      expect(existingLink.exists()).toBe(false);
+      expect(caregiverProfile.data().primaryRole).toBe('caregiver');
+      transaction.set(caregiverLink, pendingFamilyLink(userA, caregiver));
+    }));
+
+    expect((await assertSucceeds(getDoc(caregiverLink))).data().status).toBe('pending');
+    await assertFails(getDoc(medicationReference(caregiverDB, userA)));
+    const caregiverLinks = await assertSucceeds(getDocs(query(
+      collectionGroup(caregiverDB, 'caregiverLinks'),
+      where('caregiverUid', '==', caregiver),
+    )));
+    expect(caregiverLinks.size).toBe(1);
+    expect(caregiverLinks.docs[0].data().status).toBe('pending');
+
+    await assertSucceeds(runTransaction(ownerDB, async (transaction) => {
+      const linkSnapshot = await transaction.get(ownerLink);
+      const inviteSnapshot = await transaction.get(invitation);
+      expect(linkSnapshot.data().status).toBe('pending');
+      expect(inviteSnapshot.data().status).toBe('claimed');
+      transaction.update(invitation, { status: 'consumed', updatedAt: serverTimestamp() });
+    }));
+    expect((await assertSucceeds(getDoc(ownerLink))).data().status).toBe('pending');
+    await assertFails(getDoc(medicationReference(caregiverDB, userA)));
+    await assertFails(updateDoc(ownerLink, {
+      status: 'active', revision: 2, updatedAt: serverTimestamp(),
+      scopes: { medicationsRead: false, schedulesRead: true },
+    }));
+    await assertSucceeds(runTransaction(ownerDB, async (transaction) => {
+      const linkSnapshot = await transaction.get(ownerLink);
+      const inviteSnapshot = await transaction.get(invitation);
+      expect(linkSnapshot.data().status).toBe('pending');
+      expect(inviteSnapshot.data().status).toBe('consumed');
+      transaction.update(ownerLink, { status: 'active', revision: 2, updatedAt: serverTimestamp() });
+    }));
+
+    expect((await assertSucceeds(getDoc(caregiverLink))).data().status).toBe('active');
+    await assertSucceeds(getDoc(medicationReference(caregiverDB, userA)));
+    await assertFails(getDoc(caregiverInvitation));
+  });
+
+  it('allows only the first caregiver to claim an invite and prevents a second claimant', async () => {
+    await seed('users/' + userA, userProfile(userA));
+    await seed('users/' + caregiver, userProfile(caregiver, 'caregiver'));
+    await seed('users/caregiver-b', userProfile('caregiver-b', 'caregiver'));
+    const ownerDB = firestoreAs(userA);
+    const firstDB = firestoreAs(caregiver);
+    const secondDB = firestoreAs('caregiver-b');
+    const ownerInvite = doc(ownerDB, 'familyInvites', familyInviteCode);
+    const firstInvite = doc(firstDB, 'familyInvites', familyInviteCode);
+    const secondInvite = doc(secondDB, 'familyInvites', familyInviteCode);
+    await assertSucceeds(setDoc(ownerInvite, familyInvite(userA)));
+
+    await assertSucceeds(runTransaction(firstDB, async (transaction) => {
+      await transaction.get(firstInvite);
+      transaction.update(firstInvite, {
+        status: 'claimed', claimedByUid: caregiver, claimedAt: serverTimestamp(), updatedAt: serverTimestamp(),
+      });
+    }));
+    await assertSucceeds(runTransaction(firstDB, async (transaction) => {
+      await transaction.get(firstInvite);
+      await transaction.get(familyLinkRef(firstDB));
+      await transaction.get(userProfileReference(firstDB, caregiver));
+      transaction.set(familyLinkRef(firstDB), pendingFamilyLink(userA, caregiver));
+    }));
+    await assertFails(getDoc(secondInvite));
+    await assertFails(runTransaction(secondDB, async (transaction) => {
+      await transaction.get(secondInvite);
+      await transaction.get(familyLinkRef(secondDB));
+      await transaction.get(userProfileReference(secondDB, 'caregiver-b'));
+      transaction.update(secondInvite, {
+        status: 'claimed', claimedByUid: 'caregiver-b', claimedAt: serverTimestamp(), updatedAt: serverTimestamp(),
+      });
+      transaction.set(familyLinkRef(secondDB), pendingFamilyLink(userA, 'caregiver-b'));
+    }));
+  });
+
+  it('denies expired invites, non-caregiver claims, malformed invite IDs, and forged owner identity', async () => {
+    await seed('users/' + userA, userProfile(userA));
+    await seed('users/' + userB, userProfile(userB));
+    await seed('users/' + caregiver, userProfile(caregiver, 'caregiver'));
+    const ownerDB = firestoreAs(userA);
+    const caregiverDB = firestoreAs(caregiver);
+    const elderlyDB = firestoreAs(userB);
+    const validInvite = doc(ownerDB, 'familyInvites', familyInviteCode);
+    await assertSucceeds(setDoc(validInvite, familyInvite(userA)));
+    await assertFails(getDoc(doc(elderlyDB, 'familyInvites', familyInviteCode)));
+    await assertFails(setDoc(doc(ownerDB, 'familyInvites', 'short-code'), familyInvite(userA, 'short-code')));
+    const forgedCode = 'ZzYyXxWwVvUuTtSsRrQq';
+    await assertFails(setDoc(doc(ownerDB, 'familyInvites', forgedCode), familyInvite(userB, forgedCode)));
+    const expiredCode = 'ExpiredInviteCode123';
+    await seed('familyInvites/' + expiredCode, familyInvite(userA, expiredCode, {
+      expiresAt: new Date(Date.now() - 60 * 1000),
+    }));
+    await assertFails(getDoc(doc(caregiverDB, 'familyInvites', expiredCode)));
+  });
+
+  it('requires owner approval to consume or reject a pending request and never grants health access on rejection', async () => {
+    await seed('users/' + userA, userProfile(userA));
+    await seed('users/' + caregiver, userProfile(caregiver, 'caregiver'));
+    await seed('elderlyProfiles/' + userA + '/medications/medication-a', medication(userA));
+    const ownerDB = firestoreAs(userA);
+    const caregiverDB = firestoreAs(caregiver);
+    const invitation = doc(ownerDB, 'familyInvites', familyInviteCode);
+    const inviteForCaregiver = doc(caregiverDB, 'familyInvites', familyInviteCode);
+    const ownerLink = familyLinkRef(ownerDB);
+    const caregiverLink = familyLinkRef(caregiverDB);
+    await assertSucceeds(setDoc(invitation, familyInvite(userA)));
+    await assertSucceeds(runTransaction(caregiverDB, async (transaction) => {
+      await transaction.get(inviteForCaregiver);
+      transaction.update(inviteForCaregiver, {
+        status: 'claimed', claimedByUid: caregiver, claimedAt: serverTimestamp(), updatedAt: serverTimestamp(),
+      });
+    }));
+    await assertSucceeds(runTransaction(caregiverDB, async (transaction) => {
+      await transaction.get(inviteForCaregiver);
+      await transaction.get(caregiverLink);
+      await transaction.get(userProfileReference(caregiverDB, caregiver));
+      transaction.set(caregiverLink, pendingFamilyLink(userA, caregiver));
+    }));
+    await assertSucceeds(runTransaction(ownerDB, async (transaction) => {
+      await transaction.get(ownerLink);
+      await transaction.get(invitation);
+      transaction.update(invitation, { status: 'rejected', updatedAt: serverTimestamp() });
+    }));
+    expect((await assertSucceeds(getDoc(ownerLink))).data().status).toBe('pending');
+    await assertFails(getDoc(medicationReference(caregiverDB, userA)));
+    await assertSucceeds(runTransaction(ownerDB, async (transaction) => {
+      await transaction.get(ownerLink);
+      const inviteSnapshot = await transaction.get(invitation);
+      expect(inviteSnapshot.data().status).toBe('rejected');
+      transaction.update(ownerLink, { status: 'rejected', revision: 2, updatedAt: serverTimestamp() });
+    }));
+    expect((await assertSucceeds(getDoc(caregiverLink))).data().status).toBe('rejected');
+    await assertFails(getDoc(inviteForCaregiver));
+    await assertFails(getDoc(medicationReference(caregiverDB, userA)));
+    await assertFails(updateDoc(caregiverLink, { status: 'active', revision: 3, updatedAt: serverTimestamp() }));
+  });
+
+  it('denies collection-group link discovery unless query is scoped to the signed-in caregiver UID', async () => {
+    await seed('users/' + userA, userProfile(userA));
+    await seed('users/' + caregiver, userProfile(caregiver, 'caregiver'));
+    await seed('elderlyProfiles/' + userA + '/caregiverLinks/' + caregiver, familyLink(userA, caregiver));
+    const caregiverDB = firestoreAs(caregiver);
+    const ownLinks = await assertSucceeds(getDocs(query(
+      collectionGroup(caregiverDB, 'caregiverLinks'),
+      where('caregiverUid', '==', caregiver),
+    )));
+    expect(ownLinks.size).toBe(1);
+    await assertFails(getDocs(collectionGroup(caregiverDB, 'caregiverLinks')));
+    await assertFails(getDocs(query(
+      collectionGroup(caregiverDB, 'caregiverLinks'),
+      where('caregiverUid', '==', userB),
+    )));
+  });
+
+  it('allows an already-approved link to read only active medicines and schedules', async () => {
+    await seed('users/' + userA, userProfile(userA));
+    await seed('users/' + userB, userProfile(userB));
+    await seed('users/' + caregiver, userProfile(caregiver, 'caregiver'));
+    await seed('elderlyProfiles/' + userA + '/medications/medication-a', medication(userA));
+    await seed('elderlyProfiles/' + userA + '/medications/medication-inactive', medication(userA, {
+      name: 'Thuốc đã ngừng',
+      status: 'inactive',
+    }));
+    await seed('elderlyProfiles/' + userA + '/medicationSchedules/schedule-a', medicationSchedule(userA));
+    await seed('elderlyProfiles/' + userA + '/medicationSchedules/schedule-inactive', medicationSchedule(userA, {
+      localTime: '09:00',
+      active: false,
+    }));
+
+    const ownerDB = firestoreAs(userA);
+    const caregiverDB = firestoreAs(caregiver);
+    const unrelatedDB = firestoreAs(userB);
+
+    await assertFails(getDocs(medicationsCollection(caregiverDB, userA)));
+    await assertFails(getDocs(medicationSchedulesCollection(caregiverDB, userA)));
+    expect((await assertSucceeds(getDoc(familyLinkRef(caregiverDB)))).exists()).toBe(false);
+
+    await seed('elderlyProfiles/' + userA + '/caregiverLinks/' + caregiver, familyLink(userA, caregiver));
+    await assertSucceeds(getDoc(familyLinkRef(caregiverDB)));
+    const sharedMedicationDocs = await assertSucceeds(getDocs(query(
+      medicationsCollection(caregiverDB, userA),
+      where('ownerUid', '==', userA),
+      where('status', '==', 'active'),
+    )));
+    expect(sharedMedicationDocs.size).toBe(1);
+    expect(sharedMedicationDocs.docs[0]?.data()).toEqual(
+      expect.objectContaining({
+        name: 'Paracetamol',
+        strengthText: '500 mg',
+        directionsText: 'Nội dung do người dùng cung cấp',
+        status: 'active',
+      }),
+    );
+    const sharedScheduleDocs = await assertSucceeds(getDocs(query(
+      medicationSchedulesCollection(caregiverDB, userA),
+      where('ownerUid', '==', userA),
+      where('active', '==', true),
+    )));
+    expect(sharedScheduleDocs.size).toBe(1);
+    await assertSucceeds(getDoc(medicationReference(caregiverDB, userA)));
+    await assertSucceeds(getDoc(medicationScheduleReference(caregiverDB, userA)));
+    await assertFails(getDoc(medicationReference(caregiverDB, userA, 'medication-inactive')));
+    await assertFails(getDoc(medicationScheduleReference(caregiverDB, userA, 'schedule-inactive')));
+    await assertFails(getDocs(medicationsCollection(caregiverDB, userA)));
+    await assertFails(getDocs(medicationSchedulesCollection(caregiverDB, userA)));
+
+    await assertFails(getDoc(familyLinkRef(unrelatedDB)));
+    await assertFails(getDocs(medicationsCollection(unrelatedDB, userA)));
+    await assertFails(getDocs(medicationSchedulesCollection(unrelatedDB, userA)));
+    await assertFails(getDocs(medicationsCollection(caregiverDB, userB)));
+    await assertFails(getDocs(collection(caregiverDB, 'users')));
+    await assertFails(getDocs(collection(caregiverDB, 'elderlyProfiles', userA, 'caregiverLinks')));
+    await assertFails(updateDoc(medicationReference(caregiverDB, userA), { name: 'Not mine', updatedAt: serverTimestamp() }));
+    await assertFails(updateDoc(medicationScheduleReference(caregiverDB, userA), { active: false, updatedAt: serverTimestamp() }));
+    await assertFails(getDocs(doseEventsCollection(caregiverDB, userA)));
+  });
+
+  it('streams owner schedule edits and delivers a live revoke event before health listeners stop', async () => {
+    await seed('users/' + userA, userProfile(userA));
+    await seed('users/' + caregiver, userProfile(caregiver, 'caregiver'));
+    await seed('elderlyProfiles/' + userA + '/medications/medication-a', medication(userA));
+    await seed('elderlyProfiles/' + userA + '/medicationSchedules/schedule-a', medicationSchedule(userA));
+    const ownerDB = firestoreAs(userA);
+    const caregiverDB = firestoreAs(caregiver);
+    const link = familyLinkRef(ownerDB);
+    const caregiverLink = familyLinkRef(caregiverDB);
+    const scheduleQuery = query(
+      medicationSchedulesCollection(caregiverDB, userA),
+      where('ownerUid', '==', userA),
+      where('active', '==', true),
+    );
+
+    await seed('elderlyProfiles/' + userA + '/caregiverLinks/' + caregiver, familyLink(userA, caregiver));
+    const observedTimes = new Set();
+    const timeWaiters = new Map();
+    let scheduleListenerError = null;
+    const stopSchedule = onSnapshot(scheduleQuery, { includeMetadataChanges: true }, (snapshot) => {
+      if (snapshot.metadata.fromCache || snapshot.size !== 1) return;
+      const time = snapshot.docs[0].data().localTime;
+      observedTimes.add(time);
+      const pending = timeWaiters.get(time);
+      if (pending) {
+        timeWaiters.delete(time);
+        pending.resolve();
+      }
+    }, (error) => {
+      scheduleListenerError = error;
+      for (const pending of timeWaiters.values()) pending.reject(error);
+      timeWaiters.clear();
+    });
+
+    const observedLinkStatuses = new Set();
+    const linkWaiters = new Map();
+    let linkListenerError = null;
+    let scheduleListenerStoppedByRevoke = false;
+    const stopLink = onSnapshot(caregiverLink, { includeMetadataChanges: true }, (snapshot) => {
+      if (snapshot.metadata.fromCache || !snapshot.exists()) return;
+      const status = snapshot.data().status;
+      observedLinkStatuses.add(status);
+      const pending = linkWaiters.get(status);
+      if (pending) {
+        linkWaiters.delete(status);
+        pending.resolve();
+      }
+      if (status === 'revoked' && !scheduleListenerStoppedByRevoke) {
+        stopSchedule();
+        scheduleListenerStoppedByRevoke = true;
+      }
+    }, (error) => {
+      linkListenerError = error;
+      for (const pending of linkWaiters.values()) pending.reject(error);
+      linkWaiters.clear();
+    });
+
+    const waitForTime = (time) => {
+      if (observedTimes.has(time)) return Promise.resolve();
+      if (scheduleListenerError) return Promise.reject(scheduleListenerError);
+      return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          timeWaiters.delete(time);
+          reject(new Error('Timed out awaiting caregiver Firestore schedule: ' + time));
+        }, 8000);
+        timeWaiters.set(time, {
+          resolve: () => { clearTimeout(timeout); resolve(); },
+          reject: (error) => { clearTimeout(timeout); reject(error); },
+        });
+      });
+    };
+    const waitForLinkStatus = (status) => {
+      if (observedLinkStatuses.has(status)) return Promise.resolve();
+      if (linkListenerError) return Promise.reject(linkListenerError);
+      return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          linkWaiters.delete(status);
+          reject(new Error('Timed out awaiting caregiver link status: ' + status));
+        }, 8000);
+        linkWaiters.set(status, {
+          resolve: () => { clearTimeout(timeout); resolve(); },
+          reject: (error) => { clearTimeout(timeout); reject(error); },
+        });
+      });
+    };
+
+    try {
+      await waitForLinkStatus('active');
+      await waitForTime('08:00');
+      await assertSucceeds(updateDoc(medicationScheduleReference(ownerDB, userA), {
+        localTime: '09:45',
+        revision: 2,
+        updatedAt: serverTimestamp(),
+      }));
+      await waitForTime('09:45');
+      await assertSucceeds(updateDoc(link, {
+        status: 'revoked', revision: 2, updatedAt: serverTimestamp(),
+      }));
+      await waitForLinkStatus('revoked');
+      expect(scheduleListenerStoppedByRevoke).toBe(true);
+    } finally {
+      stopLink();
+      stopSchedule();
+      for (const pending of timeWaiters.values()) {
+        pending.reject(new Error('Caregiver schedule listener stopped'));
+      }
+      for (const pending of linkWaiters.values()) {
+        pending.reject(new Error('Caregiver link listener stopped'));
+      }
+      timeWaiters.clear();
+      linkWaiters.clear();
+    }
+
+    const revokedLink = await assertSucceeds(getDoc(caregiverLink));
+    expect(revokedLink.data().status).toBe('revoked');
+    await assertFails(getDoc(medicationScheduleReference(caregiverDB, userA)));
+    await assertFails(getDocs(scheduleQuery));
+    await assertFails(getDocs(query(
+      medicationsCollection(caregiverDB, userA),
+      where('ownerUid', '==', userA),
+      where('status', '==', 'active'),
+    )));
+    // The owner retains their own plan after removing caregiver permissions.
+    const ownerSchedule = await assertSucceeds(getDoc(medicationScheduleReference(ownerDB, userA)));
+    expect(ownerSchedule.data().localTime).toBe('09:45');
+  });
+
+  it('revokes caregiver access, then requires a fresh invite and owner approval to reconnect', async () => {
+    await seed('users/' + userA, userProfile(userA));
+    await seed('users/' + caregiver, userProfile(caregiver, 'caregiver'));
+    await seed('elderlyProfiles/' + userA + '/medications/medication-a', medication(userA));
+    await seed('elderlyProfiles/' + userA + '/medicationSchedules/schedule-a', medicationSchedule(userA));
+    const ownerDB = firestoreAs(userA), caregiverDB = firestoreAs(caregiver);
+    const ownerLink = familyLinkRef(ownerDB);
+    const caregiverLink = familyLinkRef(caregiverDB);
+    const newCode = 'NewInviteCode1234567';
+    const ownerInvite = doc(ownerDB, 'familyInvites', newCode);
+    const caregiverInvite = doc(caregiverDB, 'familyInvites', newCode);
+
+    await seed('elderlyProfiles/' + userA + '/caregiverLinks/' + caregiver,
+      pendingFamilyLink(userA, caregiver, familyInviteCode, { status: 'active' }));
+    await assertSucceeds(updateDoc(ownerLink, {
+      status: 'revoked', revision: 2, updatedAt: serverTimestamp(),
+    }));
+    expect((await assertSucceeds(getDoc(caregiverLink))).data().status).toBe('revoked');
+    await assertFails(getDocs(medicationsCollection(caregiverDB, userA)));
+    await assertFails(getDocs(medicationSchedulesCollection(caregiverDB, userA)));
+
+    await assertFails(updateDoc(caregiverLink, {
+      status: 'pending', revision: 3, updatedAt: serverTimestamp(),
+    }));
+    await assertFails(updateDoc(ownerLink, {
+      status: 'active', revision: 3, updatedAt: serverTimestamp(),
+    }));
+
+    await assertSucceeds(setDoc(ownerInvite, familyInvite(userA, newCode)));
+    await assertSucceeds(getDoc(caregiverInvite));
+    await assertSucceeds(runTransaction(caregiverDB, async (transaction) => {
+      await transaction.get(caregiverInvite);
+      transaction.update(caregiverInvite, {
+        status: 'claimed', claimedByUid: caregiver, claimedAt: serverTimestamp(), updatedAt: serverTimestamp(),
+      });
+    }));
+    await assertSucceeds(runTransaction(caregiverDB, async (transaction) => {
+      const inviteSnapshot = await transaction.get(caregiverInvite);
+      const existingLink = await transaction.get(caregiverLink);
+      const caregiverProfile = await transaction.get(userProfileReference(caregiverDB, caregiver));
+      expect(inviteSnapshot.data().status).toBe('claimed');
+      expect(inviteSnapshot.data().claimedByUid).toBe(caregiver);
+      expect(existingLink.data().status).toBe('revoked');
+      expect(caregiverProfile.data().primaryRole).toBe('caregiver');
+      transaction.update(caregiverLink, {
+        ownerDisplayName: 'Người dùng kiểm thử',
+        caregiverDisplayName: 'Người dùng kiểm thử',
+        inviteCode: newCode,
+        status: 'pending',
+        revision: 3,
+        updatedAt: serverTimestamp(),
+      });
+    }));
+    expect((await assertSucceeds(getDoc(ownerLink))).data().status).toBe('pending');
+    await assertFails(getDoc(medicationReference(caregiverDB, userA)));
+    await assertFails(getDocs(medicationSchedulesCollection(caregiverDB, userA)));
+
+    await assertSucceeds(runTransaction(ownerDB, async (transaction) => {
+      await transaction.get(ownerLink);
+      await transaction.get(ownerInvite);
+      transaction.update(ownerInvite, { status: 'consumed', updatedAt: serverTimestamp() });
+    }));
+    await assertSucceeds(runTransaction(ownerDB, async (transaction) => {
+      const linkSnapshot = await transaction.get(ownerLink);
+      const inviteSnapshot = await transaction.get(ownerInvite);
+      expect(linkSnapshot.data().status).toBe('pending');
+      expect(linkSnapshot.data().revision).toBe(3);
+      expect(inviteSnapshot.data().status).toBe('consumed');
+      transaction.update(ownerLink, {
+        status: 'active', revision: 4, updatedAt: serverTimestamp(),
+      });
+    }));
+    expect((await assertSucceeds(getDoc(caregiverLink))).data().status).toBe('active');
+    await assertSucceeds(getDoc(medicationReference(caregiverDB, userA)));
+    await assertSucceeds(getDocs(query(
+      medicationSchedulesCollection(caregiverDB, userA),
+      where('ownerUid', '==', userA),
+      where('active', '==', true),
+    )));
+    await assertFails(deleteDoc(ownerLink));
+  });
+
+  it('denies malformed direct gets and documents full-document list-query behavior', async () => {
+    await seed('users/' + userA, userProfile(userA));
+    await seed('users/' + caregiver, userProfile(caregiver, 'caregiver'));
+    const ownerDB = firestoreAs(userA);
+    const caregiverDB = firestoreAs(caregiver);
+    await seed('elderlyProfiles/' + userA + '/caregiverLinks/' + caregiver, familyLink(userA, caregiver));
+
+    // These documents are deliberately seeded outside Rules to model legacy,
+    // imported, or administrator-written records that bypass client writes.
+    await seed('elderlyProfiles/' + userA + '/medications/misfiled', medication(userB));
+    await seed('elderlyProfiles/' + userA + '/medications/extra-field', medication(userA, {
+      internalNote: 'must not be shared through a malformed document',
+    }));
+    await seed('elderlyProfiles/' + userA + '/medicationSchedules/misfiled', medicationSchedule(userB));
+    await seed('elderlyProfiles/' + userA + '/medicationSchedules/extra-field', medicationSchedule(userA, {
+      internalNote: 'must not be shared through a malformed document',
+    }));
+
+    await assertFails(getDoc(medicationReference(caregiverDB, userA, 'misfiled')));
+    await assertFails(getDoc(medicationReference(caregiverDB, userA, 'extra-field')));
+    await assertFails(getDoc(medicationScheduleReference(caregiverDB, userA, 'misfiled')));
+    await assertFails(getDoc(medicationScheduleReference(caregiverDB, userA, 'extra-field')));
+
+    // Firestore list rules can constrain owner/status but cannot project
+    // individual fields. The extra-field row is transferred in full; the
+    // caregiver client must fail closed and the owner must review the scope.
+    const listedMedications = await assertSucceeds(getDocs(query(
+      medicationsCollection(caregiverDB, userA),
+      where('ownerUid', '==', userA),
+      where('status', '==', 'active'),
+    )));
+    expect(listedMedications.docs.map((snapshot) => snapshot.id).sort()).toEqual(['extra-field']);
+    const listedSchedules = await assertSucceeds(getDocs(query(
+      medicationSchedulesCollection(caregiverDB, userA),
+      where('ownerUid', '==', userA),
+      where('active', '==', true),
+    )));
+    expect(listedSchedules.docs.map((snapshot) => snapshot.id).sort()).toEqual(['extra-field']);
+  });
+
+  it('denies caregiver self-approval, spoofed target roles and extra privilege fields', async () => {
+    await seed('users/' + userA, userProfile(userA));
+    await seed('users/' + userB, userProfile(userB));
+    await seed('users/' + caregiver, userProfile(caregiver, 'caregiver'));
+    const ownerDB = firestoreAs(userA), caregiverDB = firestoreAs(caregiver);
+
+    await assertFails(setDoc(familyLinkRef(caregiverDB), familyLink(userA, caregiver)));
+    await assertFails(setDoc(familyLinkRef(ownerDB, userA, userB), familyLink(userA, userB)));
+    await assertFails(setDoc(familyLinkRef(ownerDB), familyLink(userA, caregiver)));
+    const bad = [
+      familyLink(userA, caregiver, { ownerUid: userB }),
+      familyLink(userA, caregiver, { caregiverUid: userB }),
+      familyLink(userA, caregiver, { status: 'revoked' }),
+      familyLink(userA, caregiver, { revision: 5 }),
+      familyLink(userA, caregiver, { scopes: { medicationsRead: true, schedulesRead: true, doseHistoryRead: true } }),
+      familyLink(userA, caregiver, { scopes: { medicationsRead: true, schedulesRead: false } }),
+      familyLink(userA, caregiver, { privilege: 'admin' }),
+      familyLink(userA, caregiver, { createdAt: new Date('2020-01-01T00:00:00Z') }),
+    ];
+    for (const data of bad) {
+      await assertFails(setDoc(familyLinkRef(ownerDB), data));
+    }
+  });
+
 });

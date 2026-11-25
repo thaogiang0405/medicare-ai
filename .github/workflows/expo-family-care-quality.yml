@@ -1,0 +1,125 @@
+name: Expo quality gates
+
+on:
+  pull_request:
+    branches:
+      - main
+      - migration/expo-sdk58
+    paths:
+      - "expo-app/**"
+      - "firebase.json"
+      - "firestore.rules"
+      - "firestore.indexes.json"
+      - "docs/family-care-owner-approved-links.md"
+      - "docs/firestore-data-model.md"
+      - ".github/workflows/expo-family-care-quality.yml"
+permissions:
+  contents: read
+
+concurrency:
+  group: expo-quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  expo-and-rules:
+    name: Expo typecheck, lint, Jest and Firestore Rules
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js 24.12.0
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24.12.0
+          cache: npm
+          cache-dependency-path: expo-app/package-lock.json
+
+      - name: Set up Java 21 for Firestore Emulator
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install locked dependencies
+        working-directory: expo-app
+        run: npm ci
+
+      - name: Test Firebase React Native bundle audit
+        working-directory: expo-app
+        run: node --test scripts/verify-firebase-rn-bundle.test.mjs
+
+      - name: Test Family Care staging environment safety guard
+        working-directory: expo-app
+        run: node --test scripts/check-family-care-staging.test.mjs
+
+      - name: Export Expo Android and iOS bundles and audit Firebase React Native transport
+        working-directory: expo-app
+        run: |
+          for platform in android ios; do
+            export_dir="$RUNNER_TEMP/medicare-expo-$platform"
+            npx expo export --platform "$platform" --output-dir "$export_dir"
+            node scripts/verify-firebase-rn-bundle.mjs "$export_dir"
+          done
+
+      - name: Dependency advisory inventory (non-blocking)
+        id: dependency-audit
+        continue-on-error: true
+        working-directory: expo-app
+        run: |
+          audit_file="$RUNNER_TEMP/npm-audit.json"
+          production_audit_file="$RUNNER_TEMP/npm-audit-production.json"
+          if npm audit --json > "$audit_file"; then audit_status=0; else audit_status=$?; fi
+          if npm audit --omit=dev --json > "$production_audit_file"; then production_audit_status=0; else production_audit_status=$?; fi
+          node - "$audit_file" "$audit_status" "$production_audit_file" "$production_audit_status" <<'NODE'
+          const fs = require('node:fs');
+          function printReport(label, file, status) {
+            let audit;
+            try {
+              audit = JSON.parse(fs.readFileSync(file, 'utf8'));
+            } catch {
+              console.log(label + ': npm audit did not return a readable JSON report.');
+              return;
+            }
+            console.log(label + ' advisory totals:', JSON.stringify(audit.metadata?.vulnerabilities ?? {}));
+            for (const [name, item] of Object.entries(audit.vulnerabilities ?? {})) {
+              const via = (item.via ?? []).map((entry) => typeof entry === 'string'
+                ? entry
+                : {
+                  name: entry.name,
+                  title: entry.title,
+                  url: entry.url,
+                  range: entry.range,
+                  severity: entry.severity,
+                });
+              console.log(JSON.stringify({
+                report: label,
+                package: name,
+                severity: item.severity,
+                direct: item.isDirect,
+                range: item.range,
+                fixAvailable: item.fixAvailable,
+                via,
+              }));
+            }
+            if (Number(status) !== 0) console.log(label + ': advisories reported; this inventory is non-blocking while existing dependency debt is triaged.');
+          }
+          printReport('All dependencies', process.argv[2], process.argv[3]);
+          printReport('Production dependencies only', process.argv[4], process.argv[5]);
+          NODE
+      - name: TypeScript
+        working-directory: expo-app
+        run: npm run typecheck
+
+      - name: ESLint
+        working-directory: expo-app
+        run: npm run lint
+
+      - name: Jest unit and UI tests
+        working-directory: expo-app
+        run: npm test
+
+      - name: Firestore Rules Emulator tests
+        working-directory: expo-app
+        run: npm run test:rules

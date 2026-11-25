@@ -89,7 +89,7 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    minHeight: 56,
+    minHeight: 60,
     borderWidth: 1.5,
     borderColor: medicareColors.border,
     borderRadius: medicareRadius.md,

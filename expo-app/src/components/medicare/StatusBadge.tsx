@@ -87,7 +87,7 @@ const styles = StyleSheet.create({
   badge: {
     alignSelf: 'flex-start',
     borderRadius: medicareRadius.pill,
-    borderWidth: 1,
+    borderWidth: 0,
     paddingHorizontal: medicareSpacing.sm,
     paddingVertical: medicareSpacing.xs,
   },

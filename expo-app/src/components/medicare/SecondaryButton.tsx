@@ -2,7 +2,6 @@ import type { StyleProp, ViewStyle } from 'react-native';
 import { Pressable, StyleSheet, Text } from 'react-native';
 
 import {
-  medicareAccessibility,
   medicareColors,
   medicareRadius,
   medicareSpacing,
@@ -41,7 +40,7 @@ export function SecondaryButton({
         style,
       ]}
       testID={testID}>
-      <Text maxFontSizeMultiplier={1.35} style={[styles.label, disabled && styles.disabledLabel]}>
+      <Text maxFontSizeMultiplier={1.25} style={[styles.label, disabled && styles.disabledLabel]}>
         {label}
       </Text>
     </Pressable>
@@ -50,15 +49,15 @@ export function SecondaryButton({
 
 const styles = StyleSheet.create({
   button: {
-    minHeight: medicareAccessibility.minTouchTarget,
-    borderWidth: 2,
-    borderColor: medicareColors.primary,
+    minHeight: 60,
+    borderWidth: 1.5,
+    borderColor: medicareColors.border,
     borderRadius: medicareRadius.md,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: medicareSpacing.lg,
     paddingVertical: medicareSpacing.sm,
-    backgroundColor: medicareColors.transparent,
+    backgroundColor: medicareColors.surfaceElevated,
   },
   label: {
     color: medicareColors.primary,

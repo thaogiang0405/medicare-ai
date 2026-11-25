@@ -3,7 +3,6 @@ import type { StyleProp, ViewStyle } from 'react-native';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import {
-  medicareAccessibility,
   medicareColors,
   medicareRadius,
   medicareSpacing,
@@ -50,7 +49,7 @@ export function PrimaryButton({
       testID={testID}>
       {loading ? <ActivityIndicator color={medicareColors.onPrimary} /> : null}
       {!loading && icon ? <View style={styles.icon}>{icon}</View> : null}
-      <Text maxFontSizeMultiplier={1.35} style={[styles.label, unavailable && styles.disabledLabel]}>
+      <Text maxFontSizeMultiplier={1.25} style={[styles.label, unavailable && styles.disabledLabel]}>
         {label}
       </Text>
     </Pressable>
@@ -59,7 +58,7 @@ export function PrimaryButton({
 
 const styles = StyleSheet.create({
   button: {
-    minHeight: medicareAccessibility.minTouchTarget,
+    minHeight: 60,
     borderRadius: medicareRadius.md,
     alignItems: 'center',
     justifyContent: 'center',
@@ -68,6 +67,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: medicareSpacing.lg,
     paddingVertical: medicareSpacing.sm,
     backgroundColor: medicareColors.primary,
+    shadowColor: '#183A32',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.14,
+    shadowRadius: 8,
+    elevation: 2,
   },
   label: {
     color: medicareColors.onPrimary,

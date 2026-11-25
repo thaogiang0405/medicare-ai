@@ -12,7 +12,7 @@ import {
   Screen,
   SecondaryButton,
 } from '@/components/medicare';
-import { medicareColors, medicareSpacing, medicareTypography } from '@/constants/medicare-theme';
+import { medicareColors, medicareRadius, medicareSpacing, medicareTypography } from '@/constants/medicare-theme';
 import { medicationScheduleRecurrenceLabel } from '@/features/schedules/presentation/medication-schedule-utils';
 import { isFamilyCareFeatureEnabled } from '@/services/firebase/family-care-feature';
 import { FamilyLinkOwnerPanel } from '@/features/family-care/presentation/FamilyLinkOwnerPanel';
@@ -132,8 +132,19 @@ export default function ElderlyHomeScreen() {
     <Screen contentStyle={styles.content}>
       <AppHeader
         right={<Text style={styles.roleLabel}>Người cao tuổi</Text>}
+        subtitle="Cùng bạn chăm sóc sức khỏe mỗi ngày"
         title={`Chào ${user?.displayName ?? 'bạn'}`}
       />
+      <View style={styles.welcomeCard}>
+        <View style={styles.welcomeIcon}>
+          <Text accessibilityElementsHidden style={styles.welcomeIconText}>♥</Text>
+        </View>
+        <View style={styles.welcomeCopy}>
+          <Text style={styles.welcomeEyebrow}>MEDICARE AI · CHĂM SÓC MỖI NGÀY</Text>
+          <Text style={styles.welcomeTitle}>Thuốc đúng giờ, an tâm mỗi ngày</Text>
+          <Text style={styles.welcomeDescription}>Xem lịch uống, quản lý thuốc và nhắc nhở trong một nơi dễ theo dõi.</Text>
+        </View>
+      </View>
       <DemoModeBanner description={dashboardBanner.description} title={dashboardBanner.title} />
       {errorMessage ? (
         <View style={styles.errorGroup}>
@@ -361,9 +372,58 @@ const styles = StyleSheet.create({
     gap: medicareSpacing.xl,
   },
   roleLabel: {
+    overflow: 'hidden',
     color: medicareColors.primary,
+    backgroundColor: medicareColors.primaryContainer,
+    borderRadius: 999,
+    paddingHorizontal: medicareSpacing.sm,
+    paddingVertical: medicareSpacing.xs,
     fontSize: medicareTypography.caption,
+    fontWeight: '800',
+  },
+  welcomeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: medicareSpacing.md,
+    padding: medicareSpacing.lg,
+    borderRadius: medicareRadius.lg,
+    borderWidth: 1,
+    borderColor: '#CBE8DE',
+    backgroundColor: '#E8F5F0',
+  },
+  welcomeIcon: {
+    width: 56,
+    height: 56,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 20,
+    backgroundColor: '#D2EBE2',
+  },
+  welcomeIconText: {
+    color: medicareColors.primary,
+    fontSize: 30,
     fontWeight: '700',
+  },
+  welcomeCopy: {
+    flex: 1,
+    gap: medicareSpacing.xxs,
+  },
+  welcomeEyebrow: {
+    color: medicareColors.primary,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1,
+  },
+  welcomeTitle: {
+    color: medicareColors.text,
+    fontSize: medicareTypography.label,
+    fontWeight: '800',
+    lineHeight: 24,
+  },
+  welcomeDescription: {
+    color: medicareColors.textMuted,
+    fontSize: medicareTypography.bodySmall,
+    lineHeight: 22,
   },
   section: {
     gap: medicareSpacing.md,
@@ -378,6 +438,7 @@ const styles = StyleSheet.create({
     color: medicareColors.text,
     fontSize: medicareTypography.subheading,
     fontWeight: '800',
+    letterSpacing: -0.25,
     lineHeight: 29,
   },
   icon: {

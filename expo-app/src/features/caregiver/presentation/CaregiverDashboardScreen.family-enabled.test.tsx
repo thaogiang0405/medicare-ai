@@ -18,6 +18,7 @@ jest.mock('@/components/medicare', () => {
     AppHeader: ({ title }: { title: string }) => React.createElement(Text, null, title),
     SafetyNotice: ({ title, message }: { title: string; message: string }) =>
       React.createElement(View, null, React.createElement(Text, null, title), React.createElement(Text, null, message)),
+    PrimaryButton: button,
     SecondaryButton: button,
     TextField: ({ label, onChangeText, value }: { label: string; onChangeText: (value: string) => void; value: string }) =>
       React.createElement(TextInput, { accessibilityLabel: label, onChangeText, value }),

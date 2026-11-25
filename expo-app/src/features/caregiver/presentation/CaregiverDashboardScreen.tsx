@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { router } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { AppHeader, SafetyNotice, Screen, SecondaryButton, TextField } from '@/components/medicare';
+import { AppHeader, PrimaryButton, SafetyNotice, Screen, SecondaryButton, TextField } from '@/components/medicare';
 import { medicareColors, medicareRadius, medicareSpacing, medicareTypography } from '@/constants/medicare-theme';
 import {
   requestCaregiverLink, watchCaregiverConnections, watchCaregiverPlans,
@@ -19,7 +19,7 @@ function LinkedFamilyProfile({ caregiverUid, connection }: Readonly<{ caregiverU
     return () => { live = false; stop(); };
   }, [caregiverUid, connection.ownerUid]);
   return (
-    <View style={styles.section}>
+    <View style={[styles.section, styles.profilePanel]}>
       <Text accessibilityRole="header" style={styles.heading}>{connection.ownerDisplayName ?? 'Hồ sơ người thân'} · Chỉ xem</Text>
       {result?.status === 'loading' || !result ? <Text style={styles.detail}>Đang kiểm tra quyền và tải thuốc, lịch thuốc…</Text>
         : result.status === 'revoked' || result.status === 'error'
@@ -88,19 +88,34 @@ function FamilyCareDashboardContent() {
 
   return (
     <Screen contentStyle={styles.content}>
-      <AppHeader right={<Text style={styles.roleLabel}>Người chăm sóc</Text>} title={'Chào ' + (user?.displayName ?? 'bạn')} />
+      <AppHeader
+        right={<Text style={styles.roleLabel}>Người chăm sóc</Text>}
+        subtitle="Theo dõi kết nối gia đình an toàn"
+        title={'Chào ' + (user?.displayName ?? 'bạn')}
+      />
+      <View style={styles.heroCard}>
+        <View style={styles.heroIcon}>
+          <Text accessibilityElementsHidden style={styles.heroIconText}>♡</Text>
+        </View>
+        <View style={styles.heroCopy}>
+          <Text style={styles.heroEyebrow}>MEDICARE AI · FAMILY CARE</Text>
+          <Text style={styles.heroTitle}>Đồng hành chăm sóc từ xa</Text>
+          <Text style={styles.heroDescription}>Kết nối với người thân bằng mã mời và chỉ xem dữ liệu khi họ chủ động đồng ý.</Text>
+        </View>
+      </View>
       {authErrorMessage ? <SafetyNotice title="Không thể hoàn tất phiên đăng nhập" message={authErrorMessage} tone="error" /> : null}
       {isEnabled ? <>
-        <SafetyNotice title="Kết nối bằng một mã" message="Nhập mã do người cao tuổi gửi. Mã chỉ dùng một lần và hết hạn sau khoảng 24 giờ. Gửi yêu cầu không cấp quyền xem; người cao tuổi phải xác nhận trước." tone="information" />
-        <View style={styles.section}>
+        <View style={styles.panel}>
+          <Text accessibilityRole="header" style={styles.heading}>Kết nối với người thân</Text>
+          <SafetyNotice title="Kết nối bằng một mã" message="Nhập mã do người cao tuổi gửi. Mã chỉ dùng một lần và hết hạn sau khoảng 24 giờ. Gửi yêu cầu không cấp quyền xem; người cao tuổi phải xác nhận trước." tone="information" />
           <TextField label="Mã mời từ người cao tuổi" autoCapitalize="none" autoCorrect={false} maxLength={20}
             value={inviteCode} onChangeText={(value) => { setInviteCode(value); setRequestError(''); setRequestMessage(''); }}
             placeholder="Dán mã kết nối 20 ký tự" />
-          <SecondaryButton label={requestBusy ? 'Đang gửi yêu cầu…' : 'Gửi yêu cầu kết nối'} disabled={requestBusy || !inviteCode.trim()} onPress={() => void submitInvite()} />
+          <PrimaryButton label={requestBusy ? 'Đang gửi yêu cầu…' : 'Gửi yêu cầu kết nối'} disabled={requestBusy || !inviteCode.trim()} onPress={() => void submitInvite()} />
           {requestError ? <SafetyNotice title="Không thể gửi yêu cầu" message={requestError} tone="error" /> : null}
           {requestMessage ? <SafetyNotice title="Đã gửi yêu cầu" message={requestMessage} tone="information" /> : null}
         </View>
-        <View style={styles.section}>
+        <View style={[styles.section, styles.panel]}>
           <Text accessibilityRole="header" style={styles.heading}>Hồ sơ gia đình</Text>
           {connectionResult.status === 'loading' ? <Text style={styles.detail}>Đang tải danh sách kết nối…</Text>
             : connectionResult.status === 'error' ? <SafetyNotice title="Không thể tải liên kết" message={connectionResult.message ?? 'Kiểm tra mạng và quyền Firebase.'} tone="error" />
@@ -127,10 +142,58 @@ export default function CaregiverDashboardScreen() {
 
 const styles = StyleSheet.create({
   content: { gap: medicareSpacing.xl },
-  roleLabel: { color: medicareColors.primary, fontSize: medicareTypography.caption, fontWeight: '700' },
-  heading: { color: medicareColors.text, fontSize: medicareTypography.subheading, fontWeight: '800' },
+  roleLabel: {
+    overflow: 'hidden',
+    color: medicareColors.primary,
+    backgroundColor: medicareColors.primaryContainer,
+    borderRadius: 999,
+    paddingHorizontal: medicareSpacing.sm,
+    paddingVertical: medicareSpacing.xs,
+    fontSize: medicareTypography.caption,
+    fontWeight: '800',
+  },
+  heroCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: medicareSpacing.md,
+    padding: medicareSpacing.lg,
+    borderRadius: medicareRadius.lg,
+    borderWidth: 1,
+    borderColor: '#D2DFEF',
+    backgroundColor: '#F0F5FB',
+  },
+  heroIcon: {
+    width: 56,
+    height: 56,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 20,
+    backgroundColor: '#E0EAF6',
+  },
+  heroIconText: { color: medicareColors.secondary, fontSize: 34, fontWeight: '700' },
+  heroCopy: { flex: 1, gap: medicareSpacing.xxs },
+  heroEyebrow: { color: medicareColors.secondary, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
+  heroTitle: { color: medicareColors.text, fontSize: medicareTypography.label, fontWeight: '800', lineHeight: 24 },
+  heroDescription: { color: medicareColors.textMuted, fontSize: medicareTypography.bodySmall, lineHeight: 22 },
+  panel: {
+    gap: medicareSpacing.md,
+    padding: medicareSpacing.lg,
+    borderRadius: medicareRadius.lg,
+    borderWidth: 1,
+    borderColor: medicareColors.border,
+    backgroundColor: medicareColors.surfaceElevated,
+    ...medicareShadow,
+  },
+  profilePanel: { marginTop: medicareSpacing.xs },
+  heading: { color: medicareColors.text, fontSize: medicareTypography.subheading, fontWeight: '800', lineHeight: 29 },
   section: { gap: medicareSpacing.md },
-  detail: { color: medicareColors.textMuted, fontSize: medicareTypography.bodySmall, lineHeight: 22 },
-  scheduleRow: { backgroundColor: medicareColors.surface, borderColor: medicareColors.border, borderRadius: medicareRadius.md, borderWidth: 1, padding: medicareSpacing.md },
+  detail: { color: medicareColors.textMuted, fontSize: medicareTypography.bodySmall, lineHeight: 23 },
+  scheduleRow: {
+    backgroundColor: medicareColors.surface,
+    borderColor: medicareColors.border,
+    borderRadius: medicareRadius.md,
+    borderWidth: 1,
+    padding: medicareSpacing.md,
+  },
   medication: { color: medicareColors.text, fontSize: medicareTypography.body, fontWeight: '700' },
 });

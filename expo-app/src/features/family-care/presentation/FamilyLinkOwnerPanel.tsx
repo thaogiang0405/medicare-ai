@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Share, Text, View } from 'react-native';
+import { Alert, Share, StyleSheet, Text, View } from 'react-native';
 
-import { SafetyNotice, SecondaryButton } from '@/components/medicare';
-import { medicareColors, medicareSpacing, medicareTypography } from '@/constants/medicare-theme';
+import { PrimaryButton, SafetyNotice, SecondaryButton } from '@/components/medicare';
+import { medicareColors, medicareRadius, medicareSpacing, medicareTypography } from '@/constants/medicare-theme';
 import { useSessionStore } from '@/store';
 import {
   approvePendingCaregiverLink, createFamilyInvite, listOwnCaregiverLinks,
@@ -129,23 +129,23 @@ export function FamilyLinkOwnerPanel({ ownerUid }: Readonly<{ ownerUid: string }
 
   if (!authorizedOwner) return null;
   return (
-    <View style={{ gap: medicareSpacing.md }}>
-      <Text accessibilityRole="header" style={{ color: medicareColors.text, fontSize: medicareTypography.subheading, fontWeight: '800' }}>Liên kết người chăm sóc</Text>
+    <View style={styles.container}>
+      <Text accessibilityRole="header" style={styles.heading}>Liên kết người chăm sóc</Text>
       <SafetyNotice title="Chỉ cần chia sẻ một mã" message="Tạo mã kết nối và gửi cho người chăm sóc. Mã chỉ dùng một lần, hết hạn sau khoảng 24 giờ và KHÔNG tự cấp quyền xem. Người chăm sóc gửi yêu cầu; bạn phải kiểm tra tên tài khoản rồi chủ động đồng ý." tone="information" />
       <SafetyNotice title="Phạm vi quyền xem" message="Sau khi bạn đồng ý, người chăm sóc có thể đọc toàn bộ trường trong các bản ghi thuốc và lịch ĐANG HOẠT ĐỘNG trên Firebase, kể cả hàm lượng và hướng dẫn dùng. Rules chặn thuốc/lịch đã ngừng hoạt động và lịch sử uống thuốc. Giao diện chỉ hiển thị tên thuốc và giờ dự kiến; dữ liệu đã xem vẫn có thể được lưu bên ngoài ứng dụng." tone="warning" />
-      <SecondaryButton disabled={busy} label={busy ? 'Đang tạo mã…' : 'Tạo và chia sẻ mã kết nối'} onPress={() => void createAndShareInvite()} />
-      {inviteCode ? <View style={{ gap: medicareSpacing.xs }}>
-        <Text style={{ color: medicareColors.text, fontWeight: '700' }}>Mã kết nối của bạn</Text>
-        <Text selectable style={{ color: medicareColors.primary, fontSize: medicareTypography.subheading, fontWeight: '800' }}>{inviteCode}</Text>
-        {inviteExpiresAt ? <Text style={{ color: medicareColors.textMuted }}>Hết hạn: {inviteExpiresAt.toLocaleString('vi-VN')}</Text> : null}
+      <PrimaryButton disabled={busy} label={busy ? 'Đang tạo mã…' : 'Tạo và chia sẻ mã kết nối'} onPress={() => void createAndShareInvite()} />
+      {inviteCode ? <View style={styles.codeCard}>
+        <Text style={styles.codeLabel}>MÃ KẾT NỐI CỦA BẠN</Text>
+        <Text selectable style={styles.inviteCode}>{inviteCode}</Text>
+        {inviteExpiresAt ? <Text style={styles.expiry}>Hết hạn: {inviteExpiresAt.toLocaleString('vi-VN')}</Text> : null}
       </View> : null}
       {visibleError ? <SafetyNotice title="Chưa hoàn tất" message={visibleError} tone="error" /> : null}
       <SecondaryButton disabled={busy} label="Tải lại yêu cầu kết nối" onPress={() => void refresh()} />
       {!hasLoadedLinks ? <Text style={{ color: medicareColors.textMuted }}>Danh sách yêu cầu chưa được tải.</Text> : null}
       {hasLoadedLinks && visibleLinks.length === 0 ? <Text style={{ color: medicareColors.textMuted }}>Chưa có yêu cầu hoặc người chăm sóc được liên kết.</Text> : null}
-      {visibleLinks.map((link) => <View key={link.caregiverUid} style={{ gap: medicareSpacing.xs }}>
-        <Text selectable style={{ color: medicareColors.text, fontWeight: '700' }}>{link.caregiverDisplayName ?? 'Người chăm sóc'}</Text>
-        <Text selectable style={{ color: medicareColors.textMuted }}>UID: {link.caregiverUid}</Text>
+      {visibleLinks.map((link) => <View key={link.caregiverUid} style={styles.linkCard}>
+        <Text selectable style={styles.linkName}>{link.caregiverDisplayName ?? 'Người chăm sóc'}</Text>
+        <Text selectable style={styles.linkUid}>UID: {link.caregiverUid}</Text>
         {link.status === 'pending' ? <>
           <Text style={{ color: medicareColors.textMuted }}>Đang chờ bạn xác nhận. Chưa có quyền xem thuốc hoặc lịch.</Text>
           <SecondaryButton disabled={busy} label="Đồng ý cấp quyền" onPress={() => approve(link)} />
@@ -161,3 +161,51 @@ export function FamilyLinkOwnerPanel({ ownerUid }: Readonly<{ ownerUid: string }
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    gap: medicareSpacing.md,
+    padding: medicareSpacing.lg,
+    borderRadius: medicareRadius.lg,
+    borderWidth: 1,
+    borderColor: medicareColors.border,
+    backgroundColor: medicareColors.surfaceElevated,
+  },
+  heading: {
+    color: medicareColors.text,
+    fontSize: medicareTypography.subheading,
+    fontWeight: '800',
+    lineHeight: 29,
+  },
+  codeCard: {
+    gap: medicareSpacing.xs,
+    padding: medicareSpacing.md,
+    borderRadius: medicareRadius.md,
+    borderWidth: 1,
+    borderColor: '#CBE8DE',
+    backgroundColor: '#E8F5F0',
+  },
+  codeLabel: {
+    color: medicareColors.primary,
+    fontSize: medicareTypography.caption,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+  },
+  inviteCode: {
+    color: medicareColors.primary,
+    fontSize: medicareTypography.heading,
+    fontWeight: '800',
+    letterSpacing: 2,
+  },
+  expiry: { color: medicareColors.textMuted, fontSize: medicareTypography.bodySmall },
+  linkCard: {
+    gap: medicareSpacing.xs,
+    padding: medicareSpacing.md,
+    borderRadius: medicareRadius.md,
+    borderWidth: 1,
+    borderColor: medicareColors.border,
+    backgroundColor: medicareColors.surface,
+  },
+  linkName: { color: medicareColors.text, fontSize: medicareTypography.body, fontWeight: '800' },
+  linkUid: { color: medicareColors.textMuted, fontSize: medicareTypography.caption },
+});

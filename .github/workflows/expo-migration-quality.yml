@@ -1,0 +1,63 @@
+name: Expo migration quality
+
+on:
+  push:
+    branches:
+      - migration/expo-sdk58
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "expo-app/**"
+      - "firebase.json"
+      - "firestore.rules"
+      - "firestore.indexes.json"
+      - ".github/workflows/expo-migration-quality.yml"
+permissions:
+  contents: read
+
+concurrency:
+  group: expo-migration-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  expo-and-rules:
+    name: Expo migration typecheck, lint, Jest, export and Firestore Rules
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Set up Node.js 24.12.0
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24.12.0
+          cache: npm
+          cache-dependency-path: expo-app/package-lock.json
+      - name: Set up Java 21 for Firestore Emulator
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Install locked dependencies
+        working-directory: expo-app
+        run: npm ci
+      - name: TypeScript
+        working-directory: expo-app
+        run: npm run typecheck
+      - name: ESLint
+        working-directory: expo-app
+        run: npm run lint
+      - name: Jest unit and UI tests
+        working-directory: expo-app
+        run: npm test
+      - name: Firestore Rules Emulator tests
+        working-directory: expo-app
+        run: npm run test:rules
+      - name: Export Expo Android and iOS bundles
+        working-directory: expo-app
+        run: |
+          for platform in android ios; do
+            export_dir="$RUNNER_TEMP/medicare-expo-$platform"
+            npx expo export --platform "$platform" --output-dir "$export_dir"
+          done

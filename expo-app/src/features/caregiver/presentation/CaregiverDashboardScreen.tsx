@@ -90,8 +90,8 @@ function FamilyCareDashboardContent() {
     <Screen contentStyle={styles.content}>
       <AppHeader
         right={<Text style={styles.roleLabel}>Người chăm sóc</Text>}
-        subtitle="Theo dõi kết nối gia đình an toàn"
-        title={'Chào ' + (user?.displayName ?? 'bạn')}
+        subtitle="Kết nối và theo dõi người thân"
+        title={user?.displayName ?? 'Chào bạn'}
       />
       <View style={styles.heroCard}>
         <View style={styles.heroIcon}>
@@ -100,14 +100,14 @@ function FamilyCareDashboardContent() {
         <View style={styles.heroCopy}>
           <Text style={styles.heroEyebrow}>MEDICARE AI · FAMILY CARE</Text>
           <Text style={styles.heroTitle}>Đồng hành chăm sóc từ xa</Text>
-          <Text style={styles.heroDescription}>Kết nối với người thân bằng mã mời và chỉ xem dữ liệu khi họ chủ động đồng ý.</Text>
+          <Text maxFontSizeMultiplier={1.25} style={styles.heroDescription}>Chỉ xem thông tin khi người thân đã đồng ý.</Text>
         </View>
       </View>
       {authErrorMessage ? <SafetyNotice title="Không thể hoàn tất phiên đăng nhập" message={authErrorMessage} tone="error" /> : null}
       {isEnabled ? <>
         <View style={styles.panel}>
           <Text accessibilityRole="header" style={styles.heading}>Kết nối với người thân</Text>
-          <SafetyNotice title="Kết nối bằng một mã" message="Nhập mã do người cao tuổi gửi. Mã chỉ dùng một lần và hết hạn sau khoảng 24 giờ. Gửi yêu cầu không cấp quyền xem; người cao tuổi phải xác nhận trước." tone="information" />
+          <SafetyNotice title="Kết nối bằng mã mời" message="Mã chỉ dùng một lần. Người thân cần xác nhận trước khi bạn được xem dữ liệu." tone="information" />
           <TextField label="Mã mời từ người cao tuổi" autoCapitalize="none" autoCorrect={false} maxLength={20}
             value={inviteCode} onChangeText={(value) => { setInviteCode(value); setRequestError(''); setRequestMessage(''); }}
             placeholder="Dán mã kết nối 20 ký tự" />
@@ -174,7 +174,7 @@ const styles = StyleSheet.create({
   heroCopy: { flex: 1, gap: medicareSpacing.xxs },
   heroEyebrow: { color: medicareColors.secondary, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
   heroTitle: { color: medicareColors.text, fontSize: medicareTypography.label, fontWeight: '800', lineHeight: 24 },
-  heroDescription: { color: medicareColors.textMuted, fontSize: medicareTypography.bodySmall, lineHeight: 22 },
+  heroDescription: { color: medicareColors.textMuted, fontSize: 15, lineHeight: 21 },
   panel: {
     gap: medicareSpacing.md,
     padding: medicareSpacing.lg,

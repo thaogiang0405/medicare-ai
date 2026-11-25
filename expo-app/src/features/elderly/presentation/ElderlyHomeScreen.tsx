@@ -111,38 +111,38 @@ export default function ElderlyHomeScreen() {
       }
       : {
       title: 'Lịch thuốc trên Firebase',
-      description: 'Lịch hôm nay là kế hoạch từ hồ sơ đã xác thực. DoseEvent, phản hồi uống thuốc và nhắc lại chưa được tạo từ lịch này.',
+      description: 'Lịch được lấy từ hồ sơ của bạn. Ứng dụng chưa tự ghi nhận việc uống thuốc.',
       }
     : medicationsFeatureEnabled
       ? {
         title: 'Thuốc trên Firebase · Lịch demo',
-        description: 'Thuốc của bạn được lưu trong Firestore theo hồ sơ đã xác thực. Lịch hôm nay và phản hồi uống thuốc bên dưới vẫn là dữ liệu demo.',
+        description: 'Thuốc được lưu trong hồ sơ của bạn. Lịch và phản hồi bên dưới vẫn là dữ liệu thử nghiệm.',
       }
       : schedulesFeatureEnabled
         ? {
           title: 'Chế độ trình diễn',
-          description: 'Lịch Firebase chỉ được dùng khi cả Thuốc và Lịch thuốc đều được bật. Nội dung bên dưới hiện là dữ liệu demo.',
+          description: 'Lịch bên dưới chỉ dùng để thử ứng dụng, chưa phải lịch thuốc thật.',
         }
         : {
           title: 'Chế độ trình diễn',
-          description: 'Vai trò đã được kiểm tra từ hồ sơ của chính bạn. Lịch, thuốc và phản hồi dưới đây chỉ dùng để thử giao diện; không phải hồ sơ y tế.',
+          description: 'Nội dung bên dưới chỉ dùng để làm quen với ứng dụng, không phải hồ sơ y tế.',
         };
 
   return (
     <Screen contentStyle={styles.content}>
       <AppHeader
-        right={<Text style={styles.roleLabel}>Người cao tuổi</Text>}
-        subtitle="Cùng bạn chăm sóc sức khỏe mỗi ngày"
-        title={`Chào ${user?.displayName ?? 'bạn'}`}
+        right={<Text maxFontSizeMultiplier={1.2} style={styles.roleLabel}>Người cao tuổi</Text>}
+        subtitle="Chăm sóc sức khỏe mỗi ngày"
+        title={user?.displayName ?? 'Chào bạn'}
       />
       <View style={styles.welcomeCard}>
         <View style={styles.welcomeIcon}>
           <Text accessibilityElementsHidden style={styles.welcomeIconText}>♥</Text>
         </View>
         <View style={styles.welcomeCopy}>
-          <Text style={styles.welcomeEyebrow}>MEDICARE AI · CHĂM SÓC MỖI NGÀY</Text>
-          <Text style={styles.welcomeTitle}>Thuốc đúng giờ, an tâm mỗi ngày</Text>
-          <Text style={styles.welcomeDescription}>Xem lịch uống, quản lý thuốc và nhắc nhở trong một nơi dễ theo dõi.</Text>
+          <Text maxFontSizeMultiplier={1.25} style={styles.welcomeEyebrow}>MEDICARE AI</Text>
+          <Text maxFontSizeMultiplier={1.3} style={styles.welcomeTitle}>Thuốc đúng giờ, an tâm mỗi ngày</Text>
+          <Text maxFontSizeMultiplier={1.25} style={styles.welcomeDescription}>Theo dõi lịch uống và thuốc trong một nơi.</Text>
         </View>
       </View>
       <DemoModeBanner description={dashboardBanner.description} title={dashboardBanner.title} />
@@ -171,7 +171,7 @@ export default function ElderlyHomeScreen() {
         {isLoading ? <ActivityIndicator color={medicareColors.primary} size="large" /> : null}
         {!isLoading && !errorMessage && usesFirestoreSchedules && medicationSchedules.length === 0 ? (
           <SafetyNotice
-            message="Hôm nay chưa có lịch thuốc đang hoạt động. Bạn có thể tạo lịch trong mục Thuốc của tôi."
+            message="Bạn chưa có lịch đang hoạt động. Vào “Thuốc của tôi” để tạo lịch."
             title="Chưa có lịch thuốc hôm nay"
             tone="information"
           />
@@ -244,9 +244,9 @@ export default function ElderlyHomeScreen() {
       </View>
       <SafetyNotice
         message={usesFirestoreDoseTracking
-          ? '“Đã uống” và “Bỏ qua” là phản hồi do bạn tự báo. Ứng dụng không tự xác nhận việc uống thuốc và chưa có cảnh báo y tế.'
+          ? 'Bạn tự xác nhận Đã uống hoặc Bỏ qua. Ứng dụng không tự xác nhận việc uống thuốc.'
           : usesFirestoreSchedules
-            ? 'Đây là lịch dự kiến. Ứng dụng chưa ghi nhận bạn đã uống thuốc, chưa tự tạo DoseEvent và chưa gửi thông báo.'
+            ? 'Đây là giờ uống dự kiến. Ứng dụng chưa ghi nhận việc bạn đã uống thuốc.'
           : '“Đã uống” là phản hồi do bạn tự báo. Nếu quên liều hoặc có dấu hiệu bất thường, hãy liên hệ bác sĩ hoặc dược sĩ.'}
         title={usesFirestoreDoseTracking ? 'Phản hồi tự báo' : usesFirestoreSchedules ? 'Giới hạn hiện tại' : 'Ghi nhận an toàn'}
         tone="information"

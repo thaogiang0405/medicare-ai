@@ -7,7 +7,7 @@ jest.mock('@/services/firebase', () => ({
   getFirebaseFirestore: jest.fn(),
 }));
 
-import { deriveCaregiverMedicationNames, deriveCaregiverPlans, millisecondsUntilNextVietnamDay, validateFamilyUid } from './family-link-repository';
+import { deriveCaregiverMedicationNames, deriveCaregiverPlans, millisecondsUntilNextVietnamDay, validateFamilyInviteCode, validateFamilyUid } from './family-link-repository';
 import { isFamilyCareFeatureEnabled } from '@/services/firebase/family-care-feature';
 
 describe('owner-approved Family Care client guardrails', () => {
@@ -24,6 +24,13 @@ describe('owner-approved Family Care client guardrails', () => {
     expect(validateFamilyUid(' caregiver-123 ')).toBe('caregiver-123');
     for (const code of ['', 'a', '../user', 'user/a', 'user b', 'x'.repeat(129), '🤖']) {
       expect(() => validateFamilyUid(code)).toThrow();
+    }
+  });
+
+  it('accepts only a complete 20-character one-time invitation code', () => {
+    expect(validateFamilyInviteCode(' AbCdEfGhIjKlMnOpQrSt ')).toBe('AbCdEfGhIjKlMnOpQrSt');
+    for (const code of ['', 'short', 'a'.repeat(19), 'a'.repeat(21), '../invite-code-123456', '🤖'.repeat(10)]) {
+      expect(() => validateFamilyInviteCode(code)).toThrow();
     }
   });
 

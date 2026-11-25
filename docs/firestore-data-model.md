@@ -56,37 +56,40 @@ Toàn bộ dữ liệu sức khỏe thuộc một người cao tuổi nằm dư�
 
 Không lưu mật khẩu, token, raw OCR hay thuốc trong `/users`.
 
-### Caregiver link
-
-> **Phân nhánh thiết kế 2026-11-23 (chưa triển khai):** Family Care MVP dùng owner-approved link trực tiếp trên Firestore, chỉ gồm `ownerUid`, `caregiverUid`, `status: active|revoked`, `scopes: {medicationsRead: true, schedulesRead: true}`, `revision` và timestamps. Chỉ owner elderly hợp lệ được tạo/revoke; không cho caregiver ghi. Mô hình pending/invitationId bên dưới là phương án *server-trusted invite* dài hạn, **không phải schema được code MVP sử dụng**. Khi thử phải dùng đúng Rules của nhánh Family Care, đã review và deploy riêng; production không tự thay đổi. Xem [Family Care MVP](family-care-owner-approved-links.md).
-
+### Family Care invite and caregiver link
 
 ```json
-// elderlyProfiles/{elderlyId}/caregiverLinks/{caregiverId}
+// familyInvites/{inviteCode}
 {
-  "elderlyId": "elderlyUid",
-  "caregiverId": "caregiverUid",
-  "status": "pending",
-  "initiatedBy": "caregiverUid",
-  "invitationId": "invite-id",
-  "scopes": {
-    "profileRead": true,
-    "medicationsRead": true,
-    "medicationsWrite": false,
-    "schedulesRead": true,
-    "schedulesWrite": false,
-    "doseHistoryRead": true,
-    "ocrRead": false
-  },
+  "ownerUid": "elderlyUid",
+  "ownerDisplayName": "Tên hiển thị chủ hồ sơ",
+  "inviteCode": "20-character-firestore-auto-id",
+  "status": "open",
+  "expiresAt": "Timestamp (about 24 hours after creation)",
+  "claimedByUid": null,
+  "claimedAt": null,
   "createdAt": "Timestamp",
-  "acceptedAt": null,
-  "revokedAt": null,
-  "updatedAt": "Timestamp",
-  "version": 1
+  "updatedAt": "Timestamp"
+}
+
+// elderlyProfiles/{elderlyId}/caregiverLinks/{caregiverUid}
+{
+  "ownerUid": "elderlyUid",
+  "ownerDisplayName": "Tên hiển thị chủ hồ sơ",
+  "caregiverUid": "caregiverUid",
+  "caregiverDisplayName": "Tên hiển thị người chăm sóc",
+  "inviteCode": "same invite ID",
+  "status": "pending",
+  "scopes": { "medicationsRead": true, "schedulesRead": true },
+  "revision": 1,
+  "createdAt": "Timestamp",
+  "updatedAt": "Timestamp"
 }
 ```
 
-Status lifecycle: `pending → active | rejected | expired`; `active → revoked`. Caregiver can never set `active` from client. A Callable Function hashes invite codes, validates expiry and creates pending link; elderly approval and revocation run through server-trusted code/transaction.
+Invite lifecycle: `open → claimed → consumed` (approved) or `open → claimed → rejected`. Expired open invites cannot be read/claimed. Each invite is claimed once; retry by the same caregiver is idempotent only while its matching link remains pending. Claim creates the pending link and marks the invite claimed in one transaction. Owner approval/rejection updates both documents atomically with Rules `getAfter()`. Only `active` links authorize medication/schedule reads. Caregiver discovery uses a collection-group query constrained to the signed-in caregiver UID and returns link metadata only.
+
+The invitation ID is a locator, not a permission token. Knowing it can create a pending request but cannot grant health-data access. Owner confirmation remains mandatory. Revoked/rejected links are not reactivated or deleted in this MVP.
 
 ### Prescription and OCR — AI Phase 1
 

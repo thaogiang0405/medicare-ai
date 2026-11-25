@@ -1029,14 +1029,20 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
 
     await assertSucceeds(runTransaction(caregiverDB, async (transaction) => {
       const inviteSnapshot = await transaction.get(caregiverInvitation);
-      const existingLink = await transaction.get(caregiverLink);
-      const caregiverProfile = await transaction.get(userProfileReference(caregiverDB, caregiver));
       expect(inviteSnapshot.data().status).toBe('open');
-      expect(existingLink.exists()).toBe(false);
-      expect(caregiverProfile.data().primaryRole).toBe('caregiver');
       transaction.update(caregiverInvitation, {
         status: 'claimed', claimedByUid: caregiver, claimedAt: serverTimestamp(), updatedAt: serverTimestamp(),
       });
+    }));
+    expect((await assertSucceeds(getDoc(caregiverLink))).exists()).toBe(false);
+    await assertSucceeds(runTransaction(caregiverDB, async (transaction) => {
+      const inviteSnapshot = await transaction.get(caregiverInvitation);
+      const existingLink = await transaction.get(caregiverLink);
+      const caregiverProfile = await transaction.get(userProfileReference(caregiverDB, caregiver));
+      expect(inviteSnapshot.data().status).toBe('claimed');
+      expect(inviteSnapshot.data().claimedByUid).toBe(caregiver);
+      expect(existingLink.exists()).toBe(false);
+      expect(caregiverProfile.data().primaryRole).toBe('caregiver');
       transaction.set(caregiverLink, pendingFamilyLink(userA, caregiver));
     }));
 
@@ -1077,11 +1083,14 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
 
     await assertSucceeds(runTransaction(firstDB, async (transaction) => {
       await transaction.get(firstInvite);
-      await transaction.get(familyLinkRef(firstDB));
-      await transaction.get(userProfileReference(firstDB, caregiver));
       transaction.update(firstInvite, {
         status: 'claimed', claimedByUid: caregiver, claimedAt: serverTimestamp(), updatedAt: serverTimestamp(),
       });
+    }));
+    await assertSucceeds(runTransaction(firstDB, async (transaction) => {
+      await transaction.get(firstInvite);
+      await transaction.get(familyLinkRef(firstDB));
+      await transaction.get(userProfileReference(firstDB, caregiver));
       transaction.set(familyLinkRef(firstDB), pendingFamilyLink(userA, caregiver));
     }));
     await assertFails(getDoc(secondInvite));
@@ -1129,11 +1138,14 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
     await assertSucceeds(setDoc(invitation, familyInvite(userA)));
     await assertSucceeds(runTransaction(caregiverDB, async (transaction) => {
       await transaction.get(inviteForCaregiver);
-      await transaction.get(caregiverLink);
-      await transaction.get(userProfileReference(caregiverDB, caregiver));
       transaction.update(inviteForCaregiver, {
         status: 'claimed', claimedByUid: caregiver, claimedAt: serverTimestamp(), updatedAt: serverTimestamp(),
       });
+    }));
+    await assertSucceeds(runTransaction(caregiverDB, async (transaction) => {
+      await transaction.get(inviteForCaregiver);
+      await transaction.get(caregiverLink);
+      await transaction.get(userProfileReference(caregiverDB, caregiver));
       transaction.set(caregiverLink, pendingFamilyLink(userA, caregiver));
     }));
     await assertSucceeds(runTransaction(ownerDB, async (transaction) => {
@@ -1186,7 +1198,7 @@ describeWithFirestoreEmulator('Firestore user-profile rules', () => {
 
     await assertFails(getDocs(medicationsCollection(caregiverDB, userA)));
     await assertFails(getDocs(medicationSchedulesCollection(caregiverDB, userA)));
-    await assertFails(getDoc(familyLinkRef(caregiverDB)));
+    expect((await assertSucceeds(getDoc(familyLinkRef(caregiverDB)))).exists()).toBe(false);
 
     await seed('elderlyProfiles/' + userA + '/caregiverLinks/' + caregiver, familyLink(userA, caregiver));
     await assertSucceeds(getDoc(familyLinkRef(caregiverDB)));

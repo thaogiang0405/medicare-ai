@@ -58,42 +58,66 @@ export async function createFamilyInvite(ownerUid: string): Promise<FamilyInvite
   return { code: reference.id, expiresAt: expiresAt.toDate() };
 }
 
-/** Claim an invite and create a pending link atomically. */
+/** Claim the one-time invite, then create a pending link; retries by the same caregiver are safe. */
 export async function requestCaregiverLink(caregiverUid: string, rawCode: string): Promise<void> {
   checkSession(caregiverUid);
   const code = validateFamilyInviteCode(rawCode);
   const database = getFirebaseFirestore();
   const invitation = inviteRef(code);
-  const caregiverProfileRef = doc(database, 'users', caregiverUid);
+
+  // Phase 1 reserves the invitation for this caregiver. A failed second phase
+  // can be retried by the same account without allowing another claimant in.
   await runTransaction(database, async (transaction) => {
     const inviteSnapshot = await transaction.get(invitation);
-    const inviteData = inviteSnapshot.exists() ? inviteSnapshot.data() : null;
-    const ownerUid = inviteData && typeof inviteData.ownerUid === 'string' ? inviteData.ownerUid : '__missing_owner__';
-    const linkReference = linkRef(ownerUid, caregiverUid);
-    const [existingLink, caregiverProfile] = await Promise.all([
-      transaction.get(linkReference), transaction.get(caregiverProfileRef),
-    ]);
     checkSession(caregiverUid);
-    if (!inviteData || inviteData.inviteCode !== code || typeof inviteData.ownerDisplayName !== 'string'
-      || !(inviteData.expiresAt instanceof Timestamp)) throw new Error('Mã mời không tồn tại hoặc không hợp lệ.');
-    if (inviteData.status === 'claimed' && inviteData.claimedByUid === caregiverUid
-      && existingLink.exists() && existingLink.data().inviteCode === code && existingLink.data().status === 'pending') return;
+    if (!inviteSnapshot.exists()) throw new Error('Mã mời không tồn tại hoặc không hợp lệ.');
+    const inviteData = inviteSnapshot.data();
+    if (inviteData.inviteCode !== code || typeof inviteData.ownerUid !== 'string'
+      || typeof inviteData.ownerDisplayName !== 'string' || !(inviteData.expiresAt instanceof Timestamp)) {
+      throw new Error('Mã mời không tồn tại hoặc không hợp lệ.');
+    }
+    if (inviteData.status === 'claimed' && inviteData.claimedByUid === caregiverUid) return;
     if (inviteData.status !== 'open' || inviteData.expiresAt.toMillis() <= Date.now()) {
       throw new Error('Mã mời đã được sử dụng hoặc hết hạn. Hãy xin mã mới.');
     }
     if (inviteData.ownerUid === caregiverUid) throw new Error('Không thể kết nối tài khoản với chính mình.');
-    if (existingLink.exists()) throw new Error('Hai tài khoản đã có yêu cầu hoặc liên kết trước đó.');
+    transaction.update(invitation, {
+      status: 'claimed', claimedByUid: caregiverUid, claimedAt: serverTimestamp(), updatedAt: serverTimestamp(),
+    });
+  });
+  checkSession(caregiverUid);
+
+  // Phase 2 creates the pending link only after the invite is visibly claimed.
+  await runTransaction(database, async (transaction) => {
+    const inviteSnapshot = await transaction.get(invitation);
+    if (!inviteSnapshot.exists()) throw new Error('Mã mời không còn hợp lệ.');
+    const inviteData = inviteSnapshot.data();
+    if (inviteData.inviteCode !== code || inviteData.status !== 'claimed'
+      || inviteData.claimedByUid !== caregiverUid || typeof inviteData.ownerUid !== 'string'
+      || typeof inviteData.ownerDisplayName !== 'string') {
+      throw new Error('Mã mời đã được sử dụng bởi tài khoản khác hoặc không còn hợp lệ.');
+    }
+    const ownerUid = inviteData.ownerUid;
+    const linkReference = linkRef(ownerUid, caregiverUid);
+    const caregiverProfileRef = doc(database, 'users', caregiverUid);
+    const [existingLink, caregiverProfile] = await Promise.all([
+      transaction.get(linkReference), transaction.get(caregiverProfileRef),
+    ]);
+    checkSession(caregiverUid);
+    if (existingLink.exists()) {
+      const current = existingLink.data();
+      if (current.inviteCode === code && current.status === 'pending'
+        && current.ownerUid === ownerUid && current.caregiverUid === caregiverUid) return;
+      throw new Error('Hai tài khoản đã có yêu cầu hoặc liên kết trước đó.');
+    }
     if (!caregiverProfile.exists() || caregiverProfile.data().uid !== caregiverUid
       || caregiverProfile.data().primaryRole !== 'caregiver' || caregiverProfile.data().roles?.caregiver !== true
       || caregiverProfile.data().roles?.elderly !== false || caregiverProfile.data().onboardingCompleted !== true
       || typeof caregiverProfile.data().displayName !== 'string') {
       throw new Error('Chỉ tài khoản người chăm sóc đã hoàn tất hồ sơ mới gửi được yêu cầu.');
     }
-    transaction.update(invitation, {
-      status: 'claimed', claimedByUid: caregiverUid, claimedAt: serverTimestamp(), updatedAt: serverTimestamp(),
-    });
     transaction.set(linkReference, {
-      ownerUid: inviteData.ownerUid, ownerDisplayName: inviteData.ownerDisplayName,
+      ownerUid, ownerDisplayName: inviteData.ownerDisplayName,
       caregiverUid, caregiverDisplayName: caregiverProfile.data().displayName, inviteCode: code,
       status: 'pending', scopes: { medicationsRead: true, schedulesRead: true },
       revision: 1, createdAt: serverTimestamp(), updatedAt: serverTimestamp(),

@@ -186,9 +186,9 @@ service cloud.firestore {
         && request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time;
     }
 
+    // Claim first; the same caregiver may retry pending-link creation afterward.
+    // This avoids circular getAfter() evaluation between the two documents.
     function validCaregiverInviteClaim(inviteCode) {
-      let ownerUid = resource.data.ownerUid;
-      let linkPath = /databases/$(database)/documents/elderlyProfiles/$(ownerUid)/caregiverLinks/$(request.auth.uid);
       return verifiedCaregiver(request.auth.uid) && validFamilyInvite(resource.data, inviteCode)
         && resource.data.status == 'open' && resource.data.expiresAt > request.time
         && request.resource.data.status == 'claimed'
@@ -199,18 +199,13 @@ service cloud.firestore {
         && request.resource.data.inviteCode == resource.data.inviteCode
         && request.resource.data.expiresAt == resource.data.expiresAt
         && request.resource.data.createdAt == resource.data.createdAt
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'claimedByUid', 'claimedAt', 'updatedAt'])
-        && existsAfter(linkPath)
-        && getAfter(linkPath).data.ownerUid == ownerUid
-        && getAfter(linkPath).data.caregiverUid == request.auth.uid
-        && getAfter(linkPath).data.inviteCode == inviteCode
-        && getAfter(linkPath).data.status == 'pending';
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'claimedByUid', 'claimedAt', 'updatedAt']);
     }
 
+    // Consuming/rejecting an invite alone cannot grant access; the link's
+    // own transition rule also requires the matching invite post-state.
     function validOwnerInviteDecision(inviteCode) {
       let ownerUid = resource.data.ownerUid;
-      let caregiverUid = resource.data.claimedByUid;
-      let linkPath = /databases/$(database)/documents/elderlyProfiles/$(ownerUid)/caregiverLinks/$(caregiverUid);
       return hasValidElderlyProfile(ownerUid) && request.auth.uid == ownerUid
         && validFamilyInvite(resource.data, inviteCode) && resource.data.status == 'claimed'
         && request.resource.data.ownerUid == resource.data.ownerUid
@@ -222,12 +217,7 @@ service cloud.firestore {
         && request.resource.data.createdAt == resource.data.createdAt
         && request.resource.data.updatedAt == request.time
         && request.resource.data.status in ['consumed', 'rejected']
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])
-        && existsAfter(linkPath)
-        && getAfter(linkPath).data.ownerUid == ownerUid
-        && getAfter(linkPath).data.caregiverUid == caregiverUid
-        && ((request.resource.data.status == 'consumed' && getAfter(linkPath).data.status == 'active')
-          || (request.resource.data.status == 'rejected' && getAfter(linkPath).data.status == 'rejected'));
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']);
     }
 
     function validCaregiverRequest(ownerUid, caregiverUid) {
@@ -240,11 +230,11 @@ service cloud.firestore {
         && request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time
         && request.resource.data.ownerDisplayName == get(/databases/$(database)/documents/users/$(ownerUid)).data.displayName
         && request.resource.data.caregiverDisplayName == get(/databases/$(database)/documents/users/$(caregiverUid)).data.displayName
-        && existsAfter(invitationPath)
-        && getAfter(invitationPath).data.ownerUid == ownerUid
-        && getAfter(invitationPath).data.inviteCode == inviteCode
-        && getAfter(invitationPath).data.status == 'claimed'
-        && getAfter(invitationPath).data.claimedByUid == caregiverUid;
+        && exists(invitationPath)
+        && validFamilyInvite(get(invitationPath).data, inviteCode)
+        && get(invitationPath).data.ownerUid == ownerUid
+        && get(invitationPath).data.status == 'claimed'
+        && get(invitationPath).data.claimedByUid == caregiverUid;
     }
 
     function validOwnerLinkDecision(ownerUid, caregiverUid) {
@@ -723,11 +713,11 @@ service cloud.firestore {
     }
 
     match /{path=**}/caregiverLinks/{caregiverUid} {
-      allow list: if signedIn() && request.auth.uid == caregiverUid && verifiedCaregiver(caregiverUid)
-        && resource.data.caregiverUid == caregiverUid
-        && resource.data.ownerUid is string
-        && verifiedElderly(resource.data.ownerUid)
-        && validFamilyLink(resource.data, resource.data.ownerUid, caregiverUid);
+      // The equality filter on caregiverUid is provable for collection-group
+      // queries. Link creation validates the full schema and owner role; the
+      // returned documents contain link metadata only, never health records.
+      allow list: if signedIn() && request.auth.uid == caregiverUid
+        && verifiedCaregiver(caregiverUid) && resource.data.caregiverUid == caregiverUid;
     }
 
     // M3.2: an elderly owner may access only their own medication records.

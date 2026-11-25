@@ -4,7 +4,6 @@ const firebaseRequiredConfigFields = [
   'apiKey',
   'authDomain',
   'projectId',
-  'storageBucket',
   'messagingSenderId',
   'appId',
 ] as const;
@@ -12,11 +11,11 @@ const firebaseRequiredConfigFields = [
 type FirebaseRequiredConfigField = (typeof firebaseRequiredConfigFields)[number];
 
 type FirebasePublicEnvironment = Partial<
-  Record<FirebaseRequiredConfigField | 'measurementId', string | undefined>
+  Record<FirebaseRequiredConfigField | 'storageBucket' | 'measurementId', string | undefined>
 >;
 
 const firebaseEnvironmentVariableNames: Record<
-  FirebaseRequiredConfigField | 'measurementId',
+  FirebaseRequiredConfigField | 'storageBucket' | 'measurementId',
   string
 > = {
   apiKey: 'EXPO_PUBLIC_FIREBASE_API_KEY',
@@ -46,7 +45,8 @@ function normalizeEnvironmentValue(value: string | undefined): string | undefine
 
 /**
  * Builds a Firebase client config only from supplied public Web App identifiers.
- * `measurementId` is optional because Analytics is outside Migration 2.1.
+ * `storageBucket` is optional because this app currently uses Auth + Firestore,
+ * not Firebase Storage. `measurementId` is optional because Analytics is not used.
  */
 export function createFirebaseConfig(environment: FirebasePublicEnvironment): FirebaseOptions {
   const config = {
@@ -71,7 +71,7 @@ export function createFirebaseConfig(environment: FirebasePublicEnvironment): Fi
     apiKey: config.apiKey!,
     authDomain: config.authDomain!,
     projectId: config.projectId!,
-    storageBucket: config.storageBucket!,
+    ...(config.storageBucket ? { storageBucket: config.storageBucket } : {}),
     messagingSenderId: config.messagingSenderId!,
     appId: config.appId!,
     ...(config.measurementId ? { measurementId: config.measurementId } : {}),

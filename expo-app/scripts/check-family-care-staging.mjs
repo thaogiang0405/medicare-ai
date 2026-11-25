@@ -7,7 +7,6 @@ const requiredConfig = [
   'EXPO_PUBLIC_FIREBASE_API_KEY',
   'EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN',
   'EXPO_PUBLIC_FIREBASE_PROJECT_ID',
-  'EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET',
   'EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID',
   'EXPO_PUBLIC_FIREBASE_APP_ID',
 ];
@@ -17,7 +16,7 @@ const requiredFlags = [
   'EXPO_PUBLIC_FIRESTORE_SCHEDULES_ENABLED',
   'EXPO_PUBLIC_FAMILY_CARE_ENABLED',
 ];
-const inspectedKeys = new Set([...requiredConfig, ...requiredFlags]);
+const inspectedKeys = new Set([...requiredConfig, ...requiredFlags, 'EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET']);
 const approvedStagingProjectId = 'medicare-ai-staging';
 const approvedStagingProjectNumber = '318128431668';
 

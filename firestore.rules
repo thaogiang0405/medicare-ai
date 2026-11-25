@@ -203,8 +203,7 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'claimedByUid', 'claimedAt', 'updatedAt']);
     }
 
-    // Consuming/rejecting an invite alone cannot grant access; the link's
-    // own transition rule also requires the matching invite post-state.
+    // The invite decision is recorded before the separate owner-only link transition.
     function validOwnerInviteDecision(inviteCode) {
       let ownerUid = resource.data.ownerUid;
       // Invite creation and caregiver claim already validate the full schema.
@@ -254,9 +253,9 @@ service cloud.firestore {
     }
 
     function validOwnerRevoke(ownerUid, caregiverUid) {
-      return hasValidElderlyProfile(ownerUid)
-        && validFamilyLink(resource.data, ownerUid, caregiverUid)
-        && validFamilyLink(request.resource.data, ownerUid, caregiverUid)
+      // Link schema and immutable metadata were validated at creation.
+      return ownsUser(ownerUid)
+        && resource.data.ownerUid == ownerUid && resource.data.caregiverUid == caregiverUid
         && resource.data.status == 'active' && request.resource.data.status == 'revoked'
         && request.resource.data.revision == resource.data.revision + 1
         && request.resource.data.createdAt == resource.data.createdAt
@@ -690,7 +689,7 @@ service cloud.firestore {
               || (resource.data.status == 'claimed' && resource.data.claimedByUid == request.auth.uid))));
       allow list: if false;
       allow create: if validFamilyInviteCreate(inviteCode);
-      allow update: if validCaregiverInviteClaim(inviteCode) || validOwnerInviteDecision(inviteCode);
+      allow update: if validOwnerInviteDecision(inviteCode) || validCaregiverInviteClaim(inviteCode);
       allow delete: if false;
     }
 
@@ -705,7 +704,7 @@ service cloud.firestore {
             || validFamilyLink(resource.data, uid, caregiverUid)));
       allow list: if hasValidElderlyProfile(uid);
       allow create: if validCaregiverRequest(uid, caregiverUid);
-      allow update: if validOwnerRevoke(uid, caregiverUid) || validOwnerLinkDecision(uid, caregiverUid);
+      allow update: if validOwnerLinkDecision(uid, caregiverUid) || validOwnerRevoke(uid, caregiverUid);
       allow delete: if false;
     }
 

@@ -10,8 +10,8 @@ const fixture = {
   EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN: staging + '.firebaseapp.com',
   EXPO_PUBLIC_FIREBASE_PROJECT_ID: staging,
   EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET: staging + '.firebasestorage.app',
-  EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: '12345',
-  EXPO_PUBLIC_FIREBASE_APP_ID: 'synthetic-app-id',
+  EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: '318128431668',
+  EXPO_PUBLIC_FIREBASE_APP_ID: '1:318128431668:web:synthetic-web-app-id',
   EXPO_PUBLIC_FIRESTORE_USER_PROFILES_ENABLED: 'true',
   EXPO_PUBLIC_FIRESTORE_MEDICATIONS_ENABLED: 'true',
   EXPO_PUBLIC_FIRESTORE_SCHEDULES_ENABLED: 'true',
@@ -39,7 +39,18 @@ test('blocks accidental production config when staging is explicitly requested',
 test('blocks a different Firebase staging project than the explicit target', () => {
   assert.match(validateFamilyCareStagingEnv({
     ...fixture, EXPO_PUBLIC_FIREBASE_PROJECT_ID: 'other-staging',
-  }, staging, production).join(' '), /does not match/);
+  }, 'other-staging', production).join(' '), /Only the owner-approved Firebase staging project/);
+});
+
+test('requires the approved staging project number in both Web App identity fields', () => {
+  const wrongSender = validateFamilyCareStagingEnv({
+    ...fixture, EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: '354989416256',
+  }, staging, production).join(' ');
+  assert.match(wrongSender, /Messaging sender ID/);
+  const wrongApp = validateFamilyCareStagingEnv({
+    ...fixture, EXPO_PUBLIC_FIREBASE_APP_ID: '1:354989416256:web:production-app-id',
+  }, staging, production).join(' ');
+  assert.match(wrongApp, /Web App ID/);
 });
 
 test('requires all four related Firestore and Family Care routing flags', () => {

@@ -18,6 +18,8 @@ const requiredFlags = [
   'EXPO_PUBLIC_FAMILY_CARE_ENABLED',
 ];
 const inspectedKeys = new Set([...requiredConfig, ...requiredFlags]);
+const approvedStagingProjectId = 'medicare-ai-staging';
+const approvedStagingProjectNumber = '318128431668';
 
 /**
  * Pure, offline validation. This is a local QA preflight, not a Firebase
@@ -31,6 +33,9 @@ export function validateFamilyCareStagingEnv(values, expectedProject, production
   if (!/^[a-z][a-z0-9-]{4,29}$/.test(target)
     || !/(?:^|-)(?:stage|staging|sandbox|test)(?:-|$)/.test(target)) {
     issues.push('Specify an explicit Firebase staging/test project ID using --project.');
+  }
+  if (target !== approvedStagingProjectId) {
+    issues.push('Only the owner-approved Firebase staging project ' + approvedStagingProjectId + ' is allowed.');
   }
   if (!productionProject) {
     issues.push('Cannot determine the existing production project from firebase.json. Stop.');
@@ -55,6 +60,12 @@ export function validateFamilyCareStagingEnv(values, expectedProject, production
 
   if (configured && values.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN?.trim() !== configured + '.firebaseapp.com') {
     issues.push('Firebase Auth domain does not match the staging project default domain.');
+  }
+  if (values.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID?.trim() !== approvedStagingProjectNumber) {
+    issues.push('Firebase Messaging sender ID does not match the approved staging project number.');
+  }
+  if (!values.EXPO_PUBLIC_FIREBASE_APP_ID?.trim().startsWith('1:' + approvedStagingProjectNumber + ':web:')) {
+    issues.push('Firebase Web App ID does not match the approved staging project number.');
   }
   const bucket = values.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET?.trim();
   if (configured && bucket && bucket !== configured + '.appspot.com'
